@@ -1,0 +1,19 @@
+# Godot generated/editor data
+.godot/
+
+# Godot 3 import cache
+.import/
+
+# Exported builds and platform templates
+/builds/
+/exports/
+/android/
+
+# Local export settings may contain signing credentials or machine paths
+export.cfg
+export_presets.cfg
+
+# C# / Mono generated files
+.mono/
+data_*/
+mono_crash.*.json
