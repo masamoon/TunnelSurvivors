@@ -10,8 +10,15 @@ const PANEL_X := 680
 const MAX_FLOOR := 8
 const DIG_SUBDIV := 4
 const DIG_SUBCELL_COUNT := DIG_SUBDIV * DIG_SUBDIV
-const DIG_PROMOTE_SUBCELLS := DIG_SUBCELL_COUNT
-const PLAYER_DIG_FOOTPRINT := CELL * 0.92
+const DIG_FULL_MASK := (1 << DIG_SUBCELL_COUNT) - 1
+const DIG_PROMOTE_SUBCELLS := DIG_SUBDIV * 2
+const PLAYER_DIG_FOOTPRINT := CELL
+const TUNNEL_CENTER_SIZE := CELL * 0.58
+const TUNNEL_CORRIDOR_WIDTH := CELL * 0.46
+const TUNNEL_DIR_RIGHT := 1
+const TUNNEL_DIR_LEFT := 2
+const TUNNEL_DIR_DOWN := 4
+const TUNNEL_DIR_UP := 8
 
 const TILE_DIRT := 0
 const TILE_TUNNEL := 1
@@ -56,7 +63,7 @@ const ROCK_STEP_DELAY := 0.25
 const PHASE_MIN_FLOOR := 1
 const PHASE_COOLDOWN_MIN := 3.0
 const PHASE_COOLDOWN_MAX := 6.0
-const PHASE_THIN_WALL_TUNNEL_NEIGHBORS := 1
+const PHASE_ESCAPE_SEARCH_RADIUS := 12
 const ENEMY_STUCK_STEPS_TO_SQUEEZE := 4
 const FYGAR_MIN_FLOOR := 2
 const FYGAR_FIRE_WARN := 0.52
@@ -64,6 +71,7 @@ const FYGAR_FIRE_ACTIVE := 0.42
 const FYGAR_FIRE_COOLDOWN_MIN := 2.2
 const FYGAR_FIRE_COOLDOWN_MAX := 4.2
 const FYGAR_FIRE_RANGE := 6
+const FYGAR_THIN_DIRT_PENETRATION := 1
 const ENEMY_GRUB_SPEED_RATIO := 1.0
 const ENEMY_BURROWER_SPEED_RATIO := 1.0
 const ENEMY_FYGAR_SPEED_RATIO := 1.0
@@ -78,36 +86,42 @@ const ATTACK_RECOVERY_DELAY := 0.32
 const ATTACK_FLASH_TIME := 0.32
 const LANCE_HIT_DELAY := 0.10
 const LANCE_RETRACT_DELAY := 0.22
-const LANCE_PUMP_INTERVAL := 0.50
+const LANCE_PUMP_INTERVAL := 0.78
+const LANCE_TAP_PUMP_INTERVAL := 0.62
 const LANCE_HOLD_STUN := 0.10
 const ENEMY_INFLATE_RECOVER_DELAY := 0.42
 const BASE_MOVE_DELAY := 0.50
 const BASE_DIG_DELAY_MULT := 1.0
 const PLAYER_CENTER_EPS := 0.015
-const PLAYER_TARGET_GATE := 0.10
-const TUNNEL_HALF_WIDTH := (CELL - 1.0) * 0.5
+const PLAYER_TARGET_GATE := 0.22
+const PLAYER_TURN_GATE := 0.22
+const TUNNEL_HALF_WIDTH := TUNNEL_CORRIDOR_WIDTH * 0.5
 const COMBO_WINDOW := 2.2
 const SHOP_SKIP_KEY_TEXT := "0 / Enter skips"
-const BG := Color("#101217")
-const DIRT := Color("#7a4b30")
-const DIRT_DARK := Color("#553322")
-const TUNNEL := Color("#1b1b20")
-const ROCK := Color("#87909b")
-const ROCK_SHADOW := Color("#454b55")
-const PLAYER := Color("#5ee1c5")
-const PLAYER_DARK := Color("#177d73")
-const ENEMY_GRUB := Color("#f26d86")
-const ENEMY_BURROWER := Color("#f2b84b")
-const ENEMY_FYGAR := Color("#93d84f")
-const FIRE := Color("#ff774d")
-const GEM := Color("#8bd3ff")
-const PRESSURE := Color("#d9f8ff")
-const RUPTURE := Color("#ffd166")
-const EXIT_LOCKED := Color("#5e5566")
-const EXIT_OPEN := Color("#b6f36b")
-const UI := Color("#e8e2cf")
-const MUTED := Color("#9aa0aa")
-const WARN := Color("#ffcc66")
+const BG := Color("#090b12")
+const DIRT := Color("#8a4d27")
+const DIRT_DARK := Color("#4f2a1a")
+const DIRT_LIGHT := Color("#b16b32")
+const TUNNEL := Color("#151420")
+const TUNNEL_EDGE := Color("#242133")
+const ROCK := Color("#99a3ad")
+const ROCK_SHADOW := Color("#48505b")
+const PLAYER := Color("#44f0c8")
+const PLAYER_DARK := Color("#12847b")
+const PLAYER_SKIN := Color("#ffd29a")
+const ENEMY_GRUB := Color("#ff5c7c")
+const ENEMY_BURROWER := Color("#ffbd45")
+const ENEMY_FYGAR := Color("#77df4c")
+const FIRE := Color("#ff6b39")
+const GEM := Color("#70d7ff")
+const PRESSURE := Color("#ccfbff")
+const RUPTURE := Color("#ffd45a")
+const EXIT_LOCKED := Color("#60546d")
+const EXIT_OPEN := Color("#baff4d")
+const UI := Color("#f2e7c9")
+const UI_DARK := Color("#17151f")
+const MUTED := Color("#9da2ae")
+const WARN := Color("#ffc95a")
 
 var rng := RandomNumberGenerator.new()
 var font: Font
@@ -116,6 +130,7 @@ var grid := []
 var soil_image: Image
 var soil_texture: ImageTexture
 var soil_dirty := false
+var tunnel_edges := {}
 var rocks := []
 var gems := []
 var xp_pickups := []
@@ -126,6 +141,7 @@ var last_attack_cells := []
 var dig_feedback := []
 var dig_segments := []
 var dig_masks := {}
+var dig_scored_cells := {}
 var player_dug_cells := {}
 var pulse_feedback := []
 
@@ -162,6 +178,7 @@ var lance_pump_timer := 0.0
 var lance_pump_damage := 1
 var lance_burst_ready := false
 var lance_has_struck := false
+var lance_pulse_queued := false
 var hurt_flash := 0.0
 var anim_time := 0.0
 var screen_shake := 0.0
@@ -174,6 +191,7 @@ var player_target_cell := Vector2i.ZERO
 var player_target_digging := false
 var player_digging := false
 var player_step_squash := 0.0
+var last_dig_stamp := Vector2i(-999999, -999999)
 
 var move_delay := BASE_MOVE_DELAY
 var dig_delay_mult := BASE_DIG_DELAY_MULT
@@ -265,6 +283,7 @@ func _start_floor() -> void:
     player_target_cell = player_pos
     player_target_digging = false
     player_digging = false
+    last_dig_stamp = _dig_stamp_key(player_visual_pos)
     facing = Vector2i.RIGHT
     exit_unlocked = false
     move_cooldown = 0.0
@@ -277,6 +296,7 @@ func _start_floor() -> void:
     lance_pump_damage = _effective_lance_damage()
     lance_burst_ready = false
     lance_has_struck = false
+    lance_pulse_queued = false
     temp_lance_range = 0
     temp_lance_damage = 0
     temp_stun_bonus = 0.0
@@ -290,6 +310,8 @@ func _start_floor() -> void:
     dig_feedback.clear()
     dig_segments.clear()
     dig_masks.clear()
+    dig_scored_cells.clear()
+    tunnel_edges.clear()
     player_dug_cells.clear()
     pulse_feedback.clear()
     xp_pickups.clear()
@@ -393,11 +415,11 @@ func _gallery_is_clear(gallery: Array) -> bool:
             return false
         if pos == exit_pos or pos.distance_squared_to(player_pos) < 36:
             return false
-        if _tile(pos) != TILE_DIRT:
+        if _cell_open_mask(pos) != 0:
             return false
         for dir in DIRS:
             var neighbor: Vector2i = pos + dir
-            if _in_bounds(neighbor) and _tile(neighbor) != TILE_DIRT and not gallery.has(neighbor):
+            if _in_bounds(neighbor) and _cell_open_mask(neighbor) != 0 and not gallery.has(neighbor):
                 return false
     return true
 
@@ -407,11 +429,11 @@ func _place_rocks(count: int) -> void:
     while rocks.size() < count and attempts < 800:
         attempts += 1
         var pos := Vector2i(rng.randi_range(1, BOARD_W - 2), rng.randi_range(3, BOARD_H - 3))
-        if _tile(pos) != TILE_DIRT:
+        if _cell_open_mask(pos) != 0:
             continue
         if _has_rock(pos) or pos.distance_squared_to(player_pos) < 25:
             continue
-        if rng.randf() < 0.62 and _tile(pos + Vector2i.DOWN) == TILE_DIRT:
+        if rng.randf() < 0.62 and _cell_open_mask(pos + Vector2i.DOWN) == 0:
             continue
         _add_rock(pos)
 
@@ -435,7 +457,7 @@ func _place_gems(count: int) -> void:
             continue
         if _has_rock(pos):
             continue
-        if rng.randf() < 0.65 and (_tile(pos) != TILE_DIRT or _adjacent_tunnel_count(pos) == 0):
+        if rng.randf() < 0.65 and (_cell_open_mask(pos) != 0 or _adjacent_tunnel_count(pos) == 0):
             continue
         gems.append(pos)
 
@@ -453,7 +475,7 @@ func _place_floor_relics(count: int) -> void:
             continue
         var relic: Dictionary = pool[floor_relics.size() % pool.size()].duplicate()
         relic["pos"] = pos
-        relic["buried"] = _tile(pos) == TILE_DIRT
+        relic["buried"] = _cell_open_mask(pos) == 0
         floor_relics.append(relic)
 
 
@@ -464,7 +486,7 @@ func _place_enemies(count: int, spawn_cells := []) -> void:
         if enemies.size() >= count:
             return
         var spawn_pos: Vector2i = candidate
-        if _tile(spawn_pos) != TILE_TUNNEL:
+        if not _is_open_tile(spawn_pos):
             continue
         if spawn_pos.distance_squared_to(player_pos) < 45 or spawn_pos == exit_pos or _enemy_index_at(spawn_pos) != -1:
             continue
@@ -474,7 +496,7 @@ func _place_enemies(count: int, spawn_cells := []) -> void:
     while enemies.size() < count and attempts < 1000:
         attempts += 1
         var pos := Vector2i(rng.randi_range(2, BOARD_W - 3), rng.randi_range(3, BOARD_H - 3))
-        if _tile(pos) != TILE_TUNNEL:
+        if not _is_open_tile(pos):
             continue
         if pos.distance_squared_to(player_pos) < 45 or pos == exit_pos or _enemy_index_at(pos) != -1:
             continue
@@ -487,7 +509,7 @@ func _add_enemy(pos: Vector2i) -> void:
         kind = ENEMY_FYGAR_KIND
     elif floor_index >= 3 and rng.randf() < 0.28:
         kind = ENEMY_BURROWER_KIND
-    var enemy_hp := 2 + floori(float(floor_index) / 3.0)
+    var enemy_hp := 3 + floori(float(floor_index) / 3.0)
     enemies.append({
         "pos": pos,
         "visual_pos": _visual_from_pos(pos),
@@ -575,7 +597,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
     if state == STATE_PLAYING:
         if event.keycode == KEY_SPACE:
-            _start_lance()
+            if lance_active:
+                lance_pulse_queued = true
+            else:
+                _start_lance()
         elif event.keycode == KEY_E or event.keycode == KEY_ENTER:
             _try_interact()
     elif state == STATE_CHOOSING:
@@ -649,12 +674,10 @@ func _update_player_motion(delta: float, input_dir: Vector2i) -> void:
         return
 
     player_visual_pos = next
-    player_digging = player_target_digging
+    var next_needs_dig := not _body_open_at_board_px(_visual_to_board_px(player_visual_pos), PLAYER_DIG_FOOTPRINT)
+    player_digging = player_target_digging or next_needs_dig
     player_step_squash = 0.30 if player_digging else 0.12
-    if player_digging:
-        _dig_player_body_path(from, player_visual_pos)
-    else:
-        _add_dig_segment(from, player_visual_pos)
+    _dig_player_body_path(from, player_visual_pos)
 
     var reached_target := player_visual_pos.distance_to(target_visual) <= PLAYER_CENTER_EPS
     _sync_player_cell_from_visual()
@@ -677,6 +700,13 @@ func _choose_player_target(requested_dir: Vector2i) -> void:
         if _begin_player_target(reverse_target, requested_dir):
             return
 
+    if target_dir != Vector2i.ZERO and requested_dir != target_dir and requested_dir != -target_dir and distance_to_target <= PLAYER_TURN_GATE:
+        player_visual_pos = target_visual
+        player_pos = player_target_cell
+        player_step_from = player_pos
+        if _begin_player_target(player_pos + requested_dir, requested_dir):
+            return
+
     if target_dir != Vector2i.ZERO and distance_to_target > PLAYER_TARGET_GATE:
         player_move_dir = target_dir
         return
@@ -693,16 +723,19 @@ func _choose_player_target(requested_dir: Vector2i) -> void:
 
 
 func _begin_player_target(target: Vector2i, dir: Vector2i) -> bool:
-    if not _can_player_enter_cell(target):
+    if not _can_player_enter_cell(target, player_pos):
         return false
     player_target_cell = target
     player_move_dir = dir
     facing = player_move_dir
     player_step_from = player_pos
 
-    var was_dirt := _tile(target) == TILE_DIRT
-    player_target_digging = was_dirt
-    if was_dirt:
+    var opens_new_tunnel := _tile(target) == TILE_DIRT or not _tunnel_allows_step(player_pos, target)
+    player_target_digging = opens_new_tunnel
+    if opens_new_tunnel:
+        last_dig_stamp = _dig_stamp_key(player_visual_pos)
+        if _is_open_tile(target):
+            _connect_tunnel_cells(player_pos, target, false)
         player_dug_cells[target] = 0.0
     return true
 
@@ -725,13 +758,23 @@ func _sync_player_cell_from_visual() -> void:
     _collect_relic_at(player_pos)
 
 
-func _can_player_enter_cell(cell: Vector2i) -> bool:
+func _can_player_enter_cell(cell: Vector2i, from: Vector2i) -> bool:
     if not _in_bounds(cell):
         return false
     if _has_rock(cell):
         return false
     var enemy_i := _solid_enemy_index_at(cell)
-    return enemy_i == -1 or cell == player_pos
+    if enemy_i != -1 and cell != from:
+        return false
+    if cell == from:
+        return true
+    if _tile(cell) == TILE_DIRT:
+        return true
+    if _is_open_tile(cell):
+        return true
+    if _tile(cell) == TILE_EXIT and _tile(from) != TILE_DIRT:
+        return true
+    return _tunnel_allows_step(from, cell)
 
 
 func _player_motion_speed() -> float:
@@ -800,6 +843,7 @@ func _start_lance() -> void:
     message = ""
     lance_burst_ready = false
     lance_has_struck = false
+    lance_pulse_queued = false
     lance_pump_damage = _effective_lance_damage()
     if crystal_charge > 0:
         lance_burst_ready = true
@@ -818,7 +862,7 @@ func _start_lance() -> void:
         if _has_rock(pos):
             _add_pressure_feedback(pos, 1.0)
             break
-        var enemy_i := _enemy_index_at(pos)
+        var enemy_i := _lance_enemy_index_at(pos)
         if enemy_i != -1:
             lance_attached_enemy = enemy_i
             lance_blocking_cell = pos
@@ -826,13 +870,13 @@ func _start_lance() -> void:
             _pin_lance_target()
             _add_pressure_feedback(pos, 1.0)
             return
-        if _tile(pos) == TILE_DIRT:
+        if _cell_open_mask(pos) == 0:
             _add_pressure_feedback(pos, 0.75)
             break
 
 
 func _update_lance(delta: float) -> void:
-    if not Input.is_key_pressed(KEY_SPACE):
+    if lance_has_struck and _read_move_dir() != Vector2i.ZERO:
         _release_lance()
         return
 
@@ -860,8 +904,12 @@ func _update_lance(delta: float) -> void:
         _release_lance()
         return
 
+    if lance_pulse_queued and lance_pump_timer > LANCE_TAP_PUMP_INTERVAL:
+        lance_pump_timer = LANCE_TAP_PUMP_INTERVAL
+
     if lance_pump_timer <= 0.0:
         lance_pump_timer = LANCE_PUMP_INTERVAL
+        lance_pulse_queued = false
         _pump_lance_target()
 
 
@@ -922,7 +970,7 @@ func _spawn_survival_enemy() -> void:
 
     if best_score < 0.0:
         return
-    if _tile(best) == TILE_DIRT:
+    if _cell_open_mask(best) == 0:
         _carve_cell(best)
         _add_dig_feedback(best)
     _add_enemy(best)
@@ -933,7 +981,7 @@ func _can_spawn_enemy_at(pos: Vector2i) -> bool:
         return false
     if pos == player_pos or pos == player_target_cell or pos == exit_pos:
         return false
-    if _tile(pos) != TILE_TUNNEL and _tile(pos) != TILE_EXIT:
+    if not _is_open_tile(pos):
         return false
     if _has_rock(pos) or _enemy_index_at(pos) != -1:
         return false
@@ -945,7 +993,7 @@ func _can_spawn_enemy_breach_at(pos: Vector2i) -> bool:
         return false
     if pos == player_pos or pos == player_target_cell or pos == exit_pos:
         return false
-    if _tile(pos) != TILE_DIRT:
+    if _cell_open_mask(pos) != 0:
         return false
     if _has_rock(pos) or _enemy_index_at(pos) != -1:
         return false
@@ -956,7 +1004,7 @@ func _connected_tunnel_cells(start: Vector2i) -> Array:
     var cells: Array[Vector2i] = []
     if not _in_bounds(start):
         return cells
-    if _tile(start) != TILE_TUNNEL and _tile(start) != TILE_EXIT:
+    if not _is_open_tile(start):
         return cells
 
     var queue: Array[Vector2i] = [start]
@@ -971,9 +1019,9 @@ func _connected_tunnel_cells(start: Vector2i) -> Array:
             var next: Vector2i = pos + dir
             if visited.has(next) or not _in_bounds(next):
                 continue
-            if _has_rock(next):
+            if not _is_open_tile(next):
                 continue
-            if _tile(next) != TILE_TUNNEL and _tile(next) != TILE_EXIT:
+            if not _tunnel_allows_step(pos, next):
                 continue
             visited[next] = true
             queue.append(next)
@@ -1011,7 +1059,7 @@ func _spawn_survival_rock() -> void:
         var open_neighbors := _adjacent_tunnel_count(below)
         var distance := sqrt(float(pos.distance_squared_to(player_pos)))
         var score_value := float(open_neighbors) * 18.0 + distance * 2.0 + rng.randf_range(0.0, 18.0)
-        if _tile(below) == TILE_TUNNEL:
+        if _is_open_tile(below):
             score_value += 28.0
         if score_value > best_score:
             best_score = score_value
@@ -1027,9 +1075,9 @@ func _spawn_survival_rock() -> void:
 func _can_spawn_rock_at(pos: Vector2i) -> bool:
     if not _in_bounds(pos) or not _in_bounds(pos + Vector2i.DOWN):
         return false
-    if _tile(pos) != TILE_DIRT:
+    if _cell_open_mask(pos) != 0:
         return false
-    if _tile(pos + Vector2i.DOWN) == TILE_DIRT:
+    if not _is_open_tile(pos + Vector2i.DOWN):
         return false
     if pos.distance_squared_to(player_pos) < ROCK_SPAWN_SAFE_RADIUS * ROCK_SPAWN_SAFE_RADIUS:
         return false
@@ -1050,6 +1098,7 @@ func _release_lance(start_recovery := true) -> void:
     lance_pump_timer = 0.0
     lance_burst_ready = false
     lance_has_struck = false
+    lance_pulse_queued = false
     attack_flash = 0.0
     last_attack_cells.clear()
     if start_recovery:
@@ -1060,6 +1109,10 @@ func _pin_lance_target() -> bool:
     if lance_attached_enemy < 0 or lance_attached_enemy >= enemies.size():
         return false
     var enemy: Dictionary = enemies[lance_attached_enemy]
+    if lance_has_blocker:
+        enemy["pos"] = lance_blocking_cell
+        enemy["visual_pos"] = _visual_from_pos(lance_blocking_cell)
+        enemy["phase_target"] = lance_blocking_cell
     if enemy["phasing"]:
         enemy["phasing"] = false
         enemy["phase_steps"] = 0
@@ -1136,8 +1189,11 @@ func _update_enemies(delta: float) -> void:
             continue
         if _update_enemy_fire(enemy, delta):
             continue
-        if int(enemy.get("kind", 0)) == ENEMY_GRUB_KIND and floor_index >= PHASE_MIN_FLOOR:
+        if _enemy_can_ghost(enemy):
             enemy["phase_cooldown"] = maxf(0.0, float(enemy.get("phase_cooldown", 0.0)) - delta)
+            if float(enemy.get("phase_cooldown", 0.0)) <= 0.0 and _should_enemy_phase(enemy):
+                _begin_enemy_phase(enemy)
+                continue
         enemy["timer"] -= delta
         if enemy["timer"] > 0.0:
             continue
@@ -1177,19 +1233,24 @@ func _is_enemy_lance_target(enemy: Dictionary) -> bool:
 
 
 func _should_enemy_phase(enemy: Dictionary) -> bool:
-    if int(enemy.get("kind", 0)) != ENEMY_GRUB_KIND:
+    if not _enemy_can_ghost(enemy):
         return false
     var pos: Vector2i = enemy["pos"]
-    if _tile(pos) == TILE_DIRT:
+    if not _is_open_tile(pos):
         return false
     var player_distance_sq := pos.distance_squared_to(player_pos)
     if player_distance_sq <= 1:
         return false
-    return _enemy_phase_target(enemy) != pos
+    return _enemy_phase_target(enemy, false) != pos
+
+
+func _enemy_can_ghost(enemy: Dictionary) -> bool:
+    var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+    return floor_index >= PHASE_MIN_FLOOR and kind != ENEMY_BURROWER_KIND
 
 
 func _begin_enemy_phase(enemy: Dictionary) -> void:
-    var target := _enemy_phase_target(enemy)
+    var target := _enemy_phase_target(enemy, false)
     if target == enemy["pos"]:
         enemy["phase_cooldown"] = rng.randf_range(PHASE_COOLDOWN_MIN, PHASE_COOLDOWN_MAX)
         return
@@ -1201,9 +1262,18 @@ func _begin_enemy_phase(enemy: Dictionary) -> void:
     enemy["phase_cooldown"] = rng.randf_range(PHASE_COOLDOWN_MIN, PHASE_COOLDOWN_MAX)
 
 
-func _enemy_phase_target(enemy: Dictionary) -> Vector2i:
+func _enemy_phase_target(enemy: Dictionary, allow_open_tunnel := true) -> Vector2i:
     var pos: Vector2i = enemy["pos"]
-    var dirs := DIRS.duplicate()
+    var dirs := [
+        Vector2i.RIGHT,
+        Vector2i.LEFT,
+        Vector2i.DOWN,
+        Vector2i.UP,
+        Vector2i(1, 1),
+        Vector2i(1, -1),
+        Vector2i(-1, 1),
+        Vector2i(-1, -1)
+    ]
     dirs.shuffle()
     dirs.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
         return (pos + a).distance_squared_to(player_pos) < (pos + b).distance_squared_to(player_pos)
@@ -1211,7 +1281,9 @@ func _enemy_phase_target(enemy: Dictionary) -> Vector2i:
 
     for dir in dirs:
         var target: Vector2i = pos + dir
-        if not _can_enemy_squeeze_to(target):
+        if not _can_enemy_ghost_to(target):
+            continue
+        if not allow_open_tunnel and _is_open_tile(target) and target != player_pos:
             continue
         if target.distance_squared_to(player_pos) >= pos.distance_squared_to(player_pos):
             continue
@@ -1219,19 +1291,58 @@ func _enemy_phase_target(enemy: Dictionary) -> Vector2i:
     return pos
 
 
-func _can_enemy_squeeze_to(target: Vector2i) -> bool:
+func _can_enemy_ghost_to(target: Vector2i) -> bool:
     if not _in_bounds(target) or _has_rock(target):
         return false
-    if _tile(target) != TILE_DIRT:
+    if _solid_enemy_index_at(target) != -1 or target == player_target_cell:
         return false
-    if _solid_enemy_index_at(target) != -1 or target == player_pos or target == player_target_cell:
-        return false
-    return _adjacent_tunnel_count(target) >= PHASE_THIN_WALL_TUNNEL_NEIGHBORS
+    return true
+
+
+func _enemy_phase_escape_target(enemy: Dictionary) -> Vector2i:
+    var start: Vector2i = enemy["pos"]
+    var dirs := [
+        Vector2i.RIGHT,
+        Vector2i.LEFT,
+        Vector2i.DOWN,
+        Vector2i.UP,
+        Vector2i(1, 1),
+        Vector2i(1, -1),
+        Vector2i(-1, 1),
+        Vector2i(-1, -1)
+    ]
+    dirs.shuffle()
+
+    var queue: Array[Vector2i] = [start]
+    var visited := {start: true}
+    var first_steps := {}
+    var cursor := 0
+
+    while cursor < queue.size():
+        var pos: Vector2i = queue[cursor]
+        cursor += 1
+
+        for dir in dirs:
+            var next: Vector2i = pos + dir
+            if visited.has(next):
+                continue
+            if next.distance_squared_to(start) > PHASE_ESCAPE_SEARCH_RADIUS * PHASE_ESCAPE_SEARCH_RADIUS:
+                continue
+            if not _can_enemy_ghost_to(next):
+                continue
+            var first_step: Vector2i = next if pos == start else first_steps[pos]
+            if _is_open_tile(next):
+                return first_step
+            visited[next] = true
+            first_steps[next] = first_step
+            queue.append(next)
+
+    return start
 
 
 func _update_enemy_phase_chase(enemy: Dictionary, delta: float) -> void:
     var target: Vector2i = enemy.get("phase_target", enemy["pos"])
-    if not _can_enemy_squeeze_to(target):
+    if not _can_enemy_ghost_to(target):
         _end_enemy_phase(enemy)
         return
     var target_visual := _visual_from_pos(target)
@@ -1243,11 +1354,22 @@ func _update_enemy_phase_chase(enemy: Dictionary, delta: float) -> void:
 
     if _dict_visual(enemy).distance_to(target_visual) <= PLAYER_CENTER_EPS:
         enemy["visual_pos"] = target_visual
-        _carve_cell(target)
-        _add_dig_feedback(target)
-        _eat_gem_at(target)
         enemy["pos"] = target
-        _end_enemy_phase(enemy)
+        if target == player_pos:
+            _hurt_player(1)
+            _end_enemy_phase(enemy)
+            return
+        if _is_open_tile(target):
+            _eat_gem_at(target)
+            if _enemy_path_dir(target, player_pos) != Vector2i.ZERO:
+                _end_enemy_phase(enemy)
+                return
+        var next_target := _enemy_phase_target(enemy, true)
+        if next_target == target:
+            _end_enemy_phase(enemy)
+        else:
+            enemy["phase_target"] = next_target
+            enemy["phase_steps"] = int(enemy.get("phase_steps", 0)) + 1
 
 
 func _update_enemy_fire(enemy: Dictionary, delta: float) -> bool:
@@ -1322,11 +1444,16 @@ func _try_begin_fire(enemy: Dictionary) -> bool:
 
 func _line_clear_for_fire(start: Vector2i, dir: Vector2i, distance: int) -> bool:
     var previous := start
+    var dirt_crossed := 0
     for step in range(1, distance + 1):
         var pos := start + dir * step
-        if not _in_bounds(pos) or _tile(pos) == TILE_DIRT or _has_rock(pos):
+        if not _in_bounds(pos) or _has_rock(pos):
             return false
-        if not _open_line_between_cells(previous, pos):
+        if not _is_open_tile(pos):
+            dirt_crossed += 1
+            if dirt_crossed > FYGAR_THIN_DIRT_PENETRATION:
+                return false
+        elif not _open_line_between_cells(previous, pos) and dirt_crossed == 0:
             return false
         previous = pos
     return true
@@ -1351,9 +1478,16 @@ func _enemy_fire_cells(enemy: Dictionary) -> Array:
         return cells
     var pos: Vector2i = enemy["pos"]
     var dir: Vector2i = enemy.get("fire_dir", Vector2i.RIGHT)
+    var dirt_crossed := 0
     for step in range(1, FYGAR_FIRE_RANGE + 1):
         var cell := pos + dir * step
-        if not _in_bounds(cell) or _tile(cell) == TILE_DIRT or _has_rock(cell):
+        if not _in_bounds(cell) or _has_rock(cell):
+            break
+        if not _is_open_tile(cell):
+            dirt_crossed += 1
+            if dirt_crossed > FYGAR_THIN_DIRT_PENETRATION:
+                break
+        elif dirt_crossed == 0 and not _open_line_between_cells(cell - dir, cell):
             break
         cells.append(cell)
     return cells
@@ -1384,6 +1518,8 @@ func _enemy_path_dir(start: Vector2i, goal: Vector2i) -> Vector2i:
             var next: Vector2i = pos + dir
             if visited.has(next) or not _can_enemy_path_cell(next, start, goal):
                 continue
+            if not _tunnel_allows_step(pos, next):
+                continue
             var first_dir: Vector2i = dir if pos == start else first_dirs[pos]
             if next == goal:
                 return first_dir
@@ -1397,7 +1533,7 @@ func _enemy_path_dir(start: Vector2i, goal: Vector2i) -> Vector2i:
 func _can_enemy_path_cell(pos: Vector2i, start: Vector2i, goal: Vector2i) -> bool:
     if not _in_bounds(pos) or _has_rock(pos):
         return false
-    if _tile(pos) != TILE_TUNNEL and _tile(pos) != TILE_EXIT:
+    if not _is_open_tile(pos):
         return false
     if pos != start and pos != goal and _solid_enemy_index_at(pos) != -1:
         return false
@@ -1412,7 +1548,7 @@ func _enemy_fallback_tunnel_dir(pos: Vector2i) -> Vector2i:
     )
     for dir in dirs:
         var target: Vector2i = pos + dir
-        if _can_enemy_path_cell(target, pos, player_pos):
+        if _can_enemy_path_cell(target, pos, player_pos) and _tunnel_allows_step(pos, target):
             return dir
     return Vector2i.ZERO
 
@@ -1440,7 +1576,7 @@ func _step_enemy(enemy: Dictionary) -> void:
     if fallback_dir != Vector2i.ZERO:
         _move_enemy_to(enemy, pos + fallback_dir)
 
-    if int(enemy.get("kind", 0)) == ENEMY_GRUB_KIND and floor_index >= PHASE_MIN_FLOOR and int(enemy.get("stuck_steps", 0)) >= ENEMY_STUCK_STEPS_TO_SQUEEZE and float(enemy.get("phase_cooldown", 0.0)) <= 0.0:
+    if _enemy_can_ghost(enemy) and int(enemy.get("stuck_steps", 0)) >= ENEMY_STUCK_STEPS_TO_SQUEEZE and float(enemy.get("phase_cooldown", 0.0)) <= 0.0:
         _begin_enemy_phase(enemy)
 
 
@@ -1463,18 +1599,28 @@ func _step_burrower(enemy: Dictionary) -> void:
         if target == player_pos:
             _begin_enemy_melee(enemy, dir)
             return
-        if _tile(target) == TILE_DIRT:
-            _carve_cell(target)
+        if not _is_open_tile(target):
+            _open_tunnel_step(pos, target)
             _add_dig_feedback(target)
             _eat_gem_at(target)
             _move_enemy_to(enemy, target, true)
             return
-        if _tile(target) == TILE_TUNNEL or _tile(target) == TILE_EXIT:
+        if _is_open_tile(target):
             _eat_gem_at(target)
             _move_enemy_to(enemy, target)
             return
 
 func _end_enemy_phase(enemy: Dictionary) -> void:
+    if not _is_open_tile(enemy["pos"]):
+        var escape_target := _enemy_phase_escape_target(enemy)
+        enemy["phasing"] = true
+        enemy["phase_target"] = escape_target
+        enemy["timer"] = 0.0
+        enemy["phase_steps"] = int(enemy.get("phase_steps", 0)) + 1
+        enemy["visual_speed"] = _enemy_move_speed(enemy)
+        if escape_target == enemy["pos"]:
+            enemy["phase_cooldown"] = 0.0
+        return
     enemy["phasing"] = false
     enemy["timer"] = _enemy_step_delay(enemy)
     enemy["phase_steps"] = 0
@@ -1550,7 +1696,7 @@ func _can_rock_fall_to(pos: Vector2i) -> bool:
         return false
     if _has_rock(pos):
         return false
-    return _tile(pos) != TILE_DIRT
+    return _is_open_tile(pos)
 
 
 func _crush_at(pos: Vector2i, fall_distance: int) -> void:
@@ -1620,7 +1766,7 @@ func _move_player_to_nearest_safe() -> void:
         for x in range(-radius, radius + 1):
             for y in range(-radius, radius + 1):
                 var pos := player_pos + Vector2i(x, y)
-                if _in_bounds(pos) and _tile(pos) != TILE_DIRT and not _has_rock(pos) and _enemy_index_at(pos) == -1:
+                if _is_open_tile(pos) and not _has_rock(pos) and _enemy_index_at(pos) == -1:
                     player_pos = pos
                     player_visual_pos = _visual_from_pos(player_pos)
                     player_move_dir = Vector2i.ZERO
@@ -2069,7 +2215,8 @@ func _has_xp_pickup(pos: Vector2i) -> bool:
 
 func _draw_board() -> void:
     var board_rect := Rect2(_board_origin() - Vector2(4, 4), Vector2(BOARD_W * CELL + 8, BOARD_H * CELL + 8))
-    draw_rect(board_rect, Color("#0a0b0f"))
+    draw_rect(board_rect, Color("#05060a"))
+    draw_rect(board_rect.grow(-2), TUNNEL_EDGE)
     draw_rect(Rect2(_board_origin(), Vector2(BOARD_PX_W, BOARD_PX_H)), TUNNEL)
     _flush_soil_texture()
     if soil_texture != null:
@@ -2077,42 +2224,41 @@ func _draw_board() -> void:
 
     _draw_dig_feedback()
 
-    var exit_rect := Rect2(_cell_to_px(exit_pos) + Vector2(3, 3), Vector2(CELL - 6, CELL - 6))
+    var exit_rect := Rect2(_cell_to_px(exit_pos) + Vector2(4, 4), Vector2(CELL - 8, CELL - 8))
     draw_rect(exit_rect, EXIT_OPEN if exit_unlocked else EXIT_LOCKED)
-    draw_rect(exit_rect.grow(-5), Color("#111318"))
+    draw_rect(exit_rect.grow(-5), Color("#0a0b10"))
+    draw_rect(Rect2(exit_rect.position + Vector2(6, 6), Vector2(4, 4)), UI if exit_unlocked else MUTED)
+    draw_rect(Rect2(exit_rect.position + Vector2(exit_rect.size.x - 10, 6), Vector2(4, 4)), UI if exit_unlocked else MUTED)
 
     for gem_pos in gems:
-        if _tile(gem_pos) == TILE_DIRT:
+        if _cell_open_mask(gem_pos) == 0:
             if _adjacent_tunnel_count(gem_pos) > 0:
                 var hint_center := _cell_center(gem_pos)
                 var hint := GEM
                 hint.a = 0.34 + sin(anim_time * 5.0 + gem_pos.x) * 0.12
-                draw_circle(hint_center, 2.2, hint)
+                _draw_pixel_diamond(hint_center, 2, hint)
             continue
         var center := _cell_center(gem_pos)
-        draw_polygon([
-            center + Vector2(0, -7),
-            center + Vector2(7, 0),
-            center + Vector2(0, 7),
-            center + Vector2(-7, 0)
-        ], [GEM])
+        _draw_pixel_diamond(center, 3, GEM)
+        draw_rect(Rect2(_snap_px(center) + Vector2(-1, -7), Vector2(2, 2)), Color("#ffffffcc"))
 
     for relic in floor_relics:
         var relic_pos: Vector2i = relic["pos"]
-        if _tile(relic_pos) == TILE_DIRT and _adjacent_tunnel_count(relic_pos) == 0:
+        var relic_open := _cell_open_mask(relic_pos) != 0
+        if not relic_open and _adjacent_tunnel_count(relic_pos) == 0:
             continue
         var relic_center := _cell_center(relic_pos)
         var relic_color := RUPTURE
-        relic_color.a = 0.42 if _tile(relic_pos) == TILE_DIRT else 0.95
-        draw_circle(relic_center, 7.0, relic_color)
-        draw_rect(Rect2(relic_center - Vector2(3, 3), Vector2(6, 6)), Color("#fff2bf"))
+        relic_color.a = 0.95 if relic_open else 0.42
+        _draw_pixel_diamond(relic_center, 4, relic_color)
+        draw_rect(Rect2(_snap_px(relic_center) - Vector2(3, 3), Vector2(6, 6)), Color("#fff2bf"))
 
     for pickup in xp_pickups:
         var pickup_visual: Vector2 = pickup.get("visual_pos", _visual_from_pos(pickup["pos"]))
         var center := _visual_to_center(pickup_visual)
         var pulse := 1.0 + sin(anim_time * 8.0 + center.x * 0.05) * 0.16
-        draw_circle(center, 4.0 * pulse, PRESSURE)
-        draw_circle(center, 1.7 * pulse, Color("#ffffffcc"))
+        _draw_pixel_diamond(center, maxi(2, roundi(2.0 * pulse)), PRESSURE)
+        draw_rect(Rect2(_snap_px(center) - Vector2(1, 1), Vector2(2, 2)), Color("#ffffffcc"))
 
 
 func _draw_actors() -> void:
@@ -2121,14 +2267,19 @@ func _draw_actors() -> void:
             var fire_color := FIRE
             var active := float(enemy.get("fire_active", 0.0)) > 0.0
             fire_color.a = 0.78 if active else 0.28 + sin(anim_time * 12.0) * 0.08
-            draw_rect(Rect2(_cell_to_px(cell) + Vector2(2, 9), Vector2(CELL - 4, CELL - 18)), fire_color)
+            var fire_rect := Rect2(_cell_to_px(cell) + Vector2(2, 8), Vector2(CELL - 4, CELL - 16))
+            draw_rect(fire_rect, Color("#5d1f19aa"))
+            for i in range(3):
+                var x := fire_rect.position.x + 4.0 + float(i) * 7.0
+                var flame_h := 8.0 + sin(anim_time * 10.0 + float(i)) * 3.0
+                draw_rect(Rect2(Vector2(x, fire_rect.position.y + fire_rect.size.y - flame_h), Vector2(5, flame_h)), fire_color)
 
     if lance_active and not last_attack_cells.is_empty():
-        var progress := 1.0 - attack_flash / ATTACK_FLASH_TIME
-        var visible_cells := clampi(ceili(float(last_attack_cells.size()) * progress), 1, last_attack_cells.size())
+        var visible_cells := last_attack_cells.size()
         for i in range(visible_cells):
             var pos: Vector2i = last_attack_cells[i]
-            draw_rect(Rect2(_cell_to_px(pos) + Vector2(8, 8), Vector2(CELL - 16, CELL - 16)), Color("#d9f8ff88"))
+            draw_rect(Rect2(_cell_to_px(pos) + Vector2(6, 10), Vector2(CELL - 12, 8)), Color("#d9f8ff88"))
+            draw_rect(Rect2(_cell_to_px(pos) + Vector2(10, 6), Vector2(8, CELL - 12)), Color("#d9f8ff55"))
 
     _draw_pulse_feedback()
 
@@ -2136,9 +2287,7 @@ func _draw_actors() -> void:
         var center := _visual_to_center(_dict_visual(rock))
         if rock["falling"] and rock["fall_distance"] == 0:
             center += Vector2(sin(anim_time * 32.0) * 2.0, 0.0)
-        draw_circle(center + Vector2(2, 3), 11.0, ROCK_SHADOW)
-        draw_circle(center, 11.0, ROCK)
-        draw_arc(center, 7.0, 3.5, 5.7, 8, Color("#c7ccd3"), 1.4)
+        _draw_rock_sprite(center)
 
     for enemy in enemies:
         var center := _visual_to_center(_dict_visual(enemy))
@@ -2165,31 +2314,28 @@ func _draw_actors() -> void:
             color = color.lerp(DIRT, 0.32)
             var dust := DIRT
             dust.a = 0.48
-            draw_circle(center + Vector2(-8, 5), 3.2 + sin(anim_time * 9.0) * 0.8, dust)
-            draw_circle(center + Vector2(8, 4), 2.8 + cos(anim_time * 8.0) * 0.6, dust)
-            draw_arc(center, 13.0, PI * 0.1, PI * 0.9, 10, DIRT_DARK, 1.6)
+            draw_rect(Rect2(_snap_px(center + Vector2(-10, 5)), Vector2(5, 5)), dust)
+            draw_rect(Rect2(_snap_px(center + Vector2(7, 4)), Vector2(5, 5)), dust)
+            draw_rect(Rect2(_snap_px(center + Vector2(-11, 11)), Vector2(22, 3)), DIRT_DARK)
         var body_radius := 10.5 + pressure_ratio * 5.0 + hit_phase * 2.8
         if pressure_ratio > 0.0 or inflated:
             var glow := PRESSURE
             glow.a = 0.14 + pressure_ratio * 0.24
-            draw_circle(center, body_radius + 4.5, glow)
-        draw_circle(center, body_radius, color)
+            draw_rect(Rect2(_snap_px(center) - Vector2(body_radius, body_radius), Vector2(body_radius * 2.0, body_radius * 2.0)), glow)
+        _draw_enemy_sprite(center, color, int(enemy["kind"]), inflated, hit_phase)
         for ring in range(mini(3, missing_hp)):
             var ring_color := PRESSURE.lerp(RUPTURE, float(ring) / 3.0)
             ring_color.a = 0.65
-            draw_arc(center, body_radius + 3.0 + ring * 2.6, anim_time * 2.0 + ring, anim_time * 2.0 + ring + PI * 1.3, 12, ring_color, 1.3)
+            _draw_pixel_ring(center, body_radius + 3.0 + ring * 3.0, ring_color, 2)
         if pressure_ratio >= 0.34:
             _draw_enemy_cracks(center, body_radius, pressure_ratio)
-        var eye_color := Color("#16171c")
-        draw_circle(center + Vector2(-4, -2), 2.0, eye_color)
-        draw_circle(center + Vector2(4, -2), 2.0, eye_color)
         if enemy["kind"] == ENEMY_BURROWER_KIND:
             var stripe := Color("#5b3518")
-            draw_rect(Rect2(center + Vector2(-8, 6), Vector2(16, 3)), stripe)
+            draw_rect(Rect2(_snap_px(center) + Vector2(-9, 6), Vector2(18, 3)), stripe)
         elif enemy["kind"] == ENEMY_FYGAR_KIND:
             var flame := FIRE
             flame.a = 0.85 if float(enemy.get("fire_active", 0.0)) > 0.0 else 0.45
-            draw_circle(center + Vector2(0, 6), 3.5, flame)
+            draw_rect(Rect2(_snap_px(center) + Vector2(-3, 7), Vector2(6, 5)), flame)
 
     var pc := _visual_to_center(player_visual_pos)
     _draw_player(pc)
@@ -2200,27 +2346,54 @@ func _draw_player(pc: Vector2) -> void:
     if forward == Vector2.ZERO:
         forward = Vector2.RIGHT
     forward = forward.normalized()
-    var side := Vector2(-forward.y, forward.x)
     var moving := player_move_dir != Vector2i.ZERO
     var stride := sin(anim_time * 16.0) * (1.0 if moving else 0.0)
     var bob := absf(stride) * 1.2
     var color := PLAYER.lerp(Color.WHITE, 0.55) if hurt_flash > 0.0 else PLAYER
-    var boot := Color("#113f3b")
-    var suit := PLAYER_DARK
     var core := pc + Vector2(0.0, -bob)
-    var hip := core - forward * 3.0 + Vector2(0.0, 5.0)
-    var chest := core + forward * 2.0 + Vector2(0.0, -3.0)
-    var head := chest + forward * 5.0 + Vector2(0.0, -6.0)
-
-    draw_line(hip + side * 3.0, hip + side * 5.0 + forward * (4.0 * stride) + Vector2(0.0, 7.0), boot, 3.0)
-    draw_line(hip - side * 3.0, hip - side * 5.0 - forward * (4.0 * stride) + Vector2(0.0, 7.0), boot, 3.0)
-    draw_line(chest + side * 5.0, chest + side * 8.0 - forward * (3.0 * stride), suit, 2.4)
-    draw_line(chest - side * 5.0, chest - side * 8.0 + forward * (3.0 * stride), suit, 2.4)
-    _draw_ellipse(core + Vector2(0.0, 1.0), Vector2(7.0, 8.5), suit)
-    _draw_ellipse(core + forward * 2.0 + Vector2(0.0, -1.0), Vector2(6.0, 7.0), color)
-    draw_circle(head, 4.6, Color("#ffd7a6").lerp(Color.WHITE, 0.35 if hurt_flash > 0.0 else 0.0))
-    draw_circle(head + forward * 1.7 + Vector2(0.0, -0.8), 1.0, Color("#111318"))
-    draw_line(core + forward * 4.0, core + forward * 14.0, Color("#0c3a37"), 2.8)
+    var rows := [
+        "..SSS..",
+        ".SKKKS.",
+        ".KFEKK.",
+        "TTKKKLL",
+        "TTKKK.L",
+        ".DKKD..",
+        ".D.D...",
+        ".B.B..."
+    ]
+    if facing == Vector2i.LEFT:
+        rows = _flip_rows(rows)
+    elif facing == Vector2i.UP:
+        rows = [
+            "..SSS..",
+            ".SKKKS.",
+            ".KFEK.",
+            "LTKKKTL",
+            ".TKKKT.",
+            ".DKKD.",
+            ".B.DB.",
+            "...."
+        ]
+    elif facing == Vector2i.DOWN:
+        rows = [
+            ".KFEK.",
+            ".SKKKS.",
+            "TTKKKTT",
+            ".TKKKT.",
+            ".DKKD.",
+            ".B.DB."
+        ]
+    var palette := {
+        "K": color,
+        "D": PLAYER_DARK,
+        "S": PLAYER_SKIN.lerp(Color.WHITE, 0.35 if hurt_flash > 0.0 else 0.0),
+        "F": Color("#101018"),
+        "E": Color("#ffffff"),
+        "B": Color("#0b3835"),
+        "T": Color("#0c3a37"),
+        "L": PRESSURE
+    }
+    _draw_pixel_sprite(core, rows, palette, 3)
 
 
 func _draw_damage_feedback() -> void:
@@ -2233,14 +2406,17 @@ func _draw_damage_feedback() -> void:
     var center := _visual_to_center(player_visual_pos)
     var ring := WARN
     ring.a = 0.85 * (1.0 - progress)
-    draw_arc(center, 13.0 + progress * 18.0, 0.0, TAU, 24, ring, 2.6)
+    _draw_pixel_ring(center, 13.0 + progress * 18.0, ring, 3)
     for i in range(6):
         var angle := float(i) * TAU / 6.0 + progress * 0.4
         var dir := Vector2(cos(angle), sin(angle))
-        draw_line(center + dir * 9.0, center + dir * (14.0 + progress * 14.0), ring, 1.8)
+        var burst_pos := _snap_px(center + dir * (14.0 + progress * 14.0))
+        draw_rect(Rect2(burst_pos - Vector2(2, 2), Vector2(4, 4)), ring)
 
 
 func _draw_ui() -> void:
+    draw_rect(Rect2(Vector2(PANEL_X - 18, 52), Vector2(246, 498)), Color("#0c0d14cc"))
+    draw_rect(Rect2(Vector2(PANEL_X - 18, 52), Vector2(246, 498)), TUNNEL_EDGE, false, 2.0)
     _text(Vector2(24, 34), "DIGGY: CAVERNS OF CHANCE", 24, UI)
     _text(Vector2(PANEL_X, 78), "Time %s / %s" % [_format_time(run_time), _format_time(RUN_GOAL_TIME)], 20, UI)
     _text(Vector2(PANEL_X, 108), "Level %d  XP %d / %d" % [player_level, xp, xp_to_next], 18, PRESSURE)
@@ -2248,6 +2424,7 @@ func _draw_ui() -> void:
     var xp_ratio := clampf(float(xp) / float(maxi(1, xp_to_next)), 0.0, 1.0)
     draw_rect(Rect2(Vector2(PANEL_X, 132), Vector2(xp_bar_w, 8)), Color("#29313a"))
     draw_rect(Rect2(Vector2(PANEL_X, 132), Vector2(xp_bar_w * xp_ratio, 8)), PRESSURE)
+    draw_rect(Rect2(Vector2(PANEL_X, 132), Vector2(xp_bar_w, 8)), UI_DARK, false, 2.0)
     _text(Vector2(PANEL_X, 160), "Score %06d" % score, 18, UI)
     _text(Vector2(PANEL_X, 186), "Gems %d / %d total" % [gem_bank, gems_collected], 18, GEM)
     _text(Vector2(PANEL_X, 214), "Kills %d  Enemies %d / %d" % [floor_kills, enemies.size(), _spawn_cap()], 15, MUTED)
@@ -2276,7 +2453,7 @@ func _draw_ui() -> void:
 
     if state == STATE_CHOOSING:
         draw_rect(Rect2(Vector2(128, 116), Vector2(704, 350)), Color("#111820ee"))
-        draw_rect(Rect2(Vector2(128, 116), Vector2(704, 350)), Color("#d8c27a"), false, 2.0)
+        draw_rect(Rect2(Vector2(128, 116), Vector2(704, 350)), Color("#d8c27a"), false, 4.0)
         _text(Vector2(170, 156), "Level %d relic", 30, UI)
         _text(Vector2(172, 190), "Pressure gathered: %d / %d    %s" % [xp, xp_to_next, SHOP_SKIP_KEY_TEXT], 16, MUTED)
         if last_floor_summary != "":
@@ -2294,7 +2471,7 @@ func _draw_ui() -> void:
 
 func _draw_center_modal(title: String, line: String, prompt: String) -> void:
     draw_rect(Rect2(Vector2(186, 168), Vector2(588, 250)), Color("#111820ee"))
-    draw_rect(Rect2(Vector2(186, 168), Vector2(588, 250)), Color("#d8c27a"), false, 2.0)
+    draw_rect(Rect2(Vector2(186, 168), Vector2(588, 250)), Color("#d8c27a"), false, 4.0)
     _text(Vector2(236, 232), title, 34, UI)
     _text(Vector2(238, 282), line, 20, WARN)
     _text(Vector2(238, 330), prompt, 17, MUTED)
@@ -2308,13 +2485,13 @@ func _draw_dig_feedback() -> void:
         var center: Vector2 = effect.get("center", _cell_center(pos))
         var glow := PRESSURE
         glow.a = 0.22 * (1.0 - progress)
-        draw_arc(center, 7.0 + progress * 7.0, 0.0, TAU, 14, glow, 1.5)
+        _draw_pixel_ring(center, 7.0 + progress * 7.0, glow, 2)
         var dust := DIRT.lerp(RUPTURE, 0.35)
         dust.a = 0.7 * (1.0 - progress)
         for i in range(4):
             var angle := float(i) * TAU / 4.0 + float(pos.x * 19 + pos.y * 7) * 0.03
             var offset := Vector2(cos(angle), sin(angle)) * (4.0 + progress * 8.0)
-            draw_circle(center + offset, 1.7, dust)
+            draw_rect(Rect2(_snap_px(center + offset) - Vector2(2, 2), Vector2(4, 4)), dust)
 
 
 func _draw_pulse_feedback() -> void:
@@ -2326,14 +2503,15 @@ func _draw_pulse_feedback() -> void:
         var color: Color = effect["color"]
         color.a = float(effect["alpha"]) * (1.0 - progress)
         var radius := CELL * (0.18 + float(effect["radius"]) * progress)
-        draw_arc(center, radius, 0.0, TAU, 28, color, 2.0)
+        _draw_pixel_ring(center, radius, color, 3)
         if effect.get("burst", false):
             var shard_color := RUPTURE
             shard_color.a = 0.75 * (1.0 - progress)
             for i in range(9):
                 var angle := float(i) * TAU / 9.0 + float(pos.x - pos.y) * 0.11
                 var dir := Vector2(cos(angle), sin(angle))
-                draw_line(center + dir * 5.0, center + dir * (8.0 + progress * 18.0), shard_color, 1.5)
+                var shard_pos := _snap_px(center + dir * (8.0 + progress * 18.0))
+                draw_rect(Rect2(shard_pos - Vector2(2, 2), Vector2(4, 4)), shard_color)
 
 
 func _draw_enemy_cracks(center: Vector2, radius: float, pressure_ratio: float) -> void:
@@ -2344,8 +2522,9 @@ func _draw_enemy_cracks(center: Vector2, radius: float, pressure_ratio: float) -
         var start := center + Vector2(cos(angle), sin(angle)) * (radius * 0.2)
         var mid := center + Vector2(cos(angle + 0.35), sin(angle + 0.35)) * (radius * 0.55)
         var end := center + Vector2(cos(angle + 0.1), sin(angle + 0.1)) * (radius * 0.9)
-        draw_line(start, mid, crack_color, 1.2)
-        draw_line(mid, end, crack_color, 1.2)
+        draw_rect(Rect2(_snap_px(start), Vector2(3, 3)), crack_color)
+        draw_rect(Rect2(_snap_px(mid), Vector2(3, 3)), crack_color)
+        draw_rect(Rect2(_snap_px(end), Vector2(3, 3)), crack_color)
 
 
 func _enemy_melee_visual_offset(enemy: Dictionary) -> Vector2:
@@ -2360,16 +2539,142 @@ func _enemy_melee_visual_offset(enemy: Dictionary) -> Vector2:
     return Vector2(float(dir.x), float(dir.y)) * lunge * ENEMY_ATTACK_LUNGE_CELLS * CELL
 
 
-func _draw_ellipse(center: Vector2, radius: Vector2, color: Color) -> void:
-    var points := []
-    for i in range(20):
-        var angle := float(i) * TAU / 20.0
-        points.append(center + Vector2(cos(angle) * radius.x, sin(angle) * radius.y))
-    draw_polygon(points, [color])
+func _draw_tunnel_tiles() -> void:
+    var full_mask := DIG_FULL_MASK
+    for x in range(BOARD_W):
+        for y in range(BOARD_H):
+            var pos := Vector2i(x, y)
+            if _tile(pos) == TILE_DIRT:
+                continue
+            if int(dig_masks.get(pos, full_mask)) != full_mask:
+                continue
+            var center := _cell_center(pos)
+            var center_rect := Rect2(center - Vector2(TUNNEL_CENTER_SIZE, TUNNEL_CENTER_SIZE) * 0.5, Vector2(TUNNEL_CENTER_SIZE, TUNNEL_CENTER_SIZE))
+            draw_rect(center_rect, TUNNEL)
+            draw_rect(center_rect.grow(-2), Color("#0f1018"))
+            for dir in DIRS:
+                var step_dir: Vector2i = dir
+                if (int(tunnel_edges.get(pos, 0)) & _dir_bit(step_dir)) == 0:
+                    continue
+                var neighbor: Vector2i = pos + step_dir
+                if not _in_bounds(neighbor):
+                    continue
+                var next_center := _cell_center(neighbor)
+                var corridor_center := center.lerp(next_center, 0.5)
+                var corridor_size := Vector2(TUNNEL_CORRIDOR_WIDTH, TUNNEL_CORRIDOR_WIDTH)
+                if step_dir.x != 0:
+                    corridor_size.x = CELL + TUNNEL_CENTER_SIZE
+                else:
+                    corridor_size.y = CELL + TUNNEL_CENTER_SIZE
+                draw_rect(Rect2(corridor_center - corridor_size * 0.5, corridor_size), Color("#0f1018"))
+            if ((x * 5 + y * 3 + floor_index) % 4) == 0:
+                draw_rect(Rect2(center_rect.position + Vector2(4, 4), Vector2(3, 3)), TUNNEL_EDGE)
+
+
+func _draw_rock_sprite(center: Vector2) -> void:
+    var rows := [
+        ".SSS.",
+        "SRRRS",
+        "SRRRS",
+        "RRRRR",
+        ".DDD."
+    ]
+    var shadow_palette := {"S": ROCK_SHADOW, "R": ROCK_SHADOW, "D": Color("#303641")}
+    _draw_pixel_sprite(center + Vector2(3, 3), rows, shadow_palette, 4)
+    var palette := {"S": Color("#c9d0d8"), "R": ROCK, "D": ROCK_SHADOW}
+    _draw_pixel_sprite(center, rows, palette, 4)
+
+
+func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool, hit_phase: float) -> void:
+    var rows := [
+        ".XXX.",
+        "XXXXX",
+        "XEXEX",
+        "XXXXX",
+        ".XAX."
+    ]
+    if kind == ENEMY_BURROWER_KIND:
+        rows = [
+            ".XXX.",
+            "XXXXX",
+            "XEXEX",
+            "AAAAA",
+            ".XXX."
+        ]
+    elif kind == ENEMY_FYGAR_KIND:
+        rows = [
+            ".XXX.",
+            "XXXXX",
+            "XEXEX",
+            "XXXXX",
+            ".AFA."
+        ]
+    var px := 4 if inflated else 3
+    if hit_phase > 0.35:
+        px += 1
+    var accent := color.darkened(0.35)
+    if kind == ENEMY_FYGAR_KIND:
+        accent = FIRE
+    var palette := {
+        "X": color,
+        "E": Color("#101018"),
+        "A": accent,
+        "F": Color("#fff2b5")
+    }
+    _draw_pixel_sprite(center, rows, palette, px)
+
+
+func _draw_pixel_sprite(center: Vector2, rows: Array, palette: Dictionary, pixel_size: int) -> void:
+    var width := 0
+    for raw_row in rows:
+        width = maxi(width, String(raw_row).length())
+    var top_left := _snap_px(center - Vector2(float(width * pixel_size), float(rows.size() * pixel_size)) * 0.5)
+    for y in range(rows.size()):
+        var row := String(rows[y])
+        for x in range(row.length()):
+            var key := row.substr(x, 1)
+            if key == "." or key == " " or not palette.has(key):
+                continue
+            draw_rect(Rect2(top_left + Vector2(x * pixel_size, y * pixel_size), Vector2(pixel_size, pixel_size)), palette[key])
+
+
+func _flip_rows(rows: Array) -> Array:
+    var flipped := []
+    for raw_row in rows:
+        var row := String(raw_row)
+        var reversed := ""
+        for i in range(row.length() - 1, -1, -1):
+            reversed += row.substr(i, 1)
+        flipped.append(reversed)
+    return flipped
+
+
+func _draw_pixel_diamond(center: Vector2, size: int, color: Color, pixel_size := 2) -> void:
+    var origin := _snap_px(center)
+    for y in range(-size, size + 1):
+        var span := size - absi(y)
+        for x in range(-span, span + 1):
+            draw_rect(Rect2(origin + Vector2(x * pixel_size, y * pixel_size), Vector2(pixel_size, pixel_size)), color)
+
+
+func _draw_pixel_ring(center: Vector2, radius: float, color: Color, thickness: int) -> void:
+    var r := maxi(4, roundi(radius))
+    var c := _snap_px(center)
+    var side := r * 2
+    draw_rect(Rect2(c + Vector2(-r, -r), Vector2(side, thickness)), color)
+    draw_rect(Rect2(c + Vector2(-r, r - thickness), Vector2(side, thickness)), color)
+    draw_rect(Rect2(c + Vector2(-r, -r), Vector2(thickness, side)), color)
+    draw_rect(Rect2(c + Vector2(r - thickness, -r), Vector2(thickness, side)), color)
+
+
+func _snap_px(value: Vector2) -> Vector2:
+    return Vector2(roundf(value.x), roundf(value.y))
 
 
 func _text(pos: Vector2, value: String, size: int, color: Color) -> void:
-    draw_string(font, pos, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+    var pixel_pos := _snap_px(pos)
+    draw_string(font, pixel_pos + Vector2(2, 2), value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color("#05060acc"))
+    draw_string(font, pixel_pos, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
 
 func _heart_string() -> String:
@@ -2485,7 +2790,10 @@ func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: Strin
     var resonance_bonus := 0
     if resonant_hits > 0 and enemy["stun"] > 0.0:
         resonance_bonus = resonant_hits
-    enemy["phasing"] = false
+    if enemy["phasing"] and not _is_open_tile(enemy["pos"]):
+        enemy["phase_target"] = _enemy_phase_escape_target(enemy)
+    else:
+        enemy["phasing"] = false
     enemy["phase_steps"] = 0
     enemy["attack_windup"] = 0.0
     enemy["attack_dir"] = Vector2i.ZERO
@@ -2529,12 +2837,12 @@ func _trigger_lance_splash(center: Vector2i, dir: Vector2i, shot_damage: int) ->
                 break
             if not last_attack_cells.has(pos):
                 last_attack_cells.append(pos)
-            var enemy_i := _enemy_index_at(pos)
+            var enemy_i := _lance_enemy_index_at(pos)
             if enemy_i != -1:
                 _damage_enemy(enemy_i, splash_damage, "Split burst!", "Split stun.")
                 _add_pressure_feedback(pos, 0.75)
                 break
-            if _tile(pos) == TILE_DIRT:
+            if _cell_open_mask(pos) == 0:
                 break
 
 
@@ -2639,37 +2947,207 @@ func _adjacent_tunnel_count(pos: Vector2i) -> int:
     var count := 0
     for dir in DIRS:
         var next: Vector2i = pos + dir
-        if _in_bounds(next) and (_tile(next) == TILE_TUNNEL or _tile(next) == TILE_EXIT):
+        if _is_open_tile(next):
             count += 1
     return count
 
 
-func _carve_cell(pos: Vector2i) -> void:
-    if _in_bounds(pos):
-        _set_tile(pos, TILE_TUNNEL)
-        dig_masks[pos] = (1 << DIG_SUBCELL_COUNT) - 1
-        tunnel_age[pos] = 0.0
-        _clear_soil_rect_px(_cell_center_px(pos), Vector2(CELL, CELL))
+func _dir_bit(dir: Vector2i) -> int:
+    if dir == Vector2i.RIGHT:
+        return TUNNEL_DIR_RIGHT
+    if dir == Vector2i.LEFT:
+        return TUNNEL_DIR_LEFT
+    if dir == Vector2i.DOWN:
+        return TUNNEL_DIR_DOWN
+    if dir == Vector2i.UP:
+        return TUNNEL_DIR_UP
+    return 0
+
+
+func _opposite_dir_bit(dir: Vector2i) -> int:
+    return _dir_bit(-dir)
+
+
+func _is_open_tile(pos: Vector2i) -> bool:
+    return _cell_is_passable(pos)
+
+
+func _cell_open_mask(pos: Vector2i) -> int:
+    if not _in_bounds(pos):
+        return 0
+    if _tile(pos) == TILE_EXIT:
+        return DIG_FULL_MASK
+    if dig_masks.has(pos):
+        return int(dig_masks.get(pos, 0))
+    if _tile(pos) != TILE_DIRT:
+        return DIG_FULL_MASK
+    return 0
+
+
+func _cell_is_passable(pos: Vector2i) -> bool:
+    if not _in_bounds(pos) or _has_rock(pos):
+        return false
+    return _body_open_at_cell(pos)
+
+
+func _cell_is_fully_open(pos: Vector2i) -> bool:
+    return _cell_open_mask(pos) == DIG_FULL_MASK
+
+
+func _body_open_at_cell(pos: Vector2i) -> bool:
+    if not _in_bounds(pos):
+        return false
+    if _tile(pos) == TILE_EXIT:
+        return true
+    return _body_open_at_board_px(_cell_center_px(pos), PLAYER_DIG_FOOTPRINT)
+
+
+func _body_open_at_board_px(center_px: Vector2, footprint: float) -> bool:
+    var half := footprint * 0.5
+    var rect := Rect2(center_px - Vector2(half, half), Vector2(footprint, footprint))
+    var min_cell_x := clampi(floori(rect.position.x / CELL), 0, BOARD_W - 1)
+    var max_cell_x := clampi(floori((rect.position.x + rect.size.x - 0.001) / CELL), 0, BOARD_W - 1)
+    var min_cell_y := clampi(floori(rect.position.y / CELL), 0, BOARD_H - 1)
+    var max_cell_y := clampi(floori((rect.position.y + rect.size.y - 0.001) / CELL), 0, BOARD_H - 1)
+    var checked := false
+    for cell_x in range(min_cell_x, max_cell_x + 1):
+        for cell_y in range(min_cell_y, max_cell_y + 1):
+            var cell := Vector2i(cell_x, cell_y)
+            var cell_origin := Vector2(cell.x * CELL, cell.y * CELL)
+            var sub_size := float(CELL) / float(DIG_SUBDIV)
+            var mask := _cell_open_mask(cell)
+            for sy in range(DIG_SUBDIV):
+                for sx in range(DIG_SUBDIV):
+                    var sub_rect := Rect2(cell_origin + Vector2(float(sx) * sub_size, float(sy) * sub_size), Vector2(sub_size, sub_size))
+                    if not rect.intersects(sub_rect):
+                        continue
+                    checked = true
+                    var bit := 1 << (sy * DIG_SUBDIV + sx)
+                    if (mask & bit) == 0:
+                        return false
+    return checked
+
+
+func _line_open_between_cell_centers(from: Vector2i, to: Vector2i) -> bool:
+    if not _in_bounds(from) or not _in_bounds(to):
+        return false
+    if from == to:
+        return _centerline_open_at_cell(from)
+    var delta := to - from
+    if delta.x != 0 and delta.y != 0:
+        return false
+    var dir := Vector2i(signi(delta.x), signi(delta.y))
+    var current := from + dir
+    while current != to + dir:
+        if not _centerline_open_at_cell(current):
+            return false
+        current += dir
+    return true
+
+
+func _centerline_open_at_cell(pos: Vector2i) -> bool:
+    if not _in_bounds(pos) or _has_rock(pos):
+        return false
+    if _tile(pos) == TILE_EXIT:
+        return true
+    return _cell_open_mask(pos) != 0
+
+
+func _carve_cell(pos: Vector2i, connect_neighbors := true, reveal := true) -> void:
+    if not _in_bounds(pos):
+        return
+    if not tunnel_edges.has(pos):
+        tunnel_edges[pos] = 0
+    if reveal:
+        dig_masks[pos] = DIG_FULL_MASK
+    elif not dig_masks.has(pos):
+        dig_masks[pos] = 0
+    tunnel_age[pos] = 0.0
+    if reveal:
+        _clear_tunnel_center_px(pos)
+    if connect_neighbors:
+        for dir in DIRS:
+            var next: Vector2i = pos + dir
+            if _is_open_tile(next):
+                _connect_tunnel_cells(pos, next, reveal)
+
+
+func _open_tunnel_step(from: Vector2i, to: Vector2i, reveal := true) -> void:
+    if not _in_bounds(from) or not _in_bounds(to):
+        return
+    if from.distance_squared_to(to) != 1:
+        return
+    _carve_cell(from, false, reveal)
+    _carve_cell(to, false, reveal)
+    _connect_tunnel_cells(from, to, reveal)
+
+
+func _connect_tunnel_cells(a: Vector2i, b: Vector2i, reveal := true) -> void:
+    if not _is_open_tile(a) or not _is_open_tile(b):
+        return
+    var dir := b - a
+    var bit := _dir_bit(dir)
+    if bit == 0:
+        return
+    tunnel_edges[a] = int(tunnel_edges.get(a, 0)) | bit
+    tunnel_edges[b] = int(tunnel_edges.get(b, 0)) | _opposite_dir_bit(dir)
+    if reveal:
+        _clear_tunnel_center_px(a)
+        _clear_tunnel_center_px(b)
+        _clear_soil_capsule_px(_cell_center_px(a), _cell_center_px(b), TUNNEL_HALF_WIDTH)
+
+
+func _tunnel_allows_step(from: Vector2i, to: Vector2i) -> bool:
+    if not _in_bounds(from) or not _in_bounds(to):
+        return false
+    var dir := to - from
+    if dir.length_squared() != 1:
+        return false
+    return _is_open_tile(from) and _is_open_tile(to)
+
+
+func _clear_tunnel_center_px(pos: Vector2i) -> void:
+    _clear_soil_rect_px(_cell_center_px(pos), Vector2(TUNNEL_CENTER_SIZE, TUNNEL_CENTER_SIZE))
 
 
 func _dig_player_body_path(from: Vector2, to: Vector2) -> void:
     if from.distance_squared_to(to) <= 0.0001:
-        _dig_player_body_at(to)
+        _dig_player_body_at_substep(to)
         return
     dig_segments.append({"from": from, "to": to})
     if dig_segments.size() > 1200:
         dig_segments.remove_at(0)
-    var samples := maxi(1, ceili(from.distance_to(to) * float(DIG_SUBDIV) * 1.5))
-    for i in range(samples + 1):
-        var t := float(i) / float(samples)
-        _dig_player_body_at(from.lerp(to, t))
+
+    var from_key := _dig_stamp_key(from)
+    var to_key := _dig_stamp_key(to)
+    var delta_key := to_key - from_key
+    var steps := maxi(abs(delta_key.x), abs(delta_key.y))
+    if steps == 0:
+        _dig_player_body_at_substep(to)
+        return
+    for i in range(1, steps + 1):
+        var t := float(i) / float(steps)
+        _dig_player_body_at_substep(from.lerp(to, t))
+
+
+func _dig_player_body_at_substep(visual_pos: Vector2) -> void:
+    var stamp_key := _dig_stamp_key(visual_pos)
+    if stamp_key == last_dig_stamp:
+        return
+    last_dig_stamp = stamp_key
+    _dig_player_body_at(visual_pos)
+
+
+func _dig_stamp_key(visual_pos: Vector2) -> Vector2i:
+    var board_px := _visual_to_board_px(visual_pos)
+    var sub_size := float(CELL) / float(DIG_SUBDIV)
+    return Vector2i(floori(board_px.x / sub_size), floori(board_px.y / sub_size))
 
 
 func _dig_player_body_at(visual_pos: Vector2) -> void:
     var center_px := _visual_to_board_px(visual_pos)
     var half := PLAYER_DIG_FOOTPRINT * 0.5
     var rect := Rect2(center_px - Vector2(half, half), Vector2(PLAYER_DIG_FOOTPRINT, PLAYER_DIG_FOOTPRINT))
-    _clear_soil_rect_px(rect.get_center(), rect.size)
 
     var min_cell_x := clampi(floori(rect.position.x / CELL), 0, BOARD_W - 1)
     var max_cell_x := clampi(floori((rect.position.x + rect.size.x - 0.001) / CELL), 0, BOARD_W - 1)
@@ -2679,7 +3157,8 @@ func _dig_player_body_at(visual_pos: Vector2) -> void:
     for cell_x in range(min_cell_x, max_cell_x + 1):
         for cell_y in range(min_cell_y, max_cell_y + 1):
             var cell := Vector2i(cell_x, cell_y)
-            if _tile(cell) != TILE_DIRT:
+            var cell_mask := int(dig_masks.get(cell, DIG_FULL_MASK))
+            if _tile(cell) != TILE_DIRT and cell_mask == DIG_FULL_MASK:
                 continue
             _mark_dug_subcells_in_rect(cell, rect)
 
@@ -2688,23 +3167,28 @@ func _mark_dug_subcells_in_rect(cell: Vector2i, rect: Rect2) -> void:
     var cell_origin := Vector2(cell.x * CELL, cell.y * CELL)
     var sub_size := float(CELL) / float(DIG_SUBDIV)
     var mask := int(dig_masks.get(cell, 0))
+    var previous_mask := mask
     var previous_count := _bit_count(mask)
     for sy in range(DIG_SUBDIV):
         for sx in range(DIG_SUBDIV):
-            var sub_center := cell_origin + Vector2((float(sx) + 0.5) * sub_size, (float(sy) + 0.5) * sub_size)
-            if rect.has_point(sub_center):
+            var sub_rect := Rect2(cell_origin + Vector2(float(sx) * sub_size, float(sy) * sub_size), Vector2(sub_size, sub_size))
+            if rect.intersects(sub_rect):
                 mask |= 1 << (sy * DIG_SUBDIV + sx)
     dig_masks[cell] = mask
     var dug_count := _bit_count(mask)
+    var new_bits := mask & ~previous_mask
     if dug_count > previous_count and not player_dug_cells.has(cell):
         player_dug_cells[cell] = 0.0
+    if new_bits != 0:
+        _clear_dug_subcell_bits_px(cell, new_bits)
     if _tile(cell) == TILE_DIRT and dug_count >= DIG_PROMOTE_SUBCELLS:
         _promote_dug_cell(cell)
 
 
 func _promote_dug_cell(cell: Vector2i) -> void:
-    _set_tile(cell, TILE_TUNNEL)
-    tunnel_age[cell] = 0.0
+    if dig_scored_cells.has(cell):
+        return
+    dig_scored_cells[cell] = true
     _add_dig_feedback(cell)
     _award_score(2, false, "Dig")
 
@@ -2724,19 +3208,24 @@ func _rebuild_soil_mask_from_grid() -> void:
         for x in range(BOARD_PX_W):
             soil_image.set_pixel(x, y, _soil_color_at(x, y))
 
+    var full_mask := DIG_FULL_MASK
     for x in range(BOARD_W):
         for y in range(BOARD_H):
             var pos := Vector2i(x, y)
             if _tile(pos) == TILE_DIRT:
                 _clear_dug_subcells_px(pos)
                 continue
-            _clear_soil_rect_px(_cell_center_px(pos), Vector2(CELL, CELL))
-            var right := pos + Vector2i.RIGHT
-            var down := pos + Vector2i.DOWN
-            if _in_bounds(right) and _tile(right) != TILE_DIRT:
-                _clear_soil_rect_between_cells(pos, right)
-            if _in_bounds(down) and _tile(down) != TILE_DIRT:
-                _clear_soil_rect_between_cells(pos, down)
+            var mask := int(dig_masks.get(pos, full_mask))
+            if mask == full_mask:
+                _clear_tunnel_center_px(pos)
+            else:
+                _clear_dug_subcells_px(pos)
+            for dir in [Vector2i.RIGHT, Vector2i.DOWN]:
+                var next: Vector2i = pos + dir
+                if _tunnel_allows_step(pos, next):
+                    var next_mask := int(dig_masks.get(next, full_mask))
+                    if mask == full_mask and next_mask == full_mask:
+                        _clear_soil_capsule_px(_cell_center_px(pos), _cell_center_px(next), TUNNEL_HALF_WIDTH)
 
     soil_texture = ImageTexture.create_from_image(soil_image)
     soil_dirty = false
@@ -2744,8 +3233,14 @@ func _rebuild_soil_mask_from_grid() -> void:
 
 func _soil_color_at(x: int, y: int) -> Color:
     var depth := float(y) / float(maxi(1, BOARD_PX_H - 1))
-    var grain := float((x * 17 + y * 31 + floor_index * 43) % 19) / 18.0
-    return DIRT.lerp(DIRT_DARK, depth * 0.46 + grain * 0.045)
+    var block_x := floori(float(x) / 4.0)
+    var block_y := floori(float(y) / 4.0)
+    var grain := (block_x * 17 + block_y * 31 + floor_index * 43) % 11
+    if grain <= 1:
+        return DIRT_LIGHT.lerp(DIRT, depth * 0.55)
+    if grain >= 8:
+        return DIRT.lerp(DIRT_DARK, 0.34 + depth * 0.42)
+    return DIRT.lerp(DIRT_DARK, depth * 0.34)
 
 
 func _clear_soil_circle_px(center: Vector2, radius: float) -> void:
@@ -2778,27 +3273,19 @@ func _clear_soil_rect_px(center: Vector2, size: Vector2) -> void:
     soil_dirty = true
 
 
-func _clear_soil_rect_between_cells(a: Vector2i, b: Vector2i) -> void:
-    var from := _cell_center_px(a)
-    var to := _cell_center_px(b)
-    var center := from.lerp(to, 0.5)
-    var size := Vector2(CELL, CELL)
-    if a.x != b.x:
-        size.x = absf(to.x - from.x) + CELL
-    if a.y != b.y:
-        size.y = absf(to.y - from.y) + CELL
-    _clear_soil_rect_px(center, size)
-
-
 func _clear_dug_subcells_px(cell: Vector2i) -> void:
     var mask := int(dig_masks.get(cell, 0))
     if mask == 0:
         return
+    _clear_dug_subcell_bits_px(cell, mask)
+
+
+func _clear_dug_subcell_bits_px(cell: Vector2i, bits: int) -> void:
     var sub_size := float(CELL) / float(DIG_SUBDIV)
     for sy in range(DIG_SUBDIV):
         for sx in range(DIG_SUBDIV):
             var bit := 1 << (sy * DIG_SUBDIV + sx)
-            if (mask & bit) == 0:
+            if (bits & bit) == 0:
                 continue
             var center := Vector2(cell.x * CELL + (float(sx) + 0.5) * sub_size, cell.y * CELL + (float(sy) + 0.5) * sub_size)
             _clear_soil_rect_px(center, Vector2(sub_size + 0.5, sub_size + 0.5))
@@ -2913,10 +3400,24 @@ func _tile(pos: Vector2i) -> int:
 
 
 func _set_tile(pos: Vector2i, tile: int) -> void:
+    if tile == TILE_DIRT:
+        _disconnect_tunnel_cell(pos)
     grid[pos.x][pos.y] = tile
     if tile == TILE_DIRT:
         tunnel_age.erase(pos)
         dig_masks.erase(pos)
+        dig_scored_cells.erase(pos)
+        tunnel_edges.erase(pos)
+
+
+func _disconnect_tunnel_cell(pos: Vector2i) -> void:
+    if not tunnel_edges.has(pos):
+        return
+    for dir in DIRS:
+        var next: Vector2i = pos + dir
+        if not tunnel_edges.has(next):
+            continue
+        tunnel_edges[next] = int(tunnel_edges.get(next, 0)) & ~_opposite_dir_bit(dir)
 
 
 func _in_bounds(pos: Vector2i) -> bool:
@@ -2951,6 +3452,16 @@ func _enemy_index_at(pos: Vector2i) -> int:
     return -1
 
 
+func _lance_enemy_index_at(pos: Vector2i) -> int:
+    for i in range(enemies.size()):
+        var enemy: Dictionary = enemies[i]
+        if enemy["pos"] == pos:
+            return i
+        if enemy["phasing"] and _cell_from_visual(_dict_visual(enemy)) == pos:
+            return i
+    return -1
+
+
 func _solid_enemy_index_at(pos: Vector2i) -> int:
     for i in range(enemies.size()):
         if enemies[i]["pos"] == pos and not enemies[i]["phasing"] and not bool(enemies[i].get("inflated", false)):
@@ -2971,24 +3482,10 @@ func _open_line_between_cells(from: Vector2i, to: Vector2i) -> bool:
         return false
     if from == to:
         return true
-    var from_px := _cell_center_px(from)
-    var to_px := _cell_center_px(to)
-    var distance := from_px.distance_to(to_px)
-    var samples := maxi(2, ceili(distance / 3.0))
-    for i in range(samples + 1):
-        var t := float(i) / float(samples)
-        var point := from_px.lerp(to_px, t)
-        if _soil_blocks_point(point):
-            return false
-    return true
-
-
-func _soil_blocks_point(point: Vector2) -> bool:
-    if soil_image == null:
+    var delta := to - from
+    if delta.x != 0 and delta.y != 0:
         return false
-    var x := clampi(roundi(point.x), 0, BOARD_PX_W - 1)
-    var y := clampi(roundi(point.y), 0, BOARD_PX_H - 1)
-    return soil_image.get_pixel(x, y).a > 0.2
+    return _line_open_between_cell_centers(from, to)
 
 
 func _cell_center(pos: Vector2i) -> Vector2:
