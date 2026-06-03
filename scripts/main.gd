@@ -39,6 +39,9 @@ const XP_GROWTH := 4
 const XP_PICKUP_RADIUS := 0.52
 const XP_MAGNET_RADIUS := 2.35
 const XP_MAGNET_SPEED := 6.5
+const GEM_XP_VALUE := 3
+const SUPER_GEM_XP_VALUE := 22
+const SUPER_GEM_BASE_COUNT := 1
 const SPAWN_START_DELAY := 7.0
 const SPAWN_INTERVAL_MIN := 0.90
 const SPAWN_INTERVAL_MAX := 4.0
@@ -82,6 +85,7 @@ const ROCK_VISUAL_SPEED := 4.0
 const ENEMY_HIT_FLASH := 0.26
 const DIG_FEEDBACK_TIME := 0.34
 const PULSE_FEEDBACK_TIME := 0.42
+const BOULDER_CRUSH_FEEDBACK_TIME := 0.85
 const ATTACK_RECOVERY_DELAY := 0.32
 const ATTACK_FLASH_TIME := 0.32
 const LANCE_HIT_DELAY := 0.10
@@ -90,6 +94,17 @@ const LANCE_PUMP_INTERVAL := 0.78
 const LANCE_TAP_PUMP_INTERVAL := 0.62
 const LANCE_HOLD_STUN := 0.10
 const ENEMY_INFLATE_RECOVER_DELAY := 0.42
+const LANCE_ELEMENT_BASE := "base"
+const LANCE_ELEMENT_ICE := "ice"
+const LANCE_ELEMENT_FIRE := "fire"
+const LANCE_ELEMENT_THUNDER := "thunder"
+const ICE_FREEZE_DURATION := 2.0
+const ICE_FRONT_CHILL_DURATION := 0.55
+const FIRE_BURN_DURATION := 4.0
+const FIRE_BURN_TICK := 0.85
+const FIRE_SPREAD_RADIUS := 1
+const THUNDER_STUN_DURATION := 0.62
+const THUNDER_CHAIN_RADIUS := 4
 const BASE_MOVE_DELAY := 0.50
 const BASE_DIG_DELAY_MULT := 1.0
 const PLAYER_CENTER_EPS := 0.015
@@ -113,7 +128,10 @@ const ENEMY_GRUB := Color("#ff5c7c")
 const ENEMY_BURROWER := Color("#ffbd45")
 const ENEMY_FYGAR := Color("#77df4c")
 const FIRE := Color("#ff6b39")
+const ICE := Color("#82e6ff")
+const THUNDER := Color("#ffe76a")
 const GEM := Color("#70d7ff")
+const SUPER_GEM := Color("#d675ff")
 const PRESSURE := Color("#ccfbff")
 const RUPTURE := Color("#ffd45a")
 const EXIT_LOCKED := Color("#60546d")
@@ -133,6 +151,7 @@ var soil_dirty := false
 var tunnel_edges := {}
 var rocks := []
 var gems := []
+var super_gems := []
 var xp_pickups := []
 var enemies := []
 var floor_relics := []
@@ -144,6 +163,7 @@ var dig_masks := {}
 var dig_scored_cells := {}
 var player_dug_cells := {}
 var pulse_feedback := []
+var crush_feedback := []
 
 var state := STATE_PLAYING
 var player_pos := Vector2i.ZERO
@@ -198,32 +218,50 @@ var dig_delay_mult := BASE_DIG_DELAY_MULT
 var lance_range := 3
 var lance_damage := 1
 var stun_bonus := 0.0
-var gem_bonus := 0
-var rock_ward := false
+var gem_xp_bonus := 0
 var split_jet := 0
 var crystal_charge := 0
-var crystal_charge_cap := 0
-var stone_circuit := 0
-var resonant_hits := 0
-var pressure_wave := 0
-var shard_bloom := 0
-var gem_pulse := 0
-var tunnel_momentum := 0
+var lance_element := LANCE_ELEMENT_BASE
+var freeze_duration_bonus := 0.0
+var frost_front := 0
+var ice_shatter := 0
+var burn_duration_bonus := 0.0
+var fire_spread := 0
+var fire_burst := 0
+var thunder_chain := 0
+var thunder_stun_bonus := 0.0
+var thunder_overload := 0
+var quick_reel := 0
+var piercing_tip := 0
+var tunnel_focus := 0
+var super_gem_bonus := 0
 var temp_lance_range := 0
 var temp_lance_damage := 0
 var temp_stun_bonus := 0.0
 var temp_split_jet := 0
-var temp_pressure_wave := 0
-var temp_shard_bloom := 0
-var temp_gem_pulse := 0
-var temp_tunnel_momentum := 0
-var temp_rock_ward := false
+var temp_lance_element := LANCE_ELEMENT_BASE
+var temp_freeze_duration_bonus := 0.0
+var temp_frost_front := 0
+var temp_ice_shatter := 0
+var temp_burn_duration_bonus := 0.0
+var temp_fire_spread := 0
+var temp_fire_burst := 0
+var temp_thunder_chain := 0
+var temp_thunder_stun_bonus := 0.0
+var temp_thunder_overload := 0
+var temp_quick_reel := 0
+var temp_piercing_tip := 0
+var temp_tunnel_focus := 0
+var temp_super_gem_bonus := 0
+var temp_gem_xp_bonus := 0
 var family_points := {}
 var combo_count := 0
 var combo_timer := 0.0
 var best_combo := 0
 var floor_gems_available := 0
 var floor_gems_collected := 0
+var floor_super_gems_available := 0
+var floor_super_gems_collected := 0
 var floor_kills := 0
 var floor_boulder_kills := 0
 var floor_relics_found := 0
@@ -254,17 +292,23 @@ func _new_run() -> void:
     lance_range = 3
     lance_damage = 1
     stun_bonus = 0.0
-    gem_bonus = 0
-    rock_ward = false
+    gem_xp_bonus = 0
     split_jet = 0
     crystal_charge = 0
-    crystal_charge_cap = 0
-    stone_circuit = 0
-    resonant_hits = 0
-    pressure_wave = 0
-    shard_bloom = 0
-    gem_pulse = 0
-    tunnel_momentum = 0
+    lance_element = LANCE_ELEMENT_BASE
+    freeze_duration_bonus = 0.0
+    frost_front = 0
+    ice_shatter = 0
+    burn_duration_bonus = 0.0
+    fire_spread = 0
+    fire_burst = 0
+    thunder_chain = 0
+    thunder_stun_bonus = 0.0
+    thunder_overload = 0
+    quick_reel = 0
+    piercing_tip = 0
+    tunnel_focus = 0
+    super_gem_bonus = 0
     family_points = {}
     combo_count = 0
     combo_timer = 0.0
@@ -301,11 +345,21 @@ func _start_floor() -> void:
     temp_lance_damage = 0
     temp_stun_bonus = 0.0
     temp_split_jet = 0
-    temp_pressure_wave = 0
-    temp_shard_bloom = 0
-    temp_gem_pulse = 0
-    temp_tunnel_momentum = 0
-    temp_rock_ward = false
+    temp_lance_element = LANCE_ELEMENT_BASE
+    temp_freeze_duration_bonus = 0.0
+    temp_frost_front = 0
+    temp_ice_shatter = 0
+    temp_burn_duration_bonus = 0.0
+    temp_fire_spread = 0
+    temp_fire_burst = 0
+    temp_thunder_chain = 0
+    temp_thunder_stun_bonus = 0.0
+    temp_thunder_overload = 0
+    temp_quick_reel = 0
+    temp_piercing_tip = 0
+    temp_tunnel_focus = 0
+    temp_super_gem_bonus = 0
+    temp_gem_xp_bonus = 0
     last_attack_cells.clear()
     dig_feedback.clear()
     dig_segments.clear()
@@ -314,6 +368,7 @@ func _start_floor() -> void:
     tunnel_edges.clear()
     player_dug_cells.clear()
     pulse_feedback.clear()
+    crush_feedback.clear()
     xp_pickups.clear()
     tunnel_age.clear()
     combo_count = 0
@@ -321,14 +376,16 @@ func _start_floor() -> void:
     screen_shake = 0.0
     screen_shake_offset = Vector2.ZERO
     floor_gems_collected = 0
+    floor_super_gems_collected = 0
     floor_kills = 0
     floor_boulder_kills = 0
     floor_relics_found = 0
     floor_damage_taken = 0
     player_step_squash = 0.0
-    message = "Survive the den. Dig space, time your lance, harvest pressure gems."
+    message = "Survive the den. Dig space, time your lance, harvest gems."
     _build_cavern()
     floor_gems_available = gems.size()
+    floor_super_gems_available = super_gems.size()
     queue_redraw()
 
 
@@ -343,6 +400,7 @@ func _build_cavern() -> void:
     grid.clear()
     rocks.clear()
     gems.clear()
+    super_gems.clear()
     enemies.clear()
     floor_relics.clear()
 
@@ -361,6 +419,7 @@ func _build_cavern() -> void:
 
     _place_rocks(8 + floor_index)
     _place_gems(7 + floor_index)
+    _place_super_gems(SUPER_GEM_BASE_COUNT + mini(_effective_super_gem_bonus(), 2) + (1 if floor_index >= 5 else 0))
     var relic_count := 0 if floor_index == 1 else 1 + (1 if floor_index >= 7 else 0)
     _place_floor_relics(relic_count)
     _place_enemies(enemy_count, patrol_cells)
@@ -462,6 +521,20 @@ func _place_gems(count: int) -> void:
         gems.append(pos)
 
 
+func _place_super_gems(count: int) -> void:
+    var attempts := 0
+    while super_gems.size() < count and attempts < 1200:
+        attempts += 1
+        var pos := Vector2i(rng.randi_range(1, BOARD_W - 2), rng.randi_range(3, BOARD_H - 2))
+        if pos == player_pos or pos == exit_pos or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos):
+            continue
+        if _cell_open_mask(pos) != 0:
+            continue
+        if pos.distance_squared_to(player_pos) < 36:
+            continue
+        super_gems.append(pos)
+
+
 func _place_floor_relics(count: int) -> void:
     var pool := _available_upgrade_pool()
     pool.shuffle()
@@ -469,7 +542,7 @@ func _place_floor_relics(count: int) -> void:
     while floor_relics.size() < count and attempts < 900:
         attempts += 1
         var pos := Vector2i(rng.randi_range(2, BOARD_W - 3), rng.randi_range(3, BOARD_H - 3))
-        if pos == player_pos or pos == exit_pos or _has_rock(pos) or _has_gem(pos) or _has_relic(pos):
+        if pos == player_pos or pos == exit_pos or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos):
             continue
         if rng.randf() < 0.75 and _adjacent_tunnel_count(pos) == 0:
             continue
@@ -486,9 +559,9 @@ func _place_enemies(count: int, spawn_cells := []) -> void:
         if enemies.size() >= count:
             return
         var spawn_pos: Vector2i = candidate
-        if not _is_open_tile(spawn_pos):
+        if not _can_spawn_enemy_at(spawn_pos):
             continue
-        if spawn_pos.distance_squared_to(player_pos) < 45 or spawn_pos == exit_pos or _enemy_index_at(spawn_pos) != -1:
+        if spawn_pos.distance_squared_to(player_pos) < 45:
             continue
         _add_enemy(spawn_pos)
 
@@ -496,9 +569,9 @@ func _place_enemies(count: int, spawn_cells := []) -> void:
     while enemies.size() < count and attempts < 1000:
         attempts += 1
         var pos := Vector2i(rng.randi_range(2, BOARD_W - 3), rng.randi_range(3, BOARD_H - 3))
-        if not _is_open_tile(pos):
+        if not _can_spawn_enemy_at(pos):
             continue
-        if pos.distance_squared_to(player_pos) < 45 or pos == exit_pos or _enemy_index_at(pos) != -1:
+        if pos.distance_squared_to(player_pos) < 45:
             continue
         _add_enemy(pos)
 
@@ -520,6 +593,11 @@ func _add_enemy(pos: Vector2i) -> void:
         "inflated": false,
         "recover_timer": ENEMY_INFLATE_RECOVER_DELAY,
         "stun": 0.0,
+        "frozen": 0.0,
+        "frost_lock": 0.0,
+        "burning": 0.0,
+        "burn_tick": FIRE_BURN_TICK,
+        "burn_spreads": 0,
         "hit_flash": 0.0,
         "timer": rng.randf_range(0.1, 0.6),
         "phasing": false,
@@ -687,6 +765,7 @@ func _update_player_motion(delta: float, input_dir: Vector2i) -> void:
         player_step_from = player_pos
         player_target_digging = false
         _collect_gem_at(player_pos)
+        _collect_super_gem_at(player_pos)
         _collect_relic_at(player_pos)
 
 
@@ -755,6 +834,7 @@ func _sync_player_cell_from_visual() -> void:
         return
     player_pos = visual_cell
     _collect_gem_at(player_pos)
+    _collect_super_gem_at(player_pos)
     _collect_relic_at(player_pos)
 
 
@@ -781,9 +861,6 @@ func _player_motion_speed() -> float:
     var delay := move_delay
     if player_digging:
         delay *= dig_delay_mult
-        var momentum := _effective_tunnel_momentum()
-        if momentum > 0:
-            delay *= maxf(0.64, 1.0 - float(momentum) * 0.08)
     return 1.0 / maxf(delay, 0.001)
 
 
@@ -849,7 +926,7 @@ func _start_lance() -> void:
         lance_burst_ready = true
         lance_pump_damage += 1
         crystal_charge -= 1
-        message = "Crystal pressure primed."
+        message = "Gem charge primed."
 
     for step in range(1, _effective_lance_range() + 1):
         var pos := player_pos + facing * step
@@ -985,6 +1062,8 @@ func _can_spawn_enemy_at(pos: Vector2i) -> bool:
         return false
     if _has_rock(pos) or _enemy_index_at(pos) != -1:
         return false
+    if _has_loose_boulder_threat(pos):
+        return false
     return true
 
 
@@ -997,7 +1076,29 @@ func _can_spawn_enemy_breach_at(pos: Vector2i) -> bool:
         return false
     if _has_rock(pos) or _enemy_index_at(pos) != -1:
         return false
+    if _has_loose_boulder_threat(pos, true):
+        return false
     return _adjacent_tunnel_count(pos) > 0
+
+
+func _has_loose_boulder_threat(pos: Vector2i, target_will_open := false) -> bool:
+    for rock in rocks:
+        var rock_pos: Vector2i = rock["pos"]
+        if rock_pos.x != pos.x or rock_pos.y >= pos.y:
+            continue
+        if pos.y - rock_pos.y > 4:
+            continue
+        var clear_drop := true
+        for y in range(rock_pos.y + 1, pos.y + 1):
+            var cell := Vector2i(pos.x, y)
+            if target_will_open and cell == pos:
+                continue
+            if not _is_open_tile(cell):
+                clear_drop = false
+                break
+        if clear_drop:
+            return true
+    return false
 
 
 func _connected_tunnel_cells(start: Vector2i) -> Array:
@@ -1085,7 +1186,7 @@ func _can_spawn_rock_at(pos: Vector2i) -> bool:
         return false
     if _has_rock(pos) or _has_rock(pos + Vector2i.DOWN):
         return false
-    if _has_gem(pos) or _has_relic(pos) or _enemy_index_at(pos) != -1 or _enemy_index_at(pos + Vector2i.DOWN) != -1:
+    if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _enemy_index_at(pos) != -1 or _enemy_index_at(pos + Vector2i.DOWN) != -1:
         return false
     return true
 
@@ -1102,7 +1203,7 @@ func _release_lance(start_recovery := true) -> void:
     attack_flash = 0.0
     last_attack_cells.clear()
     if start_recovery:
-        attack_cooldown = ATTACK_RECOVERY_DELAY
+        attack_cooldown = maxf(0.14, ATTACK_RECOVERY_DELAY - float(_effective_quick_reel()) * 0.045)
 
 
 func _pin_lance_target() -> bool:
@@ -1131,11 +1232,13 @@ func _pump_lance_target() -> void:
     var enemy_pos: Vector2i = enemies[lance_attached_enemy]["pos"]
     var alive := _inflate_lance_target(lance_attached_enemy, lance_pump_damage)
     _add_pressure_feedback(enemy_pos, 1.0)
+    if alive and lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size():
+        alive = _apply_lance_element(lance_attached_enemy, enemy_pos, lance_pump_damage)
     if lance_burst_ready or _lance_overdrive():
         _trigger_lance_splash(enemy_pos, facing, lance_pump_damage)
-        _trigger_pressure_wave(enemy_pos, lance_pump_damage)
         lance_burst_ready = false
     if not alive:
+        _trigger_pierce_from(enemy_pos, facing, maxi(1, lance_pump_damage - 1))
         _release_lance()
 
 
@@ -1143,6 +1246,9 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
     if enemy_i < 0 or enemy_i >= enemies.size():
         return false
     var enemy: Dictionary = enemies[enemy_i]
+    var was_frozen := float(enemy.get("frozen", 0.0)) > 0.0
+    var was_burning := float(enemy.get("burning", 0.0)) > 0.0
+    var was_thundered := _active_lance_element() == LANCE_ELEMENT_THUNDER
     enemy["inflated"] = true
     enemy["recover_timer"] = ENEMY_INFLATE_RECOVER_DELAY
     enemy["phasing"] = false
@@ -1162,8 +1268,9 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
         enemies.remove_at(enemy_i)
         _drop_xp(dead_pos, 1 + dead_kind)
         _add_rupture_feedback(dead_pos)
+        _trigger_elemental_death_effects(dead_pos, was_frozen, was_burning, was_thundered)
         _shake(0.16)
-        message = "Pressure burst!"
+        message = "Lance burst!"
         return false
     _shake(0.06)
     message = "Pumping."
@@ -1171,8 +1278,13 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
 
 
 func _update_enemies(delta: float) -> void:
-    for enemy in enemies:
+    for i in range(enemies.size() - 1, -1, -1):
+        if i >= enemies.size():
+            continue
+        var enemy: Dictionary = enemies[i]
         enemy["hit_flash"] = maxf(0.0, float(enemy.get("hit_flash", 0.0)) - delta)
+        if _update_enemy_elemental_status(i, delta):
+            continue
         if _update_inflated_enemy(enemy, delta):
             continue
         if enemy["phasing"]:
@@ -1199,6 +1311,45 @@ func _update_enemies(delta: float) -> void:
             continue
         enemy["timer"] = _enemy_step_delay(enemy)
         _step_enemy(enemy)
+
+
+func _update_enemy_elemental_status(enemy_i: int, delta: float) -> bool:
+    if enemy_i < 0 or enemy_i >= enemies.size():
+        return true
+    var enemy: Dictionary = enemies[enemy_i]
+    if float(enemy.get("frost_lock", 0.0)) > 0.0:
+        enemy["frost_lock"] = maxf(0.0, float(enemy.get("frost_lock", 0.0)) - delta)
+        enemy["phasing"] = false
+        enemy["phase_steps"] = 0
+        enemy["phase_cooldown"] = maxf(float(enemy.get("phase_cooldown", 0.0)), 0.35)
+
+    if float(enemy.get("frozen", 0.0)) > 0.0:
+        enemy["frozen"] = maxf(0.0, float(enemy.get("frozen", 0.0)) - delta)
+        enemy["phasing"] = false
+        enemy["phase_steps"] = 0
+        enemy["fire_windup"] = 0.0
+        enemy["fire_active"] = 0.0
+        enemy["attack_windup"] = 0.0
+        enemy["attack_dir"] = Vector2i.ZERO
+        enemy["inflated"] = false
+        enemy["stun"] = maxf(float(enemy.get("stun", 0.0)), 0.08)
+        return true
+
+    if float(enemy.get("burning", 0.0)) <= 0.0:
+        return false
+
+    enemy["burning"] = maxf(0.0, float(enemy.get("burning", 0.0)) - delta)
+    enemy["burn_tick"] = float(enemy.get("burn_tick", FIRE_BURN_TICK)) - delta
+    if float(enemy["burn_tick"]) <= 0.0:
+        enemy["burn_tick"] = FIRE_BURN_TICK
+        if not _tick_burning_enemy(enemy_i):
+            return true
+        if enemy_i >= enemies.size():
+            return true
+        enemy = enemies[enemy_i]
+        if _effective_fire_spread() > 0 and int(enemy.get("burn_spreads", 0)) < _effective_fire_spread():
+            _spread_fire_from(enemy_i)
+    return false
 
 
 func _update_inflated_enemy(enemy: Dictionary, delta: float) -> bool:
@@ -1245,6 +1396,8 @@ func _should_enemy_phase(enemy: Dictionary) -> bool:
 
 
 func _enemy_can_ghost(enemy: Dictionary) -> bool:
+    if float(enemy.get("frozen", 0.0)) > 0.0 or float(enemy.get("frost_lock", 0.0)) > 0.0:
+        return false
     var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
     return floor_index >= PHASE_MIN_FLOOR and kind != ENEMY_BURROWER_KIND
 
@@ -1704,41 +1857,46 @@ func _crush_at(pos: Vector2i, fall_distance: int) -> void:
         return
 
     if pos == player_pos:
-        if _has_rock_ward():
-            _consume_rock_ward()
-            _hurt_player(1)
-            _move_player_to_nearest_safe()
-            message = "Your stone ward cracked."
-        else:
-            hp = 0
-            _game_over("Flattened by a loose boulder.")
+        hp = 0
+        _game_over("Flattened by a loose boulder.")
 
+    var crushes := 0
+    var crush_xp := 0
     for i in range(enemies.size() - 1, -1, -1):
-        if _enemy_crushed_by_rock(enemies[i], pos):
+        if _enemy_crushed_by_rock(enemies[i], pos, fall_distance):
+            var dead_pos: Vector2i = enemies[i]["pos"]
             var dead_kind := int(enemies[i].get("kind", ENEMY_GRUB_KIND))
-            _add_rupture_feedback(pos)
+            var xp_award := _boulder_crush_xp(dead_kind, fall_distance, crushes)
+            _add_rupture_feedback(dead_pos)
             enemies.remove_at(i)
             floor_kills += 1
             floor_boulder_kills += 1
-            _drop_xp(pos, 1 + dead_kind)
+            _drop_xp(dead_pos, xp_award)
             _award_score(170 + floor_index * 12, true, "Boulder crush")
             _shake(0.22)
-            message = "Boulder crush!"
-            if stone_circuit > 0:
-                rock_ward = true
-                _add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.08, 1.0 + float(stone_circuit) * 0.35, true)
-                _stun_enemies_near(pos, 2 + stone_circuit, 0.45 + _effective_stun_bonus())
+            crushes += 1
+            crush_xp += xp_award
+            message = "Boulder crush!" if crushes == 1 else "Boulder crush x%d!" % crushes
+    if crushes > 0:
+        _add_boulder_crush_feedback(pos, fall_distance, crushes, crush_xp)
+        message = "Boulder crush! +%d XP" % crush_xp if crushes == 1 else "Boulder crush x%d! +%d XP" % [crushes, crush_xp]
 
 
-func _enemy_crushed_by_rock(enemy: Dictionary, rock_pos: Vector2i) -> bool:
-    if enemy["phasing"]:
-        return false
-    var enemy_pos: Vector2i = enemy["pos"]
-    if enemy_pos == rock_pos or enemy_pos == rock_pos + Vector2i.DOWN:
-        return true
+func _boulder_crush_xp(enemy_kind: int, fall_distance: int, chain_index: int) -> int:
+    return 3 + enemy_kind + mini(fall_distance, 3) + mini(chain_index, 2)
+
+
+func _enemy_crushed_by_rock(enemy: Dictionary, rock_pos: Vector2i, fall_distance: int) -> bool:
+    var crush_depth := 1 + mini(fall_distance, 3)
     var enemy_visual := _dict_visual(enemy)
     var rock_visual := _visual_from_pos(rock_pos)
-    return absf(enemy_visual.x - rock_visual.x) <= 0.42 and absf(enemy_visual.y - rock_visual.y) <= 1.08
+    var visual_hit := absf(enemy_visual.x - rock_visual.x) <= 0.42 and enemy_visual.y >= rock_visual.y - 0.08 and enemy_visual.y <= rock_visual.y + float(crush_depth) + 0.42
+    if enemy["phasing"]:
+        return visual_hit
+    var enemy_pos: Vector2i = enemy["pos"]
+    if enemy_pos.x == rock_pos.x and enemy_pos.y >= rock_pos.y and enemy_pos.y <= rock_pos.y + crush_depth:
+        return true
+    return visual_hit
 
 
 func _hurt_player(amount: int) -> void:
@@ -1759,22 +1917,6 @@ func _hurt_player(amount: int) -> void:
 func _game_over(reason: String) -> void:
     state = STATE_GAME_OVER
     message = reason
-
-
-func _move_player_to_nearest_safe() -> void:
-    for radius in range(1, 5):
-        for x in range(-radius, radius + 1):
-            for y in range(-radius, radius + 1):
-                var pos := player_pos + Vector2i(x, y)
-                if _is_open_tile(pos) and not _has_rock(pos) and _enemy_index_at(pos) == -1:
-                    player_pos = pos
-                    player_visual_pos = _visual_from_pos(player_pos)
-                    player_move_dir = Vector2i.ZERO
-                    player_step_from = player_pos
-                    player_target_cell = player_pos
-                    player_target_digging = false
-                    player_digging = false
-                    return
 
 
 func _award_score(amount: int, combo: bool, label: String) -> int:
@@ -1834,7 +1976,7 @@ func _gain_xp(amount: int) -> void:
         _offer_upgrades()
         return
     if combo_count < 2:
-        message = "Pressure gem."
+        message = "XP gathered."
 
 
 func _collect_gem_at(pos: Vector2i) -> void:
@@ -1844,21 +1986,27 @@ func _collect_gem_at(pos: Vector2i) -> void:
             gems_collected += 1
             gem_bank += 1
             floor_gems_collected += 1
-            _award_score(20 + gem_bonus, true, "Gem")
-            var pulse := _effective_gem_pulse()
-            if pulse > 0:
-                _add_cell_pulse(pos, GEM, PULSE_FEEDBACK_TIME + 0.08, 1.0 + float(pulse) * 0.32)
-                _stun_enemies_near(pos, 1 + mini(pulse, 2), 0.28 + float(pulse) * 0.08 + _effective_stun_bonus() * 0.25)
-                if pulse >= 2 and (crystal_charge > 0 or _lance_overdrive()):
-                    crystal_charge = maxi(0, crystal_charge - 1)
-                    _burst_nearby_enemies(pos, 1, mini(pulse, 2), "Gem echo!")
-            if crystal_charge_cap > 0 and crystal_charge < crystal_charge_cap:
-                crystal_charge += 1
-                if combo_count < 2:
-                    message = "Gem pocket. Lance charged."
-            else:
-                if combo_count < 2:
-                    message = "Gem pocket."
+            _award_score(20, true, "Gem")
+            _gain_xp(GEM_XP_VALUE + _effective_gem_xp_bonus())
+            if combo_count < 2:
+                message = "Gem pocket."
+            return
+
+
+func _collect_super_gem_at(pos: Vector2i) -> void:
+    for i in range(super_gems.size() - 1, -1, -1):
+        if super_gems[i] == pos:
+            super_gems.remove_at(i)
+            gems_collected += 3
+            gem_bank += 3
+            floor_super_gems_collected += 1
+            _award_score(160 + floor_index * 25, true, "Super gem")
+            _gain_xp(SUPER_GEM_XP_VALUE + _effective_gem_xp_bonus() * 3)
+            if _active_lance_element() != LANCE_ELEMENT_BASE:
+                crystal_charge = maxi(crystal_charge, 1)
+            _add_cell_pulse(pos, SUPER_GEM, PULSE_FEEDBACK_TIME + 0.22, 1.45, true)
+            _shake(0.18)
+            message = "Super gem!"
             return
 
 
@@ -1882,25 +2030,37 @@ func _eat_gem_at(pos: Vector2i) -> void:
             message = "A burrower ate a gem."
             _add_cell_pulse(pos, ENEMY_BURROWER, PULSE_FEEDBACK_TIME, 0.85)
             return
+    for i in range(super_gems.size() - 1, -1, -1):
+        if super_gems[i] == pos:
+            super_gems.remove_at(i)
+            message = "A burrower shattered a super gem."
+            _add_cell_pulse(pos, SUPER_GEM, PULSE_FEEDBACK_TIME + 0.1, 1.0, true)
+            return
 
 
 func _upgrade_pool() -> Array:
     var pool := [
-        {"id": "range", "name": "Longer Lance", "desc": "+1 pressure range."},
-        {"id": "damage", "name": "Dense Air", "desc": "+1 lance damage."},
-        {"id": "speed", "name": "Quick Boots", "desc": "Move and tunnel faster."},
-        {"id": "heart", "name": "Extra Heart", "desc": "+1 max heart and heal."},
-        {"id": "stun", "name": "Echo Valve", "desc": "Enemies stay stunned longer."},
-        {"id": "gems", "name": "Gem Sense", "desc": "Gems are worth more score."},
-        {"id": "ward", "name": "Stone Ward", "desc": "Survive one boulder hit."},
-        {"id": "split", "name": "Split Jet", "desc": "Lance splashes sideways on impact."},
-        {"id": "crystal", "name": "Crystal Battery", "desc": "Gems charge bonus lance damage."},
-        {"id": "circuit", "name": "Stone Circuit", "desc": "Boulder kills restore ward and stun."},
-        {"id": "resonance", "name": "Resonant Spike", "desc": "Hit stunned enemies harder."},
-        {"id": "wave", "name": "Rupture Wave", "desc": "Lance impacts pulse through nearby cells."},
-        {"id": "shards", "name": "Shard Bloom", "desc": "Enemy ruptures damage nearby enemies."},
-        {"id": "gem_pulse", "name": "Gem Echo", "desc": "Gems release a stunning pressure pulse."},
-        {"id": "momentum", "name": "Tunnel Momentum", "desc": "Fresh digs carry you into the next step."}
+        {"id": "ice_tip", "name": "Frost Tip", "desc": "Choose Ice. Lance freezes enemies into blockers."},
+        {"id": "ice_wall", "name": "Deep Freeze", "desc": "Ice lasts longer."},
+        {"id": "ice_front", "name": "Cold Front", "desc": "Ice hits chill nearby enemies."},
+        {"id": "ice_shatter", "name": "Shatter Core", "desc": "Frozen kills burst damage nearby enemies."},
+        {"id": "fire_tip", "name": "Kindling Tip", "desc": "Choose Fire. Lance scorches and ignites enemies."},
+        {"id": "fire_spread", "name": "Flashover", "desc": "Burning enemies can ignite one neighbor."},
+        {"id": "fire_burst", "name": "Backdraft", "desc": "Burning kills burst damage nearby enemies."},
+        {"id": "fire_heat", "name": "Hotter Burn", "desc": "Burns last longer."},
+        {"id": "thunder_tip", "name": "Arc Tip", "desc": "Choose Thunder. Lance shocks and chains."},
+        {"id": "thunder_chain", "name": "Forked Bolt", "desc": "Thunder jumps to another enemy."},
+        {"id": "thunder_stun", "name": "Grounding Rod", "desc": "Thunder stuns longer."},
+        {"id": "thunder_overload", "name": "Overload", "desc": "Thunder kills release a final arc."},
+        {"id": "range", "name": "Longer Shaft", "desc": "+1 lance range."},
+        {"id": "damage", "name": "Heavy Head", "desc": "+1 lance damage."},
+        {"id": "wide", "name": "Wide Head", "desc": "Charged lance hits splash sideways."},
+        {"id": "pierce", "name": "Piercing Tip", "desc": "Lance is better at finishing lined-up enemies."},
+        {"id": "quick_reel", "name": "Quick Reel", "desc": "Lance recovers faster."},
+        {"id": "tunnel_focus", "name": "Tunnel Focus", "desc": "Bonus lance damage in tight tunnels."},
+        {"id": "stun", "name": "Steady Grip", "desc": "Lance control effects last longer."},
+        {"id": "gem_xp", "name": "Gem Appetite", "desc": "Gems give even more XP."},
+        {"id": "prospector", "name": "Prospector", "desc": "More super gems appear, with nearby hints."}
     ]
     return pool
 
@@ -1933,9 +2093,9 @@ func _skip_upgrade_shop() -> void:
 func _upgrade_cost(id: String) -> int:
     var base := 7 + floor_index
     match id:
-        "heart", "damage", "split", "wave", "crystal", "shards":
+        "damage", "wide", "ice_shatter", "fire_burst", "thunder_chain", "thunder_overload":
             return base + 3
-        "ward", "gems", "stun":
+        "stun", "gem_xp":
             return base - 1
         _:
             return base
@@ -1951,13 +2111,17 @@ func _available_upgrade_pool() -> Array:
 
 
 func _upgrade_is_available(id: String) -> bool:
+    var element := _upgrade_element(id)
+    if element != "":
+        if lance_element != LANCE_ELEMENT_BASE and lance_element != element:
+            return false
+        if lance_element == LANCE_ELEMENT_BASE:
+            return id.ends_with("_tip")
     match id:
-        "split", "wave", "shards":
-            return floor_index >= 4 or crystal_charge_cap > 0 or int(family_points.get("lance", 0)) >= 3
-        "gem_pulse":
-            return floor_index >= 3 or crystal_charge_cap > 0
-        "circuit":
-            return floor_index >= 3
+        "wide", "pierce", "tunnel_focus":
+            return floor_index >= 2 or _active_lance_element() != LANCE_ELEMENT_BASE
+        "prospector":
+            return floor_index >= 2
         _:
             return true
 
@@ -1966,76 +2130,98 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
     if source == "floor":
         _apply_temp_upgrade(choice)
         return
+    _commit_upgrade_element(choice["id"], false)
     match choice["id"]:
+        "ice_tip":
+            freeze_duration_bonus += 0.25
+        "ice_wall":
+            freeze_duration_bonus += 0.65
+        "ice_front":
+            frost_front += 1
+        "ice_shatter":
+            ice_shatter += 1
+        "fire_tip":
+            burn_duration_bonus += 0.25
+        "fire_spread":
+            fire_spread += 1
+        "fire_burst":
+            fire_burst += 1
+        "fire_heat":
+            burn_duration_bonus += 0.75
+        "thunder_tip":
+            thunder_stun_bonus += 0.10
+        "thunder_chain":
+            thunder_chain += 1
+        "thunder_stun":
+            thunder_stun_bonus += 0.22
+        "thunder_overload":
+            thunder_overload += 1
         "range":
             lance_range = mini(lance_range + 1, 5)
         "damage":
             lance_damage += 1
-        "speed":
-            move_delay = maxf(0.13, move_delay - 0.008)
-            dig_delay_mult = maxf(1.24, dig_delay_mult - 0.04)
-        "heart":
-            max_hp += 1
-            hp = max_hp
+        "wide":
+            split_jet += 1
+        "pierce":
+            piercing_tip += 1
+        "quick_reel":
+            quick_reel += 1
+        "tunnel_focus":
+            tunnel_focus += 1
         "stun":
             stun_bonus += 0.22
-        "gems":
-            gem_bonus += 6
-        "ward":
-            rock_ward = true
-        "split":
-            split_jet += 1
-        "crystal":
-            crystal_charge_cap += 1
-            crystal_charge = crystal_charge_cap
-        "circuit":
-            stone_circuit += 1
-            rock_ward = true
-        "resonance":
-            resonant_hits += 1
-        "wave":
-            pressure_wave += 1
-        "shards":
-            shard_bloom += 1
-        "gem_pulse":
-            gem_pulse += 1
-        "momentum":
-            tunnel_momentum += 1
+        "gem_xp":
+            gem_xp_bonus += 2
+        "prospector":
+            super_gem_bonus += 1
     _register_family_upgrade(choice["id"], source)
 
 
 func _apply_temp_upgrade(choice: Dictionary) -> void:
+    _commit_upgrade_element(choice["id"], true)
     match choice["id"]:
+        "ice_tip":
+            temp_freeze_duration_bonus += 0.25
+        "ice_wall":
+            temp_freeze_duration_bonus += 0.65
+        "ice_front":
+            temp_frost_front += 1
+        "ice_shatter":
+            temp_ice_shatter += 1
+        "fire_tip":
+            temp_burn_duration_bonus += 0.25
+        "fire_spread":
+            temp_fire_spread += 1
+        "fire_burst":
+            temp_fire_burst += 1
+        "fire_heat":
+            temp_burn_duration_bonus += 0.75
+        "thunder_tip":
+            temp_thunder_stun_bonus += 0.10
+        "thunder_chain":
+            temp_thunder_chain += 1
+        "thunder_stun":
+            temp_thunder_stun_bonus += 0.22
+        "thunder_overload":
+            temp_thunder_overload += 1
         "range":
             temp_lance_range += 1
         "damage":
             temp_lance_damage += 1
-        "speed":
-            temp_tunnel_momentum += 1
-        "heart":
-            hp = mini(max_hp, hp + 1)
+        "wide":
+            temp_split_jet += 1
+        "pierce":
+            temp_piercing_tip += 1
+        "quick_reel":
+            temp_quick_reel += 1
+        "tunnel_focus":
+            temp_tunnel_focus += 1
         "stun":
             temp_stun_bonus += 0.25
-        "gems":
-            gem_bank += 2
-        "ward":
-            temp_rock_ward = true
-        "split":
-            temp_split_jet += 1
-        "crystal":
-            crystal_charge += 1
-        "circuit":
-            temp_rock_ward = true
-        "resonance":
-            temp_lance_damage += 1
-        "wave":
-            temp_pressure_wave += 1
-        "shards":
-            temp_shard_bloom += 1
-        "gem_pulse":
-            temp_gem_pulse += 1
-        "momentum":
-            temp_tunnel_momentum += 1
+        "gem_xp":
+            temp_gem_xp_bonus += 2
+        "prospector":
+            temp_super_gem_bonus += 1
     message = "Found %s for this run." % _upgrade_name(choice["id"])
 
 
@@ -2046,49 +2232,55 @@ func _register_family_upgrade(id: String, source: String) -> void:
     var bonus_text := ""
     if count == 3:
         match family:
+            "ice":
+                freeze_duration_bonus += 0.35
+                bonus_text = "Ice set: deeper freeze."
+            "fire":
+                burn_duration_bonus += 0.35
+                bonus_text = "Fire set: hotter burn."
+            "thunder":
+                thunder_stun_bonus += 0.16
+                bonus_text = "Thunder set: stronger stun."
             "lance":
                 stun_bonus += 0.18
-                bonus_text = "Lance set: steadier pump."
+                bonus_text = "Lance set: steadier grip."
             "gem":
-                crystal_charge_cap = maxi(crystal_charge_cap, 1)
-                crystal_charge = crystal_charge_cap
-                bonus_text = "Gem set: one pressure cell."
-            "stone":
-                rock_ward = true
-                bonus_text = "Stone set: ward restored."
-            "motion":
-                dig_delay_mult = maxf(1.24, dig_delay_mult - 0.04)
-                bonus_text = "Motion set: cleaner digging."
+                gem_xp_bonus += 1
+                bonus_text = "Gem set: richer gems."
     elif count == 5:
         match family:
+            "ice":
+                ice_shatter += 1
+                bonus_text = "Ice mastery: shatter core."
+            "fire":
+                fire_spread += 1
+                bonus_text = "Fire mastery: extra flashover."
+            "thunder":
+                thunder_chain += 1
+                bonus_text = "Thunder mastery: longer chain."
             "lance":
                 lance_damage += 1
-                bonus_text = "Lance mastery: heavier pump."
+                bonus_text = "Lance mastery: heavier head."
             "gem":
-                crystal_charge_cap += 1
-                crystal_charge = crystal_charge_cap
-                bonus_text = "Gem mastery: deeper battery."
-            "stone":
-                stone_circuit += 1
-                rock_ward = true
-                bonus_text = "Stone mastery: live circuit."
-            "motion":
-                tunnel_momentum += 1
-                bonus_text = "Motion mastery: extra momentum."
+                super_gem_bonus += 1
+                bonus_text = "Gem mastery: richer seams."
     elif count == 7:
         match family:
+            "ice":
+                frost_front += 1
+                bonus_text = "Endgame ice: cold front."
+            "fire":
+                fire_burst += 1
+                bonus_text = "Endgame fire: backdraft."
+            "thunder":
+                thunder_overload += 1
+                bonus_text = "Endgame thunder: overload."
             "lance":
-                pressure_wave += 1
-                bonus_text = "Endgame lance: rupture wave unlocked."
+                quick_reel += 1
+                bonus_text = "Endgame lance: quick reel."
             "gem":
-                gem_pulse += 1
-                bonus_text = "Endgame gems: charged echoes."
-            "stone":
-                stone_circuit += 1
-                bonus_text = "Endgame stone: double circuit."
-            "motion":
-                move_delay = maxf(0.11, move_delay - 0.012)
-                bonus_text = "Endgame motion: quick feet."
+                gem_xp_bonus += 2
+                bonus_text = "Endgame gems: brilliant seams."
     if bonus_text != "":
         message = bonus_text
     elif source == "floor":
@@ -2098,15 +2290,14 @@ func _register_family_upgrade(id: String, source: String) -> void:
 
 
 func _upgrade_family(id: String) -> String:
+    var element := _upgrade_element(id)
+    if element != "":
+        return element
     match id:
-        "range", "damage", "stun", "split", "resonance", "wave", "shards":
+        "range", "damage", "stun", "wide", "pierce", "quick_reel", "tunnel_focus":
             return "lance"
-        "gems", "crystal", "gem_pulse":
+        "gem_xp", "prospector":
             return "gem"
-        "ward", "circuit":
-            return "stone"
-        "speed", "heart", "momentum":
-            return "motion"
         _:
             return "lance"
 
@@ -2116,6 +2307,27 @@ func _upgrade_name(id: String) -> String:
         if upgrade["id"] == id:
             return upgrade["name"]
     return "relic"
+
+
+func _upgrade_element(id: String) -> String:
+    if id.begins_with("ice_"):
+        return LANCE_ELEMENT_ICE
+    if id.begins_with("fire_"):
+        return LANCE_ELEMENT_FIRE
+    if id.begins_with("thunder_"):
+        return LANCE_ELEMENT_THUNDER
+    return ""
+
+
+func _commit_upgrade_element(id: String, temporary: bool) -> void:
+    var element := _upgrade_element(id)
+    if element == "":
+        return
+    if temporary:
+        if temp_lance_element == LANCE_ELEMENT_BASE:
+            temp_lance_element = element
+    elif lance_element == LANCE_ELEMENT_BASE:
+        lance_element = element
 
 
 func _draw() -> void:
@@ -2149,6 +2361,11 @@ func _update_feedback(delta: float) -> void:
         pulse_feedback[i]["time"] = float(pulse_feedback[i]["time"]) - delta
         if pulse_feedback[i]["time"] <= 0.0:
             pulse_feedback.remove_at(i)
+
+    for i in range(crush_feedback.size() - 1, -1, -1):
+        crush_feedback[i]["time"] = float(crush_feedback[i]["time"]) - delta
+        if crush_feedback[i]["time"] <= 0.0:
+            crush_feedback.remove_at(i)
 
 
 func _update_tunnel_regrowth(delta: float) -> void:
@@ -2201,7 +2418,7 @@ func _can_regrow_cell(pos: Vector2i) -> bool:
         return false
     if pos.distance_squared_to(player_pos) < REGROW_PLAYER_SAFE_RADIUS * REGROW_PLAYER_SAFE_RADIUS:
         return false
-    if _has_rock(pos) or _enemy_index_at(pos) != -1 or _has_gem(pos) or _has_relic(pos) or _has_xp_pickup(pos):
+    if _has_rock(pos) or _enemy_index_at(pos) != -1 or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_xp_pickup(pos):
         return false
     return true
 
@@ -2242,6 +2459,18 @@ func _draw_board() -> void:
         _draw_pixel_diamond(center, 3, GEM)
         draw_rect(Rect2(_snap_px(center) + Vector2(-1, -7), Vector2(2, 2)), Color("#ffffffcc"))
 
+    for super_pos in super_gems:
+        if _cell_open_mask(super_pos) == 0:
+            if _effective_super_gem_bonus() > 0 and _adjacent_tunnel_count(super_pos) > 0:
+                var hint_center := _cell_center(super_pos)
+                var hint := SUPER_GEM
+                hint.a = 0.22 + sin(anim_time * 4.0 + super_pos.y) * 0.10
+                _draw_pixel_diamond(hint_center, 3, hint)
+            continue
+        var super_center := _cell_center(super_pos)
+        _draw_pixel_diamond(super_center, 5, SUPER_GEM)
+        draw_rect(Rect2(_snap_px(super_center) - Vector2(2, 8), Vector2(4, 3)), Color("#ffffffdd"))
+
     for relic in floor_relics:
         var relic_pos: Vector2i = relic["pos"]
         var relic_open := _cell_open_mask(relic_pos) != 0
@@ -2276,12 +2505,18 @@ func _draw_actors() -> void:
 
     if lance_active and not last_attack_cells.is_empty():
         var visible_cells := last_attack_cells.size()
+        var lance_color := _lance_color()
         for i in range(visible_cells):
             var pos: Vector2i = last_attack_cells[i]
-            draw_rect(Rect2(_cell_to_px(pos) + Vector2(6, 10), Vector2(CELL - 12, 8)), Color("#d9f8ff88"))
-            draw_rect(Rect2(_cell_to_px(pos) + Vector2(10, 6), Vector2(8, CELL - 12)), Color("#d9f8ff55"))
+            var main_color := lance_color
+            main_color.a = 0.58
+            var cross_color := lance_color
+            cross_color.a = 0.34
+            draw_rect(Rect2(_cell_to_px(pos) + Vector2(6, 10), Vector2(CELL - 12, 8)), main_color)
+            draw_rect(Rect2(_cell_to_px(pos) + Vector2(10, 6), Vector2(8, CELL - 12)), cross_color)
 
     _draw_pulse_feedback()
+    _draw_crush_feedback()
 
     for rock in rocks:
         var center := _visual_to_center(_dict_visual(rock))
@@ -2307,6 +2542,10 @@ func _draw_actors() -> void:
             hit_phase = sin((1.0 - hit_flash / ENEMY_HIT_FLASH) * PI)
         if enemy["stun"] > 0.0:
             color = color.lerp(Color.WHITE, 0.45)
+        if float(enemy.get("burning", 0.0)) > 0.0:
+            color = color.lerp(FIRE, 0.48)
+        if float(enemy.get("frozen", 0.0)) > 0.0:
+            color = color.lerp(ICE, 0.68)
         if inflated:
             color = color.lerp(PRESSURE, 0.45)
         if enemy["phasing"]:
@@ -2329,6 +2568,15 @@ func _draw_actors() -> void:
             _draw_pixel_ring(center, body_radius + 3.0 + ring * 3.0, ring_color, 2)
         if pressure_ratio >= 0.34:
             _draw_enemy_cracks(center, body_radius, pressure_ratio)
+        if float(enemy.get("frozen", 0.0)) > 0.0:
+            var ice_color := ICE
+            ice_color.a = 0.70
+            _draw_pixel_ring(center, body_radius + 5.0, ice_color, 3)
+        elif float(enemy.get("burning", 0.0)) > 0.0:
+            var ember := FIRE
+            ember.a = 0.80
+            draw_rect(Rect2(_snap_px(center) + Vector2(-8, -13), Vector2(5, 6)), ember)
+            draw_rect(Rect2(_snap_px(center) + Vector2(4, -12), Vector2(5, 7)), ember)
         if enemy["kind"] == ENEMY_BURROWER_KIND:
             var stripe := Color("#5b3518")
             draw_rect(Rect2(_snap_px(center) + Vector2(-9, 6), Vector2(18, 3)), stripe)
@@ -2432,21 +2680,20 @@ func _draw_ui() -> void:
     _text(Vector2(PANEL_X, 264), "Relics found %d / %d" % [floor_relics_found, floor_relics_found + floor_relics.size()], 15, MUTED)
     _text(Vector2(PANEL_X, 294), "Hearts %s" % _heart_string(), 18, Color("#ff8fa3"))
     _text(Vector2(PANEL_X, 326), "Lance R%d D%d" % [_effective_lance_range(), _effective_lance_damage()], 16, MUTED)
-    _text(Vector2(PANEL_X, 350), "Ward ready" if _has_rock_ward() else "Ward empty", 16, WARN if _has_rock_ward() else MUTED)
-    if crystal_charge_cap > 0 or crystal_charge > 0:
-        var charge_label := "Charge %d" % crystal_charge if crystal_charge_cap <= 0 else "Charge %d / %d" % [crystal_charge, crystal_charge_cap]
-        _text(Vector2(PANEL_X, 374), charge_label, 16, GEM)
-    if _effective_split_jet() > 0 or resonant_hits > 0 or stone_circuit > 0 or _effective_pressure_wave() > 0 or _effective_shard_bloom() > 0 or _effective_gem_pulse() > 0 or _effective_tunnel_momentum() > 0:
+    _text(Vector2(PANEL_X, 350), "Element %s" % _lance_element_label(), 16, _lance_color())
+    if crystal_charge > 0:
+        _text(Vector2(PANEL_X, 374), "Charge %d" % crystal_charge, 16, GEM)
+    if _synergy_string() != "":
         _text(Vector2(PANEL_X, 398), _synergy_string(), 15, Color("#f7df86"))
     if combo_count >= 2 and combo_timer > 0.0:
-        _text(Vector2(PANEL_X, 424), "Combo x%d" % combo_count, 18, RUPTURE)
+        _text(Vector2(PANEL_X, 422), "Combo x%d" % combo_count, 18, RUPTURE)
     if not family_points.is_empty():
-        _text(Vector2(PANEL_X, 448), _family_string(), 14, MUTED)
+        _text(Vector2(PANEL_X, 446), _family_string(), 14, MUTED)
+    _draw_crush_toast()
 
-    _text(Vector2(PANEL_X, 464), "WASD / arrows move", 15, MUTED)
-    _text(Vector2(PANEL_X, 486), "Hold Space lance", 15, MUTED)
-    _text(Vector2(PANEL_X, 508), "E extraction gate", 15, MUTED)
-    _text(Vector2(PANEL_X, 530), "R restart", 15, MUTED)
+    _text(Vector2(PANEL_X, 486), "WASD / arrows move", 15, MUTED)
+    _text(Vector2(PANEL_X, 508), "Hold Space lance", 15, MUTED)
+    _text(Vector2(PANEL_X, 530), "E extraction gate", 15, MUTED)
 
     if message != "":
         _text(Vector2(24, 594), message, 18, WARN)
@@ -2455,7 +2702,7 @@ func _draw_ui() -> void:
         draw_rect(Rect2(Vector2(128, 116), Vector2(704, 350)), Color("#111820ee"))
         draw_rect(Rect2(Vector2(128, 116), Vector2(704, 350)), Color("#d8c27a"), false, 4.0)
         _text(Vector2(170, 156), "Level %d relic", 30, UI)
-        _text(Vector2(172, 190), "Pressure gathered: %d / %d    %s" % [xp, xp_to_next, SHOP_SKIP_KEY_TEXT], 16, MUTED)
+        _text(Vector2(172, 190), "XP gathered: %d / %d    %s" % [xp, xp_to_next, SHOP_SKIP_KEY_TEXT], 16, MUTED)
         if last_floor_summary != "":
             _text(Vector2(172, 216), last_floor_summary, 14, Color("#f7df86"))
         for i in range(upgrade_choices.size()):
@@ -2512,6 +2759,57 @@ func _draw_pulse_feedback() -> void:
                 var dir := Vector2(cos(angle), sin(angle))
                 var shard_pos := _snap_px(center + dir * (8.0 + progress * 18.0))
                 draw_rect(Rect2(shard_pos - Vector2(2, 2), Vector2(4, 4)), shard_color)
+
+
+func _draw_crush_feedback() -> void:
+    for effect in crush_feedback:
+        var pos: Vector2i = effect["pos"]
+        var duration := float(effect["duration"])
+        var progress := 1.0 - float(effect["time"]) / duration
+        var count := int(effect["count"])
+        var xp_award := int(effect["xp"])
+        var crush_depth := 1 + mini(int(effect["fall_distance"]), 3)
+        var alpha := 1.0 - progress
+        var dust := ROCK_SHADOW
+        dust.a = 0.72 * alpha
+        var bright := RUPTURE
+        bright.a = (0.72 if count >= 2 else 0.42) * alpha
+        for y in range(crush_depth + 1):
+            var center := _cell_center(pos + Vector2i.DOWN * y)
+            var crumble := _snap_px(center + Vector2(-8, -8 + progress * 10.0))
+            draw_rect(Rect2(crumble, Vector2(4, 4)), dust)
+            draw_rect(Rect2(crumble + Vector2(14, 5), Vector2(3, 3)), dust)
+            draw_rect(Rect2(crumble + Vector2(7, 15), Vector2(5, 3)), dust)
+            _draw_pixel_ring(center, 6.0 + progress * 12.0, bright, 2)
+        var text_pos := _cell_center(pos) + Vector2(-18, -18 - progress * 12.0)
+        var label := "x%d" % count if count >= 2 else "+%d" % xp_award
+        _text(text_pos, label, 16 if count >= 2 else 14, bright if count >= 2 else dust)
+        if count < 2:
+            continue
+        var xp_color := PRESSURE
+        xp_color.a = 0.78 * alpha
+        _text(text_pos + Vector2(22, 0), "+%d XP" % xp_award, 14, xp_color)
+
+
+func _draw_crush_toast() -> void:
+    if crush_feedback.is_empty():
+        return
+    var effect: Dictionary = crush_feedback[crush_feedback.size() - 1]
+    var duration := float(effect["duration"])
+    var progress := 1.0 - float(effect["time"]) / duration
+    var alpha := 1.0 - progress
+    var color := RUPTURE
+    color.a = 0.88 * alpha
+    var icon_pos := Vector2(PANEL_X, 466)
+    var icon_shadow := ROCK_SHADOW
+    icon_shadow.a = 0.85 * alpha
+    var icon_rock := ROCK
+    icon_rock.a = 0.92 * alpha
+    draw_rect(Rect2(icon_pos, Vector2(8, 8)), icon_shadow)
+    draw_rect(Rect2(icon_pos + Vector2(3, -3), Vector2(8, 8)), icon_rock)
+    var count := int(effect["count"])
+    var text := "Boulder +%d XP" % int(effect["xp"]) if count == 1 else "Boulder x%d +%d XP" % [count, int(effect["xp"])]
+    _text(icon_pos + Vector2(18, 7), text, 14, color)
 
 
 func _draw_enemy_cracks(center: Vector2, radius: float, pressure_ratio: float) -> void:
@@ -2684,6 +2982,30 @@ func _heart_string() -> String:
     return text
 
 
+func _lance_element_label() -> String:
+    match _active_lance_element():
+        LANCE_ELEMENT_ICE:
+            return "Ice"
+        LANCE_ELEMENT_FIRE:
+            return "Fire"
+        LANCE_ELEMENT_THUNDER:
+            return "Thunder"
+        _:
+            return "Base"
+
+
+func _lance_color() -> Color:
+    match _active_lance_element():
+        LANCE_ELEMENT_ICE:
+            return ICE
+        LANCE_ELEMENT_FIRE:
+            return FIRE
+        LANCE_ELEMENT_THUNDER:
+            return THUNDER
+        _:
+            return PRESSURE
+
+
 func _format_time(value: float) -> String:
     var total := maxi(0, floori(value))
     return "%02d:%02d" % [floori(float(total) / 60.0), total % 60]
@@ -2705,31 +3027,66 @@ func _effective_split_jet() -> int:
     return split_jet + temp_split_jet
 
 
-func _effective_pressure_wave() -> int:
-    return pressure_wave + temp_pressure_wave
+func _active_lance_element() -> String:
+    if lance_element != LANCE_ELEMENT_BASE:
+        return lance_element
+    return temp_lance_element
 
 
-func _effective_shard_bloom() -> int:
-    return shard_bloom + temp_shard_bloom
+func _effective_freeze_duration_bonus() -> float:
+    return freeze_duration_bonus + temp_freeze_duration_bonus + _effective_stun_bonus() * 0.35
 
 
-func _effective_gem_pulse() -> int:
-    return gem_pulse + temp_gem_pulse
+func _effective_frost_front() -> int:
+    return frost_front + temp_frost_front
 
 
-func _effective_tunnel_momentum() -> int:
-    return tunnel_momentum + temp_tunnel_momentum
+func _effective_ice_shatter() -> int:
+    return ice_shatter + temp_ice_shatter
 
 
-func _has_rock_ward() -> bool:
-    return rock_ward or temp_rock_ward
+func _effective_burn_duration_bonus() -> float:
+    return burn_duration_bonus + temp_burn_duration_bonus
 
 
-func _consume_rock_ward() -> void:
-    if temp_rock_ward:
-        temp_rock_ward = false
-    else:
-        rock_ward = false
+func _effective_fire_spread() -> int:
+    return fire_spread + temp_fire_spread
+
+
+func _effective_fire_burst() -> int:
+    return fire_burst + temp_fire_burst
+
+
+func _effective_thunder_chain() -> int:
+    return thunder_chain + temp_thunder_chain
+
+
+func _effective_thunder_stun_bonus() -> float:
+    return thunder_stun_bonus + temp_thunder_stun_bonus + _effective_stun_bonus() * 0.35
+
+
+func _effective_thunder_overload() -> int:
+    return thunder_overload + temp_thunder_overload
+
+
+func _effective_quick_reel() -> int:
+    return quick_reel + temp_quick_reel
+
+
+func _effective_piercing_tip() -> int:
+    return piercing_tip + temp_piercing_tip
+
+
+func _effective_tunnel_focus() -> int:
+    return tunnel_focus + temp_tunnel_focus
+
+
+func _effective_super_gem_bonus() -> int:
+    return super_gem_bonus + temp_super_gem_bonus
+
+
+func _effective_gem_xp_bonus() -> int:
+    return gem_xp_bonus + temp_gem_xp_bonus
 
 
 func _lance_overdrive() -> bool:
@@ -2738,20 +3095,23 @@ func _lance_overdrive() -> bool:
 
 func _synergy_string() -> String:
     var parts := []
+    match _active_lance_element():
+        LANCE_ELEMENT_ICE:
+            parts.append("Ice")
+        LANCE_ELEMENT_FIRE:
+            parts.append("Fire")
+        LANCE_ELEMENT_THUNDER:
+            parts.append("Thunder")
     if _effective_split_jet() > 0:
-        parts.append("Split %d" % _effective_split_jet())
-    if resonant_hits > 0:
-        parts.append("Resonate %d" % resonant_hits)
-    if stone_circuit > 0:
-        parts.append("Circuit %d" % stone_circuit)
-    if _effective_pressure_wave() > 0:
-        parts.append("Wave %d" % _effective_pressure_wave())
-    if _effective_shard_bloom() > 0:
-        parts.append("Shards %d" % _effective_shard_bloom())
-    if _effective_gem_pulse() > 0:
-        parts.append("Echo %d" % _effective_gem_pulse())
-    if _effective_tunnel_momentum() > 0:
-        parts.append("Momentum %d" % _effective_tunnel_momentum())
+        parts.append("Wide %d" % _effective_split_jet())
+    if _effective_piercing_tip() > 0:
+        parts.append("Pierce %d" % _effective_piercing_tip())
+    if _effective_quick_reel() > 0:
+        parts.append("Reel %d" % _effective_quick_reel())
+    if _effective_tunnel_focus() > 0:
+        parts.append("Focus %d" % _effective_tunnel_focus())
+    if _effective_super_gem_bonus() > 0:
+        parts.append("Prospect %d" % _effective_super_gem_bonus())
     var text := ""
     for i in range(parts.size()):
         if i > 0:
@@ -2762,7 +3122,7 @@ func _synergy_string() -> String:
 
 func _family_string() -> String:
     var parts := []
-    for family in ["lance", "gem", "stone", "motion"]:
+    for family in ["ice", "fire", "thunder", "lance", "gem"]:
         var count := int(family_points.get(family, 0))
         if count > 0:
             parts.append("%s %d" % [_family_label(family), count])
@@ -2771,25 +3131,223 @@ func _family_string() -> String:
 
 func _family_label(family: String) -> String:
     match family:
+        "ice":
+            return "Ice"
+        "fire":
+            return "Fire"
+        "thunder":
+            return "Thunder"
         "lance":
             return "Lance"
         "gem":
             return "Gem"
-        "stone":
-            return "Stone"
-        "motion":
-            return "Motion"
         _:
             return family
+
+
+func _apply_lance_element(enemy_i: int, hit_pos: Vector2i, shot_damage: int) -> bool:
+    var element := _active_lance_element()
+    match element:
+        LANCE_ELEMENT_ICE:
+            _freeze_enemy(enemy_i, ICE_FREEZE_DURATION + _effective_freeze_duration_bonus())
+            if _effective_frost_front() > 0:
+                _chill_enemies_near(hit_pos, 1 + mini(_effective_frost_front(), 2), ICE_FRONT_CHILL_DURATION + _effective_freeze_duration_bonus() * 0.25)
+            _add_cell_pulse(hit_pos, ICE, PULSE_FEEDBACK_TIME + 0.08, 1.0)
+            message = "Frozen."
+        LANCE_ELEMENT_FIRE:
+            _ignite_enemy(enemy_i, FIRE_BURN_DURATION + _effective_burn_duration_bonus())
+            _add_cell_pulse(hit_pos, FIRE, PULSE_FEEDBACK_TIME + 0.08, 1.0)
+            if not _fire_scorch_enemy(enemy_i, hit_pos):
+                return false
+            message = "Ignited."
+        LANCE_ELEMENT_THUNDER:
+            _shock_enemy(enemy_i, THUNDER_STUN_DURATION + _effective_thunder_stun_bonus(), true)
+            _chain_thunder_from(enemy_i, hit_pos, 1 + _effective_thunder_chain(), maxi(1, shot_damage - 1))
+            _add_cell_pulse(hit_pos, THUNDER, PULSE_FEEDBACK_TIME + 0.08, 1.0)
+            message = "Shocked."
+    return enemy_i >= 0 and enemy_i < enemies.size()
+
+
+func _freeze_enemy(enemy_i: int, duration: float) -> void:
+    if enemy_i < 0 or enemy_i >= enemies.size():
+        return
+    var enemy: Dictionary = enemies[enemy_i]
+    enemy["frozen"] = maxf(float(enemy.get("frozen", 0.0)), duration)
+    enemy["frost_lock"] = maxf(float(enemy.get("frost_lock", 0.0)), duration)
+    enemy["burning"] = 0.0
+    enemy["phasing"] = false
+    enemy["phase_steps"] = 0
+    enemy["phase_cooldown"] = maxf(float(enemy.get("phase_cooldown", 0.0)), duration)
+    enemy["inflated"] = false
+    enemy["attack_windup"] = 0.0
+    enemy["attack_dir"] = Vector2i.ZERO
+    enemy["fire_windup"] = 0.0
+    enemy["fire_active"] = 0.0
+    enemy["hit_flash"] = ENEMY_HIT_FLASH
+
+
+func _chill_enemies_near(center: Vector2i, radius: int, duration: float) -> void:
+    var radius_sq := radius * radius
+    for i in range(enemies.size()):
+        var pos: Vector2i = enemies[i]["pos"]
+        if pos == center or pos.distance_squared_to(center) > radius_sq:
+            continue
+        enemies[i]["frost_lock"] = maxf(float(enemies[i].get("frost_lock", 0.0)), duration)
+        enemies[i]["phasing"] = false
+        enemies[i]["phase_steps"] = 0
+        enemies[i]["phase_cooldown"] = maxf(float(enemies[i].get("phase_cooldown", 0.0)), duration)
+        enemies[i]["stun"] = maxf(float(enemies[i].get("stun", 0.0)), duration)
+        enemies[i]["hit_flash"] = ENEMY_HIT_FLASH * 0.65
+        _add_cell_pulse(pos, ICE, PULSE_FEEDBACK_TIME, 0.65)
+
+
+func _ignite_enemy(enemy_i: int, duration: float) -> void:
+    if enemy_i < 0 or enemy_i >= enemies.size():
+        return
+    var enemy: Dictionary = enemies[enemy_i]
+    enemy["burning"] = maxf(float(enemy.get("burning", 0.0)), duration)
+    enemy["burn_tick"] = minf(float(enemy.get("burn_tick", FIRE_BURN_TICK * 0.55)), FIRE_BURN_TICK * 0.55)
+    enemy["frozen"] = 0.0
+    enemy["frost_lock"] = 0.0
+    enemy["inflated"] = false
+    enemy["recover_timer"] = ENEMY_INFLATE_RECOVER_DELAY
+    enemy["hit_flash"] = ENEMY_HIT_FLASH
+
+
+func _fire_scorch_enemy(enemy_i: int, hit_pos: Vector2i) -> bool:
+    if enemy_i < 0 or enemy_i >= enemies.size():
+        return false
+    var enemy: Dictionary = enemies[enemy_i]
+    enemy["hp"] -= 1
+    enemy["hit_flash"] = ENEMY_HIT_FLASH
+    _add_cell_pulse(hit_pos, FIRE, PULSE_FEEDBACK_TIME + 0.04, 0.7)
+    if enemy["hp"] > 0:
+        return true
+    var dead_pos: Vector2i = enemy["pos"]
+    var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+    enemies.remove_at(enemy_i)
+    floor_kills += 1
+    _drop_xp(dead_pos, 1 + dead_kind)
+    _award_score(70 + floor_index * 8, true, "Scorch")
+    _add_rupture_feedback(dead_pos)
+    _trigger_elemental_death_effects(dead_pos, false, true, false)
+    _shake(0.12)
+    message = "Scorched!"
+    return false
+
+
+func _shock_enemy(enemy_i: int, duration: float, full_strength := false) -> void:
+    if enemy_i < 0 or enemy_i >= enemies.size():
+        return
+    var enemy: Dictionary = enemies[enemy_i]
+    var stun_time := duration if full_strength else duration * 0.65
+    enemy["stun"] = maxf(float(enemy.get("stun", 0.0)), stun_time)
+    enemy["attack_windup"] = 0.0
+    enemy["attack_dir"] = Vector2i.ZERO
+    enemy["fire_windup"] = 0.0
+    enemy["fire_active"] = 0.0
+    enemy["hit_flash"] = ENEMY_HIT_FLASH
+
+
+func _chain_thunder_from(source_i: int, source_pos: Vector2i, jumps: int, damage: int) -> void:
+    if jumps <= 0:
+        return
+    var visited := {}
+    if source_i >= 0:
+        visited[source_i] = true
+    var current_pos := source_pos
+    for jump in range(jumps):
+        var next_i := _nearest_chain_enemy(current_pos, visited, THUNDER_CHAIN_RADIUS)
+        if next_i == -1:
+            return
+        visited[next_i] = true
+        var next_pos: Vector2i = enemies[next_i]["pos"]
+        _shock_enemy(next_i, THUNDER_STUN_DURATION + _effective_thunder_stun_bonus(), false)
+        if damage > 0:
+            _damage_enemy(next_i, damage, "Overload!", "Arc stun.")
+        _add_cell_pulse(next_pos, THUNDER, PULSE_FEEDBACK_TIME, 0.7)
+        current_pos = next_pos
+
+
+func _nearest_chain_enemy(from: Vector2i, visited: Dictionary, radius: int) -> int:
+    var best_i := -1
+    var best_distance: int = radius * radius + 1
+    for i in range(enemies.size()):
+        if visited.has(i):
+            continue
+        var enemy: Dictionary = enemies[i]
+        if enemy["phasing"]:
+            continue
+        var enemy_pos: Vector2i = enemy["pos"]
+        var distance: int = enemy_pos.distance_squared_to(from)
+        if distance <= radius * radius and distance < best_distance:
+            best_i = i
+            best_distance = distance
+    return best_i
+
+
+func _tick_burning_enemy(enemy_i: int) -> bool:
+    if enemy_i < 0 or enemy_i >= enemies.size():
+        return false
+    var enemy: Dictionary = enemies[enemy_i]
+    enemy["hit_flash"] = ENEMY_HIT_FLASH * 0.75
+    enemy["hp"] -= 1
+    if enemy["hp"] > 0:
+        _add_cell_pulse(enemy["pos"], FIRE, PULSE_FEEDBACK_TIME, 0.55)
+        return true
+    var dead_pos: Vector2i = enemy["pos"]
+    var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+    enemies.remove_at(enemy_i)
+    floor_kills += 1
+    _drop_xp(dead_pos, 1 + dead_kind)
+    _award_score(70 + floor_index * 8, true, "Burn")
+    _add_rupture_feedback(dead_pos)
+    _trigger_elemental_death_effects(dead_pos, false, true, false)
+    _shake(0.12)
+    message = "Burned out!"
+    return false
+
+
+func _spread_fire_from(enemy_i: int) -> void:
+    if enemy_i < 0 or enemy_i >= enemies.size():
+        return
+    var source: Dictionary = enemies[enemy_i]
+    var source_pos: Vector2i = source["pos"]
+    for i in range(enemies.size()):
+        if i == enemy_i:
+            continue
+        var target: Dictionary = enemies[i]
+        if float(target.get("burning", 0.0)) > 0.0 or float(target.get("frozen", 0.0)) > 0.0:
+            continue
+        if target["pos"].distance_squared_to(source_pos) <= FIRE_SPREAD_RADIUS * FIRE_SPREAD_RADIUS:
+            source["burn_spreads"] = int(source.get("burn_spreads", 0)) + 1
+            enemies[enemy_i] = source
+            _ignite_enemy(i, maxf(1.2, FIRE_BURN_DURATION * 0.55 + _effective_burn_duration_bonus() * 0.5))
+            _add_cell_pulse(target["pos"], FIRE, PULSE_FEEDBACK_TIME, 0.72)
+            message = "Fire jumped."
+            return
+
+
+func _trigger_elemental_death_effects(pos: Vector2i, was_frozen: bool, was_burning: bool, was_thundered: bool) -> void:
+    if was_frozen and _effective_ice_shatter() > 0:
+        _burst_nearby_enemies(pos, _effective_ice_shatter(), 1 + mini(_effective_ice_shatter(), 2), "Shatter!")
+        _add_cell_pulse(pos, ICE, PULSE_FEEDBACK_TIME + 0.12, 1.15, true)
+    if was_burning and _effective_fire_burst() > 0:
+        _burst_nearby_enemies(pos, _effective_fire_burst(), 1 + mini(_effective_fire_burst(), 2), "Backdraft!")
+        _add_cell_pulse(pos, FIRE, PULSE_FEEDBACK_TIME + 0.12, 1.15, true)
+    if was_thundered and _effective_thunder_overload() > 0:
+        _chain_thunder_from(-1, pos, _effective_thunder_overload(), 1)
+        _add_cell_pulse(pos, THUNDER, PULSE_FEEDBACK_TIME + 0.12, 1.05, true)
 
 
 func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: String) -> bool:
     if enemy_i < 0 or enemy_i >= enemies.size():
         return false
     var enemy: Dictionary = enemies[enemy_i]
-    var resonance_bonus := 0
-    if resonant_hits > 0 and enemy["stun"] > 0.0:
-        resonance_bonus = resonant_hits
+    var was_frozen := float(enemy.get("frozen", 0.0)) > 0.0
+    var was_burning := float(enemy.get("burning", 0.0)) > 0.0
+    var was_thundered := _active_lance_element() == LANCE_ELEMENT_THUNDER
+    var tunnel_bonus := _effective_tunnel_focus() if _cell_is_tunnel_focus(enemy["pos"]) else 0
     if enemy["phasing"] and not _is_open_tile(enemy["pos"]):
         enemy["phase_target"] = _enemy_phase_escape_target(enemy)
     else:
@@ -2798,7 +3356,7 @@ func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: Strin
     enemy["attack_windup"] = 0.0
     enemy["attack_dir"] = Vector2i.ZERO
     enemy["hit_flash"] = ENEMY_HIT_FLASH
-    enemy["hp"] -= amount + resonance_bonus
+    enemy["hp"] -= amount + tunnel_bonus
     enemy["stun"] = 0.72 + _effective_stun_bonus()
     if enemy["hp"] <= 0:
         var dead_pos: Vector2i = enemy["pos"]
@@ -2808,17 +3366,14 @@ func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: Strin
         enemies.remove_at(enemy_i)
         _drop_xp(dead_pos, 1 + dead_kind)
         _add_rupture_feedback(dead_pos)
+        _trigger_elemental_death_effects(dead_pos, was_frozen, was_burning, was_thundered)
         _shake(0.16)
         message = kill_text
-        var bloom := _effective_shard_bloom()
-        if bloom > 0 and (lance_burst_ready or _lance_overdrive()):
-            lance_burst_ready = false
-            _burst_nearby_enemies(dead_pos, bloom, 1 + mini(bloom, 2), "Shard bloom!")
         return false
     else:
         _add_pressure_feedback(enemy["pos"], 0.8)
         _shake(0.06)
-        message = hit_text if resonance_bonus == 0 else "Resonance hit."
+        message = hit_text if tunnel_bonus == 0 else "Tunnel focus."
         return true
 
 
@@ -2839,30 +3394,34 @@ func _trigger_lance_splash(center: Vector2i, dir: Vector2i, shot_damage: int) ->
                 last_attack_cells.append(pos)
             var enemy_i := _lance_enemy_index_at(pos)
             if enemy_i != -1:
-                _damage_enemy(enemy_i, splash_damage, "Split burst!", "Split stun.")
+                var alive := _damage_enemy(enemy_i, splash_damage, "Wide hit!", "Wide stun.")
+                if alive and enemy_i >= 0 and enemy_i < enemies.size():
+                    _apply_lance_element(enemy_i, pos, splash_damage)
                 _add_pressure_feedback(pos, 0.75)
                 break
             if _cell_open_mask(pos) == 0:
                 break
 
 
-func _trigger_pressure_wave(center: Vector2i, shot_damage: int) -> void:
-    var wave := _effective_pressure_wave()
-    if wave <= 0:
+func _trigger_pierce_from(center: Vector2i, dir: Vector2i, damage: int) -> void:
+    var pierce := _effective_piercing_tip()
+    if pierce <= 0 or dir == Vector2i.ZERO:
         return
-    var radius := 1 + mini(wave, 2)
-    var damage := maxi(1, floori(float(shot_damage + wave) * 0.34))
-    _add_cell_pulse(center, PRESSURE, PULSE_FEEDBACK_TIME + 0.08, 1.0 + float(radius) * 0.35)
-    for i in range(enemies.size() - 1, -1, -1):
-        if i >= enemies.size():
-            continue
-        var enemy_pos: Vector2i = enemies[i]["pos"]
-        if enemy_pos == center:
-            continue
-        if _is_behind_lance_target(center, enemy_pos):
-            continue
-        if enemy_pos.distance_squared_to(center) <= radius * radius:
-            _damage_enemy(i, damage, "Pressure chain!", "Wave stun.")
+    for reach in range(1, mini(pierce, 2) + 1):
+        var pos := center + dir * reach
+        if not _in_bounds(pos) or _has_rock(pos):
+            return
+        if _cell_open_mask(pos) == 0:
+            return
+        if not last_attack_cells.has(pos):
+            last_attack_cells.append(pos)
+        var enemy_i := _lance_enemy_index_at(pos)
+        if enemy_i != -1:
+            var alive := _damage_enemy(enemy_i, damage, "Pierced!", "Pierce hit.")
+            if alive and enemy_i >= 0 and enemy_i < enemies.size():
+                _apply_lance_element(enemy_i, pos, damage)
+            _add_cell_pulse(pos, _lance_color(), PULSE_FEEDBACK_TIME, 0.8)
+            return
 
 
 func _burst_nearby_enemies(center: Vector2i, damage: int, radius: int, text: String) -> void:
@@ -2919,6 +3478,24 @@ func _add_rupture_feedback(pos: Vector2i) -> void:
     _add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.16, 1.25, true)
 
 
+func _add_boulder_crush_feedback(pos: Vector2i, fall_distance: int, count: int, xp_award: int) -> void:
+    var duration := BOULDER_CRUSH_FEEDBACK_TIME + minf(0.22, float(count - 1) * 0.08)
+    crush_feedback.append({
+        "pos": pos,
+        "time": duration,
+        "duration": duration,
+        "fall_distance": fall_distance,
+        "count": count,
+        "xp": xp_award
+    })
+    var depth := 1 + mini(fall_distance, 3)
+    for y in range(depth + 1):
+        var cell := pos + Vector2i.DOWN * y
+        if _in_bounds(cell):
+            _add_cell_pulse(cell, RUPTURE, PULSE_FEEDBACK_TIME + 0.08, 0.75 + float(count) * 0.16, count >= 2)
+    _shake(0.18 + minf(0.32, float(count) * 0.08))
+
+
 func _add_cell_pulse(pos: Vector2i, color: Color, duration: float, radius: float, burst := false) -> void:
     pulse_feedback.append({
         "pos": pos,
@@ -2950,6 +3527,12 @@ func _adjacent_tunnel_count(pos: Vector2i) -> int:
         if _is_open_tile(next):
             count += 1
     return count
+
+
+func _cell_is_tunnel_focus(pos: Vector2i) -> bool:
+    if _effective_tunnel_focus() <= 0:
+        return false
+    return _adjacent_tunnel_count(pos) <= 2
 
 
 func _dir_bit(dir: Vector2i) -> int:
@@ -3191,6 +3774,7 @@ func _promote_dug_cell(cell: Vector2i) -> void:
     dig_scored_cells[cell] = true
     _add_dig_feedback(cell)
     _award_score(2, false, "Dig")
+    _collect_super_gem_at(cell)
 
 
 func _bit_count(value: int) -> int:
@@ -3438,6 +4022,13 @@ func _has_gem(pos: Vector2i) -> bool:
     return false
 
 
+func _has_super_gem(pos: Vector2i) -> bool:
+    for gem_pos in super_gems:
+        if gem_pos == pos:
+            return true
+    return false
+
+
 func _has_relic(pos: Vector2i) -> bool:
     for relic in floor_relics:
         if relic["pos"] == pos:
@@ -3464,7 +4055,9 @@ func _lance_enemy_index_at(pos: Vector2i) -> int:
 
 func _solid_enemy_index_at(pos: Vector2i) -> int:
     for i in range(enemies.size()):
-        if enemies[i]["pos"] == pos and not enemies[i]["phasing"] and not bool(enemies[i].get("inflated", false)):
+        var enemy: Dictionary = enemies[i]
+        var frozen := float(enemy.get("frozen", 0.0)) > 0.0
+        if enemy["pos"] == pos and not enemy["phasing"] and (frozen or not bool(enemy.get("inflated", false))):
             return i
     return -1
 
