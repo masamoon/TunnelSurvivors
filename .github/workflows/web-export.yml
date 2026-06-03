@@ -1,0 +1,73 @@
+name: Export Web Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  GODOT_RELEASE: "4.5-stable"
+  GODOT_BINARY: "Godot_v4.5-stable_linux.x86_64"
+  EXPORT_TEMPLATE_DIR: "4.5.stable"
+
+jobs:
+  export-web:
+    name: Export Godot Web Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Godot editor and export templates
+        run: |
+          set -euo pipefail
+          curl -L "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/${GODOT_BINARY}.zip" -o /tmp/godot.zip
+          curl -L "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz" -o /tmp/templates.tpz
+
+      - name: Install Godot
+        run: |
+          set -euo pipefail
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo mv "/tmp/godot/${GODOT_BINARY}" /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+
+          mkdir -p "${HOME}/.local/share/godot/export_templates/${EXPORT_TEMPLATE_DIR}"
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          mv /tmp/templates/templates/* "${HOME}/.local/share/godot/export_templates/${EXPORT_TEMPLATE_DIR}/"
+
+      - name: Export Web build
+        run: |
+          set -euo pipefail
+          mkdir -p dist/web
+          godot --headless --path . --export-release Web dist/web/index.html
+          touch dist/web/.nojekyll
+
+      - name: Upload playable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: diggy-web
+          path: dist/web
+          if-no-files-found: error
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
