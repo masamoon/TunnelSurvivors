@@ -11,6 +11,8 @@ const BOARD_ORIGIN := Vector2(12, 112)
 const DESKTOP_BOARD_ORIGIN := Vector2(24, 74)
 const TOP_HUD_RECT := Rect2(Vector2(12, 12), Vector2(616, 82))
 const STATUS_RECT := Rect2(Vector2(12, 604), Vector2(616, 140))
+const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 320), Vector2(196, 44))
+const INVENTORY_CLOSE_RECT := Rect2(Vector2(690, 544), Vector2(168, 44))
 const MOBILE_DPAD_CENTER := Vector2(140, 822)
 const MOBILE_DPAD_BUTTON := 64
 const MOBILE_DPAD_GAP := 8
@@ -48,6 +50,7 @@ const ENEMY_SHIELDBUG_KIND := 4
 const ENEMY_LEECH_KIND := 5
 const ENEMY_BROOD_POD_KIND := 6
 const ENEMY_BOSS_KIND := 7
+const ENEMY_REAPER_KIND := 8
 
 const STATE_PLAYING := 0
 const STATE_CHOOSING := 1
@@ -55,8 +58,8 @@ const STATE_GAME_OVER := 2
 const STATE_WIN := 3
 
 const RUN_GOAL_TIME := 8.0 * 60.0
-const XP_BASE_TO_NEXT := 6
-const XP_GROWTH := 4
+const XP_BASE_TO_NEXT := 7
+const XP_GROWTH := 5
 const XP_PICKUP_RADIUS := 0.52
 const XP_MAGNET_RADIUS := 2.35
 const XP_MAGNET_SPEED := 6.5
@@ -159,13 +162,20 @@ const BROOD_POD_MIN_TIME := 130.0
 const BROOD_POD_MIN_LEVEL := 5
 const BROOD_POD_SUMMON_COOLDOWN_MIN := 5.5
 const BROOD_POD_SUMMON_COOLDOWN_MAX := 8.5
-const BOSS_SPAWN_TIME := 120.0
+const BOSS_SPAWN_TIMES := [120.0, 240.0, 360.0]
 const BOSS_SUMMON_COOLDOWN_MIN := 4.8
 const BOSS_SUMMON_COOLDOWN_MAX := 7.2
 const BOSS_MAX_HP := 42
 const BOSS_FREEZE_DURATION_MULT := 0.22
 const BOSS_FREEZE_DURATION_MAX := 0.55
 const BOSS_CHILL_DURATION_MULT := 0.18
+const UBER_START_TIME := RUN_GOAL_TIME * 0.5
+const UBER_CHANCE_BASE := 0.18
+const UBER_CHANCE_MAX := 0.46
+const UBER_HP_BONUS := 3
+const UBER_SPEED_MULT := 1.15
+const REAPER_SPAWN_TIME := RUN_GOAL_TIME - 32.0
+const REAPER_SPEED_RATIO := 1.28
 const ROCK_VISUAL_SPEED := 4.0
 const ENEMY_HIT_FLASH := 0.26
 const DIG_FEEDBACK_TIME := 0.34
@@ -241,6 +251,7 @@ const ENEMY_SHIELDBUG := Color("#c2a66b")
 const ENEMY_LEECH := Color("#d675ff")
 const ENEMY_BROOD_POD := Color("#b36bff")
 const ENEMY_BOSS := Color("#ff3f5f")
+const ENEMY_REAPER := Color("#e8ecff")
 const FIRE := Color("#ff6b39")
 const ICE := Color("#82e6ff")
 const THUNDER := Color("#ffe76a")
@@ -290,6 +301,7 @@ var zap_feedback := []
 var mobile_touch_dirs := {}
 var mobile_move_dir := Vector2i.ZERO
 var show_touch_controls := true
+var show_upgrade_inventory := false
 
 var state := STATE_PLAYING
 var player_pos := Vector2i.ZERO
@@ -311,7 +323,8 @@ var gems_collected := 0
 var gem_bank := 0
 var beacon_pos := Vector2i.ZERO
 var beacon_armed := false
-var boss_spawned := false
+var boss_spawn_index := 0
+var reaper_spawned := false
 var message := ""
 var last_floor_summary := ""
 
@@ -429,6 +442,7 @@ func _ready() -> void:
 
 
 func _new_run() -> void:
+	show_upgrade_inventory = false
 	floor_index = 1
 	player_level = 1
 	xp = 0
@@ -483,12 +497,14 @@ func _new_run() -> void:
 	combo_count = 0
 	combo_timer = 0.0
 	best_combo = 0
-	boss_spawned = false
+	boss_spawn_index = 0
+	reaper_spawned = false
 	last_floor_summary = ""
 	_start_floor()
 
 
 func _start_floor() -> void:
+	show_upgrade_inventory = false
 	state = STATE_PLAYING
 	player_pos = Vector2i(int(BOARD_W * 0.5), 1)
 	player_visual_pos = _visual_from_pos(player_pos)
@@ -923,13 +939,20 @@ func _place_enemies(count: int, spawn_cells := []) -> void:
 		_add_enemy(best)
 
 
-func _add_enemy(pos: Vector2i, forced_kind := -1) -> void:
+func _add_enemy(pos: Vector2i, forced_kind := -1, boss_variant := 0) -> void:
 	var kind := forced_kind if forced_kind >= 0 else _choose_enemy_kind()
 	var enemy_hp := _enemy_max_hp_for_kind(kind)
+	if kind == ENEMY_BOSS_KIND:
+		enemy_hp = _boss_max_hp_for_variant(boss_variant)
+	var uber := _should_spawn_uber(kind, forced_kind)
+	if uber:
+		enemy_hp += UBER_HP_BONUS + floori(run_time / 120.0)
 	enemies.append({
 		"pos": pos,
 		"visual_pos": _visual_from_pos(pos),
 		"kind": kind,
+		"boss_variant": boss_variant,
+		"uber": uber,
 		"hp": enemy_hp,
 		"max_hp": enemy_hp,
 		"visual_speed": _enemy_move_speed_for_kind(kind),
@@ -1007,8 +1030,36 @@ func _enemy_max_hp_for_kind(kind: int) -> int:
 			return 8 + floori(float(floor_index) / 2.0)
 		ENEMY_BOSS_KIND:
 			return BOSS_MAX_HP + floori(run_time / 60.0) * 3
+		ENEMY_REAPER_KIND:
+			return 9999
 		_:
 			return 3 + scaling
+
+
+func _boss_max_hp_for_variant(variant: int) -> int:
+	return BOSS_MAX_HP + variant * 18 + floori(run_time / 60.0) * 3
+
+
+func _boss_name(variant: int) -> String:
+	match variant:
+		0:
+			return "The Brood Queen"
+		1:
+			return "The Crystal Maw"
+		2:
+			return "The Hollow King"
+		_:
+			return "The Deep Boss"
+
+
+func _should_spawn_uber(kind: int, forced_kind: int) -> bool:
+	if forced_kind >= 0 or run_time < UBER_START_TIME:
+		return false
+	if kind == ENEMY_BOSS_KIND or kind == ENEMY_REAPER_KIND or kind == ENEMY_BROOD_POD_KIND:
+		return false
+	var pressure := clampf((run_time - UBER_START_TIME) / maxf(RUN_GOAL_TIME - UBER_START_TIME, 0.001), 0.0, 1.0)
+	var chance := lerpf(UBER_CHANCE_BASE, UBER_CHANCE_MAX, pressure)
+	return rng.randf() < chance
 
 
 func _process(delta: float) -> void:
@@ -1029,6 +1080,15 @@ func _process(delta: float) -> void:
 		last_attack_cells.clear()
 
 	if state != STATE_PLAYING:
+		show_upgrade_inventory = false
+		if lance_active:
+			_release_lance(false)
+		_update_visual_positions(delta)
+		_update_camera(delta)
+		queue_redraw()
+		return
+
+	if show_upgrade_inventory:
 		if lance_active:
 			_release_lance(false)
 		_update_visual_positions(delta)
@@ -1085,7 +1145,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		_press_restart()
 		return
 
+	if state == STATE_PLAYING and event.keycode == KEY_I:
+		show_upgrade_inventory = not show_upgrade_inventory
+		_clear_mobile_input()
+		queue_redraw()
+		return
+
 	if state == STATE_PLAYING:
+		if show_upgrade_inventory:
+			return
 		if event.keycode == KEY_SPACE:
 			_press_lance()
 		elif event.keycode == KEY_E or event.keycode == KEY_ENTER:
@@ -1196,6 +1264,12 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 
 
 func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
+	if show_upgrade_inventory:
+		if _inventory_close_rect().has_point(pos):
+			show_upgrade_inventory = false
+			queue_redraw()
+		return
+
 	if show_touch_controls and MOBILE_RESTART_RECT.has_point(pos):
 		_press_restart()
 		return
@@ -1215,6 +1289,12 @@ func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
 		return
 
 	if state != STATE_PLAYING:
+		return
+
+	if _inventory_button_rect().has_point(pos):
+		show_upgrade_inventory = true
+		_clear_mobile_input()
+		queue_redraw()
 		return
 
 	if not show_touch_controls:
@@ -1565,19 +1645,41 @@ func _spawn_cap() -> int:
 
 
 func _update_boss_spawning() -> void:
-	if boss_spawned or run_time < BOSS_SPAWN_TIME:
-		return
+	if boss_spawn_index < BOSS_SPAWN_TIMES.size() and run_time >= float(BOSS_SPAWN_TIMES[boss_spawn_index]):
+		_spawn_boss_milestone(boss_spawn_index)
+	if not reaper_spawned and run_time >= REAPER_SPAWN_TIME:
+		_spawn_reaper()
+
+
+func _spawn_boss_milestone(variant: int) -> void:
 	var spawn_pos := _boss_spawn_cell()
 	if spawn_pos == Vector2i.ZERO:
 		return
-	boss_spawned = true
+	boss_spawn_index += 1
 	if _cell_open_mask(spawn_pos) == 0:
 		_carve_cell(spawn_pos)
 		_add_dig_feedback(spawn_pos)
-	_add_enemy(spawn_pos, ENEMY_BOSS_KIND)
+	_add_enemy(spawn_pos, ENEMY_BOSS_KIND, variant)
 	_add_cell_pulse(spawn_pos, ENEMY_BOSS, PULSE_FEEDBACK_TIME + 0.38, 1.9, true)
 	_shake(0.42)
-	message = "The Brood Queen enters the den!"
+	message = "%s enters the den!" % _boss_name(variant)
+
+
+func _spawn_reaper() -> void:
+	var spawn_pos := _boss_spawn_cell()
+	if spawn_pos == Vector2i.ZERO:
+		return
+	reaper_spawned = true
+	if _cell_open_mask(spawn_pos) == 0:
+		_carve_cell(spawn_pos)
+		_add_dig_feedback(spawn_pos)
+	_add_enemy(spawn_pos, ENEMY_REAPER_KIND)
+	if not beacon_armed:
+		beacon_armed = true
+		_add_cell_pulse(beacon_pos, BEACON_ARMED, PULSE_FEEDBACK_TIME + 0.24, 1.15)
+	_add_cell_pulse(spawn_pos, ENEMY_REAPER, PULSE_FEEDBACK_TIME + 0.48, 2.2, true)
+	_shake(0.55)
+	message = "The Reaper is here. Run for the hatch!"
 
 
 func _boss_spawn_cell() -> Vector2i:
@@ -2225,6 +2327,10 @@ func _pump_lance_target() -> void:
 func _direct_lance_damage_for_enemy(enemy: Dictionary, amount: int) -> int:
 	var damage := amount
 	var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+	if kind == ENEMY_REAPER_KIND:
+		enemy["blocked_lance"] = true
+		message = "It cannot be stopped."
+		return 0
 	if kind == ENEMY_SHIELDBUG_KIND:
 		var face_dir: Vector2i = enemy.get("face_dir", Vector2i.LEFT)
 		var riposte_window := bool(enemy.get("riposte_window", false)) or float(enemy.get("attack_windup", 0.0)) > 0.0
@@ -2955,21 +3061,26 @@ func _update_boss_summon(enemy: Dictionary, delta: float) -> bool:
 	enemy["summon_cooldown"] = rng.randf_range(BOSS_SUMMON_COOLDOWN_MIN, BOSS_SUMMON_COOLDOWN_MAX)
 	if enemies.size() >= _spawn_cap() + 3:
 		return false
-	var summon_kind := _choose_boss_summon_kind()
+	var summon_kind := _choose_boss_summon_kind(int(enemy.get("boss_variant", 0)))
 	if _summon_enemy_near(enemy["pos"], summon_kind):
 		enemy["hit_flash"] = ENEMY_HIT_FLASH
 		_add_cell_pulse(enemy["pos"], ENEMY_BOSS, PULSE_FEEDBACK_TIME + 0.12, 1.2, true)
-		message = "The Brood Queen calls the den."
+		message = "%s calls the den." % _boss_name(int(enemy.get("boss_variant", 0)))
 		return true
 	return false
 
 
-func _choose_boss_summon_kind() -> int:
-	var choices := [ENEMY_GRUB_KIND, ENEMY_GRUB_KIND, ENEMY_SPITTER_KIND, ENEMY_SHIELDBUG_KIND]
-	if run_time >= LEECH_MIN_TIME:
-		choices.append(ENEMY_LEECH_KIND)
-	if run_time >= BROOD_POD_MIN_TIME and rng.randf() < 0.28:
-		choices.append(ENEMY_BROOD_POD_KIND)
+func _choose_boss_summon_kind(variant: int) -> int:
+	var choices := []
+	match variant:
+		0:
+			choices = [ENEMY_GRUB_KIND, ENEMY_GRUB_KIND, ENEMY_SPITTER_KIND, ENEMY_BROOD_POD_KIND]
+		1:
+			choices = [ENEMY_SPITTER_KIND, ENEMY_LEECH_KIND, ENEMY_LEECH_KIND, ENEMY_FYGAR_KIND]
+		2:
+			choices = [ENEMY_SHIELDBUG_KIND, ENEMY_SHIELDBUG_KIND, ENEMY_BURROWER_KIND, ENEMY_LEECH_KIND, ENEMY_BROOD_POD_KIND]
+		_:
+			choices = [ENEMY_GRUB_KIND, ENEMY_SPITTER_KIND, ENEMY_SHIELDBUG_KIND]
 	return choices[rng.randi_range(0, choices.size() - 1)]
 
 
@@ -3005,6 +3116,9 @@ func _step_enemy(enemy: Dictionary) -> void:
 		return
 	if kind == ENEMY_LEECH_KIND:
 		_step_leech(enemy)
+		return
+	if kind == ENEMY_REAPER_KIND:
+		_step_reaper(enemy)
 		return
 	if kind == ENEMY_BOSS_KIND:
 		_step_boss(enemy)
@@ -3134,6 +3248,38 @@ func _step_boss(enemy: Dictionary) -> void:
 		return
 
 
+func _step_reaper(enemy: Dictionary) -> void:
+	var pos: Vector2i = enemy["pos"]
+	if pos.distance_squared_to(player_pos) <= 1:
+		_game_over("The Reaper claimed you.")
+		_shake(0.7)
+		return
+
+	var path_dir := _enemy_tunnel_route_dir(pos)
+	if path_dir != Vector2i.ZERO:
+		_move_enemy_to(enemy, pos + path_dir)
+		return
+
+	var dirs := DIRS.duplicate()
+	dirs.shuffle()
+	dirs.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (pos + a).distance_squared_to(player_pos) < (pos + b).distance_squared_to(player_pos)
+	)
+	for dir in dirs:
+		var target: Vector2i = pos + dir
+		if not _in_bounds(target) or _has_rock(target) or target == player_target_cell:
+			continue
+		if target == player_pos:
+			_game_over("The Reaper claimed you.")
+			_shake(0.7)
+			return
+		if not _cell_has_tunnel_opening(target):
+			_open_tunnel_step(pos, target, false)
+			_add_dig_feedback(target)
+		_move_enemy_to(enemy, target, true)
+		return
+
+
 func _nearest_leech_loot(from: Vector2i) -> Vector2i:
 	var best := Vector2i(-9999, -9999)
 	var best_distance := LEECH_LOOT_RADIUS * LEECH_LOOT_RADIUS + 1
@@ -3233,7 +3379,10 @@ func _enemy_step_delay(enemy: Dictionary) -> float:
 func _enemy_move_speed(enemy: Dictionary) -> float:
 	if enemy.get("phasing", false):
 		return _player_dig_speed() * ENEMY_PHASE_SPEED_RATIO
-	return _enemy_move_speed_for_kind(int(enemy.get("kind", ENEMY_GRUB_KIND)))
+	var speed := _enemy_move_speed_for_kind(int(enemy.get("kind", ENEMY_GRUB_KIND)))
+	if bool(enemy.get("uber", false)):
+		speed *= UBER_SPEED_MULT
+	return speed
 
 
 func _enemy_move_speed_for_kind(kind: int) -> float:
@@ -3252,6 +3401,8 @@ func _enemy_move_speed_for_kind(kind: int) -> float:
 		ratio = ENEMY_BROOD_POD_SPEED_RATIO
 	elif kind == ENEMY_BOSS_KIND:
 		ratio = ENEMY_BOSS_SPEED_RATIO
+	elif kind == ENEMY_REAPER_KIND:
+		ratio = REAPER_SPEED_RATIO
 	var floor_bonus := 0.0
 	return _player_dig_speed() * (ratio + floor_bonus)
 
@@ -3352,6 +3503,11 @@ func _crush_at(pos: Vector2i, fall_distance: int) -> void:
 		if _enemy_crushed_by_rock(enemies[i], pos, fall_distance):
 			var dead_pos: Vector2i = enemies[i]["pos"]
 			var dead_kind := int(enemies[i].get("kind", ENEMY_GRUB_KIND))
+			if dead_kind == ENEMY_REAPER_KIND:
+				_add_cell_pulse(dead_pos, ENEMY_REAPER, PULSE_FEEDBACK_TIME + 0.2, 1.4, true)
+				_shake(0.18)
+				message = "The Reaper passes through the stone."
+				continue
 			if dead_kind == ENEMY_BOSS_KIND:
 				var boss_damage := 8 + mini(fall_distance, 4) * 2
 				enemies[i]["hp"] -= boss_damage
@@ -3687,6 +3843,7 @@ func _upgrade_pool() -> Array:
 
 
 func _offer_upgrades() -> void:
+	show_upgrade_inventory = false
 	upgrade_choices.clear()
 	var pool := _available_upgrade_pool()
 	var heal_choice := _upgrade_by_id(HEAL_UPGRADE_ID)
@@ -4442,7 +4599,7 @@ func _draw_actors() -> void:
 		_draw_rock_sprite(center)
 
 	for enemy in enemies:
-		var view_padding := 68.0 if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND else 44.0
+		var view_padding := 78.0 if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND else (68.0 if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND else 44.0)
 		if not _visual_intersects_board_view(_dict_visual(enemy), view_padding):
 			continue
 		var center := _visual_to_center(_dict_visual(enemy))
@@ -4468,6 +4625,8 @@ func _draw_actors() -> void:
 			color = color.lerp(THUNDER, 0.34)
 		if inflated:
 			color = color.lerp(PRESSURE, 0.45)
+		if bool(enemy.get("uber", false)):
+			color = color.lerp(Color.WHITE, 0.28 + sin(anim_time * 8.0) * 0.08)
 		if enemy["phasing"]:
 			center += Vector2(0.0, sin(anim_time * 7.5) * 1.5)
 			color = color.lerp(DIRT, 0.32)
@@ -4481,6 +4640,8 @@ func _draw_actors() -> void:
 			body_radius = 17.0 + pressure_ratio * 7.0 + hit_phase * 4.0
 			if float(enemy.get("boss_hurt_flash", 0.0)) > 0.0:
 				color = color.lerp(Color.WHITE, 0.55)
+		elif int(enemy["kind"]) == ENEMY_REAPER_KIND:
+			body_radius = 20.0 + sin(anim_time * 5.0) * 1.5
 		if pressure_ratio > 0.0 or inflated:
 			var glow := PRESSURE
 			glow.a = 0.14 + pressure_ratio * 0.24
@@ -4515,6 +4676,14 @@ func _draw_actors() -> void:
 			_draw_pixel_ring(center, body_radius + 4.0, pod_glow, 3)
 		elif enemy["kind"] == ENEMY_BOSS_KIND:
 			_draw_boss_health_bar(center, enemy)
+		elif enemy["kind"] == ENEMY_REAPER_KIND:
+			var aura := ENEMY_REAPER
+			aura.a = 0.42 + sin(anim_time * 6.0) * 0.12
+			_draw_pixel_ring(center, body_radius + 6.0, aura, 4)
+		if bool(enemy.get("uber", false)):
+			var uber_glow := RUPTURE.lerp(Color.WHITE, 0.35)
+			uber_glow.a = 0.42
+			_draw_pixel_ring(center, body_radius + 6.0, uber_glow, 2)
 
 	var pc := _visual_to_center(player_visual_pos)
 	_draw_player(pc)
@@ -4727,6 +4896,8 @@ func _draw_ui() -> void:
 		_draw_center_modal("Run ended", message, _restart_prompt_text())
 	elif state == STATE_WIN:
 		_draw_center_modal("Extraction complete", "Score %d with %d gems." % [score, gems_collected], _restart_prompt_text())
+	elif show_upgrade_inventory:
+		_draw_upgrade_inventory_panel()
 
 
 func _draw_portrait_hud() -> void:
@@ -4746,28 +4917,16 @@ func _draw_portrait_hud() -> void:
 
 	_text(Vector2(436, 37), "HP", 13, Color("#ff8fa3"))
 	_draw_hearts(Vector2(466, 26))
-	_text(Vector2(436, 70), "GEMS %d" % gem_bank, 16, GEM)
 
 
 func _draw_portrait_status_panel() -> void:
 	_draw_pixel_panel(STATUS_RECT, UI_PANEL, UI_PANEL_EDGE)
-	_text(Vector2(28, 628), "STATUS", 15, UI_PANEL_HILITE)
+	_text(Vector2(28, 628), "UPGRADES", 15, UI_PANEL_HILITE)
 	if message != "":
 		_text(Vector2(104, 630), message, 16, WARN)
 
-	var chip_y := 650.0
-	_draw_small_stat_chip(Vector2(26, chip_y), "SCORE", "%06d" % score, UI)
-	_draw_small_stat_chip(Vector2(146, chip_y), "GEMS", "%d/%d" % [gem_bank, gems_collected], GEM)
-	_draw_small_stat_chip(Vector2(266, chip_y), "FOES", "%d %d/%d" % [floor_kills, enemies.size(), _spawn_cap()], WARN)
-	_draw_small_stat_chip(Vector2(386, chip_y), "ROCK", "%d/%d" % [rocks.size(), _rock_cap()], ROCK)
-	_draw_small_stat_chip(Vector2(506, chip_y), "RELIC", "%d/%d" % [floor_relics_found, floor_relics_found + floor_relics.size()], RUPTURE)
-
-	_draw_element_icon(Vector2(28, 696), _lance_color())
-	_text(Vector2(60, 714), "LANCE R%d D%d" % [_effective_lance_range(), _effective_lance_damage()], 16, MUTED)
-	_text(Vector2(180, 714), _lance_element_label().to_upper(), 16, _lance_color())
-	var detail := _status_detail_string()
-	if detail != "":
-		_text(Vector2(292, 714), _trim_status_text(detail), 14, Color("#f7df86"))
+	_draw_upgrade_summary(Vector2(28, 662), 390.0, 3)
+	_draw_touch_button(_inventory_button_rect(), "UPGRADES", PRESSURE, show_upgrade_inventory)
 	_draw_crush_toast()
 
 
@@ -4779,7 +4938,7 @@ func _draw_mobile_controls() -> void:
 
 
 func _draw_desktop_ui() -> void:
-	_draw_pixel_panel(Rect2(Vector2(680, 52), Vector2(250, 506)), UI_PANEL, UI_PANEL_EDGE)
+	_draw_pixel_panel(Rect2(Vector2(680, 52), Vector2(250, 344)), UI_PANEL, UI_PANEL_EDGE)
 	_draw_pixel_panel(Rect2(Vector2(18, 18), Vector2(378, 34)), Color("#11121a"), UI_PANEL_EDGE)
 	_text(Vector2(32, 42), "DIGGY: CAVERNS OF CHANCE", 24, UI)
 
@@ -4791,25 +4950,13 @@ func _draw_desktop_ui() -> void:
 	_text(Vector2(700, 126), "LV %d  XP %d / %d" % [player_level, xp, xp_to_next], 18, PRESSURE)
 	_draw_pixel_bar(Vector2(700, 142), Vector2(196, 10), xp_ratio, PRESSURE, Color("#29313a"))
 
-	_draw_stat_chip(Vector2(700, 174), "SCORE", "%06d" % score, UI)
-	_draw_stat_chip(Vector2(700, 208), "GEMS", "%d / %d" % [gem_bank, gems_collected], GEM)
-	_draw_stat_chip(Vector2(700, 242), "FOES", "%d  %d/%d" % [floor_kills, enemies.size(), _spawn_cap()], WARN)
-	_draw_stat_chip(Vector2(700, 276), "ROCK", "%d / %d" % [rocks.size(), _rock_cap()], ROCK)
-	_draw_stat_chip(Vector2(700, 310), "RELIC", "%d / %d" % [floor_relics_found, floor_relics_found + floor_relics.size()], RUPTURE)
-
-	_text(Vector2(700, 354), "HP", 15, Color("#ff8fa3"))
-	_draw_hearts(Vector2(742, 342))
-	_draw_element_icon(Vector2(700, 382), _lance_color())
-	_text(Vector2(730, 399), "LANCE R%d D%d" % [_effective_lance_range(), _effective_lance_damage()], 16, MUTED)
-	_text(Vector2(730, 421), _lance_element_label().to_upper(), 16, _lance_color())
-	if _status_detail_string() != "":
-		_text(Vector2(700, 467), _trim_status_text(_status_detail_string()), 14, Color("#f7df86"))
+	_text(Vector2(700, 184), "HP", 15, Color("#ff8fa3"))
+	_draw_hearts(Vector2(742, 172))
+	_text(Vector2(700, 230), "UPGRADES", 15, UI_PANEL_HILITE)
+	_draw_upgrade_summary(Vector2(700, 260), 196.0, 3)
+	_draw_touch_button(_inventory_button_rect(), "UPGRADES", PRESSURE, show_upgrade_inventory)
 	if message != "":
 		_text(Vector2(24, 594), message, 18, WARN)
-
-	_draw_keycap(Vector2(700, 532), "WASD", "MOVE")
-	_draw_keycap(Vector2(776, 532), "SPACE", "LANCE")
-	_draw_keycap(Vector2(858, 532), "E", "BEACON")
 
 
 func _draw_dpad() -> void:
@@ -4829,6 +4976,92 @@ func _draw_touch_button(rect: Rect2, label: String, color: Color, active: bool) 
 	var text_color := color.lightened(0.2) if not active else UI
 	var label_pos := rect.position + Vector2(16, rect.size.y * 0.58)
 	_text(label_pos, label, 18 if rect.size.x < 100.0 else 21, text_color)
+
+
+func _draw_upgrade_summary(pos: Vector2, _width: float, max_rows: int) -> void:
+	var upgrades := _current_upgrade_entries()
+	if upgrades.is_empty():
+		_text(pos, "None yet", 15, MUTED)
+		return
+	var rows := mini(max_rows, upgrades.size())
+	for i in range(rows):
+		var upgrade: Dictionary = upgrades[i]
+		var label := String(upgrade["name"])
+		if String(upgrade.get("source", "")) == "RUN":
+			label += " *"
+		_text(pos + Vector2(0, float(i) * 22.0), _trim_text(label, 22), 15, Color("#f7df86"))
+	if upgrades.size() > rows:
+		_text(pos + Vector2(0, float(rows) * 22.0), "+%d more" % (upgrades.size() - rows), 14, MUTED)
+
+
+func _draw_upgrade_inventory_panel() -> void:
+	var rect := _inventory_panel_rect()
+	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color("#05060aaa"))
+	_draw_pixel_panel(rect, Color("#111820ee"), Color("#d8c27a"))
+	_text(rect.position + Vector2(28, 44), "Upgrade Inventory", 28, UI)
+	var upgrades := _current_upgrade_entries()
+	if upgrades.is_empty():
+		_text(rect.position + Vector2(30, 100), "No upgrades yet.", 18, MUTED)
+	else:
+		var columns := 3 if rect.size.x >= 760.0 else 2
+		var column_width := floorf((rect.size.x - 60.0) / float(columns))
+		var row_height := 42.0
+		var start := rect.position + Vector2(30, 84)
+		var rows_per_column := maxi(1, floori((rect.size.y - 164.0) / row_height))
+		for i in range(upgrades.size()):
+			var column := floori(float(i) / float(rows_per_column))
+			if column >= columns:
+				break
+			var row := i % rows_per_column
+			var item_pos := start + Vector2(float(column) * column_width, float(row) * row_height)
+			var upgrade: Dictionary = upgrades[i]
+			var name := String(upgrade["name"])
+			if String(upgrade.get("source", "")) == "RUN":
+				name += " *"
+			_text(item_pos, _trim_text(name, 24), 16, Color("#f7df86"))
+			_text(item_pos + Vector2(0, 24), _trim_text(String(upgrade["desc"]), 34), 12, MUTED)
+		if upgrades.size() > rows_per_column * columns:
+			_text(rect.position + Vector2(30, rect.size.y - 78), "+%d more upgrades" % (upgrades.size() - rows_per_column * columns), 13, MUTED)
+	_draw_touch_button(_inventory_close_rect(), "CLOSE", MUTED, false)
+
+
+func _inventory_button_rect() -> Rect2:
+	if show_touch_controls:
+		return Rect2(Vector2(430, 654), Vector2(128, 42))
+	return DESKTOP_INVENTORY_BUTTON_RECT
+
+
+func _inventory_panel_rect() -> Rect2:
+	if show_touch_controls:
+		return Rect2(Vector2(28, 126), Vector2(584, 500))
+	return Rect2(Vector2(60, 64), Vector2(840, 540))
+
+
+func _inventory_close_rect() -> Rect2:
+	if show_touch_controls:
+		return Rect2(Vector2(214, 560), Vector2(212, 48))
+	return INVENTORY_CLOSE_RECT
+
+
+func _current_upgrade_entries() -> Array:
+	var entries := []
+	for upgrade in _upgrade_pool():
+		var id := String(upgrade["id"])
+		if owned_upgrades.has(id):
+			var owned_entry: Dictionary = upgrade.duplicate()
+			owned_entry["source"] = "OWNED"
+			entries.append(owned_entry)
+		elif temp_upgrades.has(id):
+			var temp_entry: Dictionary = upgrade.duplicate()
+			temp_entry["source"] = "RUN"
+			entries.append(temp_entry)
+	return entries
+
+
+func _trim_text(value: String, max_chars: int) -> String:
+	if value.length() <= max_chars:
+		return value
+	return value.substr(0, maxi(0, max_chars - 2)) + ".."
 
 
 func _draw_restart_button() -> void:
@@ -5063,6 +5296,8 @@ func _enemy_color_for_kind(kind: int) -> Color:
 			return ENEMY_BROOD_POD
 		ENEMY_BOSS_KIND:
 			return ENEMY_BOSS
+		ENEMY_REAPER_KIND:
+			return ENEMY_REAPER
 		_:
 			return ENEMY_GRUB
 
@@ -5277,8 +5512,18 @@ func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool
 			"AXXXXA.",
 			".AFAF."
 		]
+	elif kind == ENEMY_REAPER_KIND:
+		rows = [
+			"..AAA..",
+			".XXXXX.",
+			"XXEXEXX",
+			"XXXXXXX",
+			".XXXXX.",
+			"..X.X..",
+			".A...A."
+		]
 	var px := 4 if inflated else 3
-	if kind == ENEMY_BOSS_KIND:
+	if kind == ENEMY_BOSS_KIND or kind == ENEMY_REAPER_KIND:
 		px = 4
 	if hit_phase > 0.35:
 		px += 1
@@ -5287,6 +5532,8 @@ func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool
 		accent = FIRE
 	elif kind == ENEMY_BOSS_KIND:
 		accent = RUPTURE
+	elif kind == ENEMY_REAPER_KIND:
+		accent = Color("#69708c")
 	var palette := {
 		"X": color,
 		"E": Color("#101018"),
@@ -5635,6 +5882,9 @@ func _freeze_enemy(enemy_i: int, duration: float) -> void:
 	if enemy_i < 0 or enemy_i >= enemies.size():
 		return
 	var enemy: Dictionary = enemies[enemy_i]
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND:
+		_add_cell_pulse(enemy["pos"], ENEMY_REAPER, PULSE_FEEDBACK_TIME, 1.0, true)
+		return
 	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND:
 		var boss_duration := minf(duration * BOSS_FREEZE_DURATION_MULT, BOSS_FREEZE_DURATION_MAX)
 		enemy["frozen"] = maxf(float(enemy.get("frozen", 0.0)), boss_duration)
@@ -5690,6 +5940,9 @@ func _ignite_enemy(enemy_i: int, duration: float) -> void:
 	if enemy_i < 0 or enemy_i >= enemies.size():
 		return
 	var enemy: Dictionary = enemies[enemy_i]
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND:
+		_add_cell_pulse(enemy["pos"], ENEMY_REAPER, PULSE_FEEDBACK_TIME, 1.0, true)
+		return
 	enemy["burning"] = maxf(float(enemy.get("burning", 0.0)), duration)
 	enemy["burn_tick"] = minf(float(enemy.get("burn_tick", FIRE_BURN_TICK)), FIRE_BURN_TICK)
 	enemy["frozen"] = 0.0
@@ -5728,6 +5981,9 @@ func _shock_enemy(enemy_i: int, duration: float, full_strength := false) -> void
 	if enemy_i < 0 or enemy_i >= enemies.size():
 		return
 	var enemy: Dictionary = enemies[enemy_i]
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND:
+		_add_cell_pulse(enemy["pos"], ENEMY_REAPER, PULSE_FEEDBACK_TIME, 1.0, true)
+		return
 	var stun_time := duration if full_strength else duration * 0.65
 	enemy["shocked"] = maxf(float(enemy.get("shocked", 0.0)), stun_time)
 	enemy["stun"] = maxf(float(enemy.get("stun", 0.0)), stun_time)
@@ -5851,6 +6107,11 @@ func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: Strin
 	if enemy_i < 0 or enemy_i >= enemies.size():
 		return false
 	var enemy: Dictionary = enemies[enemy_i]
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND:
+		_add_cell_pulse(enemy["pos"], ENEMY_REAPER, PULSE_FEEDBACK_TIME + 0.12, 1.25, true)
+		_shake(0.12)
+		message = "It cannot be stopped."
+		return true
 	var was_frozen := float(enemy.get("frozen", 0.0)) > 0.0
 	var was_burning := float(enemy.get("burning", 0.0)) > 0.0
 	var was_thundered := _active_lance_element() == LANCE_ELEMENT_THUNDER
@@ -5912,6 +6173,9 @@ func _burst_nearby_enemies(center: Vector2i, damage: int, radius: int, text: Str
 	for i in range(enemies.size() - 1, -1, -1):
 		var enemy_pos: Vector2i = enemies[i]["pos"]
 		if enemy_pos == center or enemy_pos.distance_squared_to(center) > radius * radius:
+			continue
+		if int(enemies[i].get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND:
+			_add_cell_pulse(enemy_pos, ENEMY_REAPER, PULSE_FEEDBACK_TIME, 1.0, true)
 			continue
 		if _is_behind_lance_target(center, enemy_pos):
 			continue
