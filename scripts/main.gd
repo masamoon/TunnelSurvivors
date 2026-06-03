@@ -143,7 +143,7 @@ const LANCE_ELEMENT_FIRE := "fire"
 const LANCE_ELEMENT_THUNDER := "thunder"
 const ICE_FREEZE_DURATION := 2.0
 const ICE_FRONT_CHILL_DURATION := 0.55
-const FIRE_BURN_DURATION := 4.0
+const FIRE_BURN_DURATION := 1.35
 const FIRE_BURN_TICK := 0.85
 const FIRE_SPREAD_RADIUS := 1
 const THUNDER_STUN_DURATION := 0.62
@@ -2702,7 +2702,7 @@ func _upgrade_pool() -> Array:
 		{"id": "ice_shatter", "name": "Shatter Core", "desc": "Frozen kills burst damage nearby enemies."},
 		{"id": "ice_brittle", "name": "Brittle Frost", "desc": "Lance hits frozen enemies harder."},
 		{"id": "ice_lock", "name": "Permafrost", "desc": "Freeze and frost locks last longer."},
-		{"id": "fire_tip", "name": "Kindling Tip", "desc": "Choose Fire. Lance scorches and ignites enemies."},
+		{"id": "fire_tip", "name": "Kindling Tip", "desc": "Choose Fire. Lance ignites enemies; burning targets scorch."},
 		{"id": "fire_spread", "name": "Flashover", "desc": "Burning enemies can ignite one neighbor."},
 		{"id": "fire_burst", "name": "Backdraft", "desc": "Burning kills burst damage nearby enemies."},
 		{"id": "fire_heat", "name": "Hotter Burn", "desc": "Burns last longer."},
@@ -4382,9 +4382,10 @@ func _apply_lance_element(enemy_i: int, hit_pos: Vector2i, shot_damage: int) -> 
 			_add_cell_pulse(hit_pos, ICE, PULSE_FEEDBACK_TIME + 0.08, 1.0)
 			message = "Frozen."
 		LANCE_ELEMENT_FIRE:
+			var was_burning := enemy_i >= 0 and enemy_i < enemies.size() and float(enemies[enemy_i].get("burning", 0.0)) > 0.0
 			_ignite_enemy(enemy_i, FIRE_BURN_DURATION + _effective_burn_duration_bonus())
 			_add_cell_pulse(hit_pos, FIRE, PULSE_FEEDBACK_TIME + 0.08, 1.0)
-			if not _fire_scorch_enemy(enemy_i, hit_pos):
+			if was_burning and not _fire_scorch_enemy(enemy_i, hit_pos):
 				return false
 			message = "Ignited."
 		LANCE_ELEMENT_THUNDER:
@@ -4435,7 +4436,7 @@ func _ignite_enemy(enemy_i: int, duration: float) -> void:
 		return
 	var enemy: Dictionary = enemies[enemy_i]
 	enemy["burning"] = maxf(float(enemy.get("burning", 0.0)), duration)
-	enemy["burn_tick"] = minf(float(enemy.get("burn_tick", FIRE_BURN_TICK * 0.55)), FIRE_BURN_TICK * 0.55)
+	enemy["burn_tick"] = minf(float(enemy.get("burn_tick", FIRE_BURN_TICK)), FIRE_BURN_TICK)
 	enemy["frozen"] = 0.0
 	enemy["frost_lock"] = 0.0
 	enemy["inflated"] = false
