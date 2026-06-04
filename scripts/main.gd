@@ -2456,6 +2456,12 @@ func _is_brood_queen(enemy: Dictionary) -> bool:
 	return int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND and int(enemy.get("boss_variant", 0)) == 0
 
 
+func _award_boss_defeat_reward(enemy: Dictionary) -> void:
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) != ENEMY_BOSS_KIND:
+		return
+	lance_damage += 1
+
+
 func _break_brood_queen_lance_lock(enemy_i: int) -> void:
 	if enemy_i < 0 or enemy_i >= enemies.size():
 		return
@@ -2564,6 +2570,7 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
 		var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
 		floor_kills += 1
 		_award_enemy_score_at(dead_pos, 80 + floor_index * 10, "Rupture")
+		_award_boss_defeat_reward(enemy)
 		enemies.remove_at(enemy_i)
 		_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind))
 		_add_rupture_feedback(dead_pos)
@@ -3676,6 +3683,7 @@ func _crush_at(pos: Vector2i, fall_distance: int) -> void:
 			if dead_kind == ENEMY_BOSS_KIND:
 				xp_award += 12
 			_add_rupture_feedback(dead_pos)
+			_award_boss_defeat_reward(enemies[i])
 			enemies.remove_at(i)
 			floor_kills += 1
 			floor_boulder_kills += 1
@@ -3976,7 +3984,7 @@ func _upgrade_pool() -> Array:
 		{"id": "thunder_wire", "name": "Live Wire", "desc": "Thunder chain hits deal more damage."},
 		{"id": "thunder_field", "name": "Static Field", "desc": "Thunder hits stun nearby enemies."},
 		{"id": "range", "name": "Longer Shaft", "desc": "+1 lance range."},
-		{"id": "damage", "name": "Heavy Head", "desc": "+1 lance damage."},
+		{"id": "damage", "name": "Heavy Head", "desc": "Boss reward: +1 lance damage."},
 		{"id": "barbed_head", "name": "Barbed Head", "desc": "Lance pins enemies longer."},
 		{"id": "pierce", "name": "Piercing Tip", "desc": "On lance kill, hits next enemy straight ahead."},
 		{"id": "quick_reel", "name": "Quick Reel", "desc": "Lance recovers faster."},
@@ -4061,7 +4069,7 @@ func _upgrade_is_available(id: String) -> bool:
 	if id == HEAL_UPGRADE_ID:
 		return true
 	if id == "damage":
-		return true
+		return false
 	if owned_upgrades.has(id) or temp_upgrades.has(id):
 		return false
 	var element := _upgrade_element(id)
@@ -6324,6 +6332,7 @@ func _fire_scorch_enemy(enemy_i: int, hit_pos: Vector2i) -> bool:
 		return true
 	var dead_pos: Vector2i = enemy["pos"]
 	var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+	_award_boss_defeat_reward(enemy)
 	enemies.remove_at(enemy_i)
 	floor_kills += 1
 	_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind))
@@ -6407,6 +6416,7 @@ func _tick_burning_enemy(enemy_i: int) -> bool:
 		return true
 	var dead_pos: Vector2i = enemy["pos"]
 	var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+	_award_boss_defeat_reward(enemy)
 	enemies.remove_at(enemy_i)
 	floor_kills += 1
 	_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind))
@@ -6491,6 +6501,7 @@ func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: Strin
 		var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
 		floor_kills += 1
 		_award_enemy_score_at(dead_pos, 80 + floor_index * 10, "Rupture")
+		_award_boss_defeat_reward(enemy)
 		enemies.remove_at(enemy_i)
 		_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind))
 		_add_rupture_feedback(dead_pos)
@@ -6545,6 +6556,7 @@ func _burst_nearby_enemies(center: Vector2i, damage: int, radius: int, text: Str
 			var dead_pos: Vector2i = enemies[i]["pos"]
 			var dead_kind := int(enemies[i].get("kind", ENEMY_GRUB_KIND))
 			var xp_drop := _enemy_xp_drop(enemies[i], dead_kind)
+			_award_boss_defeat_reward(enemies[i])
 			enemies.remove_at(i)
 			floor_kills += 1
 			_drop_xp(dead_pos, xp_drop)
