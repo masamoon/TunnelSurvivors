@@ -4,6 +4,10 @@ const BOARD_W := 22
 const BOARD_H := 34
 const BOARD_VIEW_H := 17
 const CELL := 28
+const MOBILE_LAYOUT_W := 640
+const MOBILE_BASE_H := 960
+const DESKTOP_BASE_W := 960
+const DESKTOP_BASE_H := 640
 const BOARD_PX_W := BOARD_W * CELL
 const BOARD_PX_H := BOARD_H * CELL
 const BOARD_VIEW_PX_H := BOARD_VIEW_H * CELL
@@ -14,6 +18,7 @@ const STATUS_RECT := Rect2(Vector2(12, 604), Vector2(616, 140))
 const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 320), Vector2(196, 44))
 const INVENTORY_CLOSE_RECT := Rect2(Vector2(690, 544), Vector2(168, 44))
 const MOBILE_DPAD_CENTER := Vector2(140, 822)
+const MOBILE_STATUS_H := 112
 const MOBILE_DPAD_BUTTON := 64
 const MOBILE_DPAD_GAP := 8
 const MOBILE_LANCE_RECT := Rect2(Vector2(396, 790), Vector2(208, 128))
@@ -31,8 +36,6 @@ const DIG_SUBCELL_COUNT := DIG_SUBDIV * DIG_SUBDIV
 const DIG_FULL_MASK := (1 << DIG_SUBCELL_COUNT) - 1
 const DIG_PROMOTE_SUBCELLS := DIG_SUBDIV * 2
 const PLAYER_DIG_FOOTPRINT := CELL
-const TUNNEL_CENTER_SIZE := CELL * 0.58
-const TUNNEL_CORRIDOR_WIDTH := CELL * 0.46
 const TUNNEL_DIR_RIGHT := 1
 const TUNNEL_DIR_LEFT := 2
 const TUNNEL_DIR_DOWN := 4
@@ -58,8 +61,8 @@ const STATE_GAME_OVER := 2
 const STATE_WIN := 3
 
 const RUN_GOAL_TIME := 8.0 * 60.0
-const XP_BASE_TO_NEXT := 7
-const XP_GROWTH := 5
+const XP_BASE_TO_NEXT := 8
+const XP_GROWTH := 6
 const XP_PICKUP_RADIUS := 0.52
 const XP_MAGNET_RADIUS := 2.35
 const XP_MAGNET_SPEED := 6.5
@@ -169,6 +172,7 @@ const BOSS_MAX_HP := 42
 const BOSS_FREEZE_DURATION_MULT := 0.22
 const BOSS_FREEZE_DURATION_MAX := 0.55
 const BOSS_CHILL_DURATION_MULT := 0.18
+const BOSS_LANCE_PUMP_LIMIT := 3
 const UBER_START_TIME := RUN_GOAL_TIME * 0.5
 const UBER_CHANCE_BASE := 0.18
 const UBER_CHANCE_MAX := 0.46
@@ -182,6 +186,8 @@ const DIG_FEEDBACK_TIME := 0.34
 const PULSE_FEEDBACK_TIME := 0.42
 const ZAP_FEEDBACK_TIME := 0.30
 const BOULDER_CRUSH_FEEDBACK_TIME := 0.85
+const BOULDER_FANFARE_MAX_TIER := 5
+const BOULDER_FANFARE_SAMPLE_RATE := 22050
 const ATTACK_RECOVERY_DELAY := 0.32
 const ATTACK_FLASH_TIME := 0.32
 const LANCE_HIT_DELAY := 0.10
@@ -207,7 +213,6 @@ const BASE_DIG_DELAY_MULT := 1.0
 const PLAYER_CENTER_EPS := 0.015
 const PLAYER_TARGET_GATE := 0.22
 const PLAYER_TURN_GATE := 0.22
-const TUNNEL_HALF_WIDTH := TUNNEL_CORRIDOR_WIDTH * 0.5
 const COMBO_WINDOW := 2.2
 const SHOP_SKIP_KEY_TEXT := "0 / Enter skips"
 const BG := Color("#090b12")
@@ -298,6 +303,8 @@ var player_dug_cells := {}
 var pulse_feedback := []
 var crush_feedback := []
 var zap_feedback := []
+var crush_sfx_players: Array[AudioStreamPlayer] = []
+var crush_sfx_next := 0
 var mobile_touch_dirs := {}
 var mobile_move_dir := Vector2i.ZERO
 var show_touch_controls := true
@@ -337,6 +344,7 @@ var lance_blocking_cell := Vector2i.ZERO
 var lance_has_blocker := false
 var lance_pump_timer := 0.0
 var lance_pump_damage := 1
+var lance_pump_count := 0
 var lance_has_struck := false
 var lance_pulse_queued := false
 var hurt_flash := 0.0
@@ -437,8 +445,103 @@ var floor_damage_taken := 0
 func _ready() -> void:
 	font = ThemeDB.get_fallback_font()
 	rng.randomize()
+	_setup_crush_audio()
+	_refresh_touch_control_visibility()
+	_apply_content_scale()
 	_refresh_touch_control_visibility()
 	_new_run()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_SIZE_CHANGED:
+		call_deferred("_handle_viewport_changed")
+
+
+func _handle_viewport_changed() -> void:
+	var had_touch_controls := show_touch_controls
+	_refresh_touch_control_visibility()
+	_apply_content_scale()
+	_refresh_touch_control_visibility()
+	if had_touch_controls != show_touch_controls:
+		_clear_mobile_input()
+	queue_redraw()
+
+
+func _setup_crush_audio() -> void:
+	if not crush_sfx_players.is_empty():
+		return
+	for i in range(4):
+		var player := AudioStreamPlayer.new()
+		player.bus = "Master"
+		player.volume_db = -8.0
+		add_child(player)
+		crush_sfx_players.append(player)
+
+
+func _play_crush_fanfare(tier: int) -> void:
+	if crush_sfx_players.is_empty():
+		return
+	var player := crush_sfx_players[crush_sfx_next]
+	crush_sfx_next = (crush_sfx_next + 1) % crush_sfx_players.size()
+	player.stop()
+	player.stream = _build_crush_fanfare_stream(clampi(tier, 1, BOULDER_FANFARE_MAX_TIER))
+	player.play()
+
+
+func _build_crush_fanfare_stream(tier: int) -> AudioStreamWAV:
+	var notes := []
+	notes.append({"freq": 82.41, "duration": 0.055, "volume": 0.46})
+	notes.append({"freq": 123.47, "duration": 0.045, "volume": 0.30})
+	if tier >= 2:
+		var melody := [329.63, 392.0, 493.88, 659.25, 783.99]
+		for i in range(tier):
+			notes.append({
+				"freq": melody[i],
+				"duration": 0.055 + float(i) * 0.008,
+				"volume": 0.24 + float(tier) * 0.025
+			})
+		notes.append({
+			"freq": melody[tier - 1] * 1.5,
+			"duration": 0.08 + float(tier) * 0.01,
+			"volume": 0.22 + float(tier) * 0.03
+		})
+
+	var data := PackedByteArray()
+	var global_sample := 0
+	for note_i in range(notes.size()):
+		var note: Dictionary = notes[note_i]
+		var sample_count := roundi(float(note["duration"]) * float(BOULDER_FANFARE_SAMPLE_RATE))
+		for s in range(sample_count):
+			var t := float(s) / float(BOULDER_FANFARE_SAMPLE_RATE)
+			var progress := float(s) / float(maxi(1, sample_count - 1))
+			var envelope := minf(1.0, progress * 9.0) * (1.0 - progress * 0.62)
+			var freq := float(note["freq"])
+			var square := 1.0 if fmod(t * freq, 1.0) < 0.5 else -1.0
+			var buzz := 0.0
+			if tier >= 4:
+				buzz = (1.0 if fmod(t * freq * 2.0, 1.0) < 0.5 else -1.0) * 0.18
+			var noise := (float((global_sample * 37 + note_i * 101) % 23) / 11.5 - 1.0) * 0.10
+			var wave := (square + buzz + noise) * float(note["volume"]) * envelope
+			_append_s16_sample(data, clampi(roundi(wave * 32767.0), -32768, 32767))
+			global_sample += 1
+		for s in range(roundi(0.012 * float(BOULDER_FANFARE_SAMPLE_RATE))):
+			_append_s16_sample(data, 0)
+			global_sample += 1
+
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = BOULDER_FANFARE_SAMPLE_RATE
+	stream.stereo = false
+	stream.data = data
+	return stream
+
+
+func _append_s16_sample(data: PackedByteArray, sample: int) -> void:
+	var packed := sample
+	if packed < 0:
+		packed += 65536
+	data.append(packed & 0xff)
+	data.append((packed >> 8) & 0xff)
 
 
 func _new_run() -> void:
@@ -526,6 +629,7 @@ func _start_floor() -> void:
 	lance_has_blocker = false
 	lance_pump_timer = 0.0
 	lance_pump_damage = _effective_lance_damage()
+	lance_pump_count = 0
 	lance_has_struck = false
 	lance_pulse_queued = false
 	temp_lance_range = 0
@@ -1165,6 +1269,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_choose_upgrade(1)
 		elif event.keycode == KEY_3 or event.keycode == KEY_KP_3:
 			_choose_upgrade(2)
+		elif event.keycode == KEY_4 or event.keycode == KEY_KP_4:
+			_choose_upgrade(3)
 		elif event.keycode == KEY_0 or event.keycode == KEY_KP_0 or event.keycode == KEY_E or event.keycode == KEY_ENTER:
 			_skip_upgrade_shop()
 	elif state == STATE_GAME_OVER or state == STATE_WIN:
@@ -1187,9 +1293,15 @@ func _read_move_dir() -> Vector2i:
 
 
 func _refresh_touch_control_visibility() -> void:
+	show_touch_controls = _should_show_touch_controls()
+	if not show_touch_controls:
+		_clear_mobile_input()
+
+
+func _should_show_touch_controls() -> bool:
 	var viewport_size := get_viewport_rect().size
 	var portrait_touch := DisplayServer.is_touchscreen_available() and viewport_size.y >= viewport_size.x
-	show_touch_controls = (
+	return (
 		OS.has_feature("mobile")
 		or OS.has_feature("android")
 		or OS.has_feature("ios")
@@ -1197,8 +1309,14 @@ func _refresh_touch_control_visibility() -> void:
 		or OS.has_feature("web_ios")
 		or portrait_touch
 	)
-	if not show_touch_controls:
-		_clear_mobile_input()
+
+
+func _apply_content_scale() -> void:
+	var desired_size := Vector2i(DESKTOP_BASE_W, DESKTOP_BASE_H)
+	if _should_show_touch_controls():
+		desired_size = Vector2i(MOBILE_LAYOUT_W, MOBILE_BASE_H)
+	if get_window().content_scale_size != desired_size:
+		get_window().content_scale_size = desired_size
 
 
 func _interact_prompt_text() -> String:
@@ -1270,7 +1388,7 @@ func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
 			queue_redraw()
 		return
 
-	if show_touch_controls and MOBILE_RESTART_RECT.has_point(pos):
+	if show_touch_controls and _mobile_restart_rect().has_point(pos):
 		_press_restart()
 		return
 
@@ -1300,7 +1418,7 @@ func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
 	if not show_touch_controls:
 		return
 
-	if MOBILE_LANCE_RECT.has_point(pos):
+	if _mobile_lance_rect().has_point(pos):
 		_press_lance()
 		return
 
@@ -1319,10 +1437,11 @@ func _refresh_mobile_move_dir() -> void:
 
 
 func _direction_from_dpad(pos: Vector2) -> Vector2i:
-	var bounds := Rect2(MOBILE_DPAD_CENTER - Vector2(126, 126), Vector2(252, 252))
+	var center := _mobile_dpad_center()
+	var bounds := Rect2(center - Vector2(126, 126), Vector2(252, 252))
 	if not bounds.has_point(pos):
 		return Vector2i.ZERO
-	var delta := pos - MOBILE_DPAD_CENTER
+	var delta := pos - center
 	if delta.length() < 24.0:
 		return Vector2i.ZERO
 	if absf(delta.x) > absf(delta.y):
@@ -1555,6 +1674,7 @@ func _start_lance() -> void:
 	lance_has_struck = false
 	lance_pulse_queued = false
 	lance_pump_damage = _effective_lance_damage()
+	lance_pump_count = 0
 	if crystal_charge > 0:
 		lance_pump_damage += 1
 		crystal_charge -= 1
@@ -2281,6 +2401,7 @@ func _release_lance(start_recovery := true) -> void:
 	lance_pump_timer = 0.0
 	lance_has_struck = false
 	lance_pulse_queued = false
+	lance_pump_count = 0
 	attack_flash = 0.0
 	last_attack_cells.clear()
 	if start_recovery:
@@ -2315,6 +2436,7 @@ func _pump_lance_target() -> void:
 		_release_lance()
 		return
 	var enemy_pos: Vector2i = enemies[lance_attached_enemy]["pos"]
+	lance_pump_count += 1
 	var alive := _inflate_lance_target(lance_attached_enemy, lance_pump_damage)
 	_add_pressure_feedback(enemy_pos, 1.0)
 	if alive and lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and not bool(enemies[lance_attached_enemy].get("blocked_lance", false)):
@@ -2322,6 +2444,38 @@ func _pump_lance_target() -> void:
 	if not alive:
 		_trigger_pierce_from(enemy_pos, facing, maxi(1, lance_pump_damage - 1))
 		_release_lance()
+	elif lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and _should_brood_queen_break_lance(enemies[lance_attached_enemy]):
+		_break_brood_queen_lance_lock(lance_attached_enemy)
+
+
+func _should_brood_queen_break_lance(enemy: Dictionary) -> bool:
+	return _is_brood_queen(enemy) and lance_pump_count >= BOSS_LANCE_PUMP_LIMIT
+
+
+func _is_brood_queen(enemy: Dictionary) -> bool:
+	return int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND and int(enemy.get("boss_variant", 0)) == 0
+
+
+func _break_brood_queen_lance_lock(enemy_i: int) -> void:
+	if enemy_i < 0 or enemy_i >= enemies.size():
+		return
+	var enemy: Dictionary = enemies[enemy_i]
+	if not _is_brood_queen(enemy):
+		return
+	var pos: Vector2i = enemy["pos"]
+	enemy["inflated"] = false
+	enemy["recover_timer"] = ENEMY_INFLATE_RECOVER_DELAY
+	enemy["stun"] = 0.0
+	enemy["shocked"] = 0.0
+	enemy["frozen"] = 0.0
+	enemy["frost_lock"] = 0.0
+	enemy["hit_flash"] = ENEMY_HIT_FLASH
+	enemy["boss_hurt_flash"] = maxf(float(enemy.get("boss_hurt_flash", 0.0)), 0.32)
+	enemy["timer"] = minf(float(enemy.get("timer", 0.0)), 0.12)
+	_add_cell_pulse(pos, ENEMY_BOSS, PULSE_FEEDBACK_TIME + 0.1, 1.25, true)
+	_shake(0.14)
+	message = "Queen broke free."
+	_release_lance()
 
 
 func _direct_lance_damage_for_enemy(enemy: Dictionary, amount: int) -> int:
@@ -3369,7 +3523,7 @@ func _move_enemy_to(enemy: Dictionary, target: Vector2i, digs := false) -> void:
 	enemy["pos"] = target
 	enemy["visual_speed"] = _enemy_move_speed(enemy)
 	if digs:
-		_clear_soil_capsule_px(_cell_center_px(from_pos), _cell_center_px(target), TUNNEL_HALF_WIDTH)
+		_open_tunnel_step(from_pos, target, false)
 
 
 func _enemy_step_delay(enemy: Dictionary) -> float:
@@ -3824,7 +3978,7 @@ func _upgrade_pool() -> Array:
 		{"id": "range", "name": "Longer Shaft", "desc": "+1 lance range."},
 		{"id": "damage", "name": "Heavy Head", "desc": "+1 lance damage."},
 		{"id": "barbed_head", "name": "Barbed Head", "desc": "Lance pins enemies longer."},
-		{"id": "pierce", "name": "Piercing Tip", "desc": "Lance is better at finishing lined-up enemies."},
+		{"id": "pierce", "name": "Piercing Tip", "desc": "On lance kill, hits next enemy straight ahead."},
 		{"id": "quick_reel", "name": "Quick Reel", "desc": "Lance recovers faster."},
 		{"id": "tunnel_focus", "name": "Tunnel Focus", "desc": "Bonus lance damage in tight tunnels."},
 		{"id": "stun", "name": "Steady Grip", "desc": "Lance control effects last longer."},
@@ -3861,10 +4015,9 @@ func _offer_upgrades() -> void:
 	normal_choices.shuffle()
 	if not heal_choice.is_empty():
 		upgrade_choices.append(heal_choice.duplicate())
-	for i in range(mini(2, normal_choices.size())):
+	for i in range(mini(3, normal_choices.size())):
 		var choice: Dictionary = normal_choices[i].duplicate()
 		upgrade_choices.append(choice)
-	upgrade_choices.shuffle()
 	message = "Choose a relic."
 
 
@@ -3907,6 +4060,8 @@ func _available_upgrade_pool() -> Array:
 func _upgrade_is_available(id: String) -> bool:
 	if id == HEAL_UPGRADE_ID:
 		return true
+	if id == "damage":
+		return true
 	if owned_upgrades.has(id) or temp_upgrades.has(id):
 		return false
 	var element := _upgrade_element(id)
@@ -3934,13 +4089,18 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
 		hp = max_hp
 		message = "Hearts restored."
 		return
-	owned_upgrades[choice["id"]] = true
-	_commit_upgrade_element(choice["id"], false)
-	match choice["id"]:
+	var id := String(choice["id"])
+	if id == "damage":
+		lance_damage += 1
+		message = "Lance hits harder."
+		return
+	owned_upgrades[id] = true
+	_commit_upgrade_element(id, false)
+	match id:
 		"ice_tip":
-			freeze_duration_bonus += 0.25
+			freeze_duration_bonus += 0.35
 		"ice_wall":
-			freeze_duration_bonus += 0.65
+			freeze_duration_bonus += 0.85
 		"ice_front":
 			frost_front += 1
 		"ice_shatter":
@@ -3948,48 +4108,46 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
 		"ice_brittle":
 			brittle_frost += 1
 		"ice_lock":
-			freeze_duration_bonus += 0.35
-			stun_bonus += 0.08
+			freeze_duration_bonus += 0.50
+			stun_bonus += 0.12
 		"fire_tip":
-			burn_duration_bonus += 0.25
+			burn_duration_bonus += 0.35
 		"fire_spread":
 			fire_spread += 1
 		"fire_burst":
 			fire_burst += 1
 		"fire_heat":
-			burn_duration_bonus += 0.75
+			burn_duration_bonus += 0.95
 		"fire_coals":
-			burn_damage_bonus += 1
+			burn_damage_bonus += 2
 		"fire_smoke":
-			fire_stun += 0.35
+			fire_stun += 0.50
 		"thunder_tip":
-			thunder_stun_bonus += 0.10
+			thunder_stun_bonus += 0.16
 		"thunder_chain":
 			thunder_chain += 1
 		"thunder_stun":
-			thunder_stun_bonus += 0.22
+			thunder_stun_bonus += 0.30
 		"thunder_overload":
 			thunder_overload += 1
 		"thunder_wire":
-			thunder_chain_damage += 1
+			thunder_chain_damage += 2
 		"thunder_field":
 			static_field += 1
 		"range":
 			lance_range = mini(lance_range + 1, 5)
-		"damage":
-			lance_damage += 1
 		"barbed_head":
-			lance_hold_bonus += 0.22
+			lance_hold_bonus += 0.34
 		"pierce":
 			piercing_tip += 1
 		"quick_reel":
 			quick_reel += 1
 		"tunnel_focus":
-			tunnel_focus += 1
+			tunnel_focus += 2
 		"stun":
-			stun_bonus += 0.22
+			stun_bonus += 0.30
 		"status_tip":
-			status_damage_bonus += 1
+			status_damage_bonus += 2
 		"field_dressing":
 			max_hp += 1
 			hp = mini(max_hp, hp + 2)
@@ -4010,7 +4168,7 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
 			boulder_chute += 1
 		"rock_ledger":
 			boulder_xp_bonus += 2
-	_register_family_upgrade(choice["id"], source)
+	_register_family_upgrade(id, source)
 
 
 func _apply_temp_upgrade(choice: Dictionary) -> void:
@@ -4018,13 +4176,18 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 		hp = max_hp
 		message = "Hearts restored."
 		return
-	temp_upgrades[choice["id"]] = true
-	_commit_upgrade_element(choice["id"], true)
-	match choice["id"]:
+	var id := String(choice["id"])
+	if id == "damage":
+		temp_lance_damage += 1
+		message = "Found Heavy Head for this run."
+		return
+	temp_upgrades[id] = true
+	_commit_upgrade_element(id, true)
+	match id:
 		"ice_tip":
-			temp_freeze_duration_bonus += 0.25
+			temp_freeze_duration_bonus += 0.35
 		"ice_wall":
-			temp_freeze_duration_bonus += 0.65
+			temp_freeze_duration_bonus += 0.85
 		"ice_front":
 			temp_frost_front += 1
 		"ice_shatter":
@@ -4032,48 +4195,46 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 		"ice_brittle":
 			temp_brittle_frost += 1
 		"ice_lock":
-			temp_freeze_duration_bonus += 0.35
-			temp_stun_bonus += 0.08
+			temp_freeze_duration_bonus += 0.50
+			temp_stun_bonus += 0.12
 		"fire_tip":
-			temp_burn_duration_bonus += 0.25
+			temp_burn_duration_bonus += 0.35
 		"fire_spread":
 			temp_fire_spread += 1
 		"fire_burst":
 			temp_fire_burst += 1
 		"fire_heat":
-			temp_burn_duration_bonus += 0.75
+			temp_burn_duration_bonus += 0.95
 		"fire_coals":
-			temp_burn_damage_bonus += 1
+			temp_burn_damage_bonus += 2
 		"fire_smoke":
-			temp_fire_stun += 0.35
+			temp_fire_stun += 0.50
 		"thunder_tip":
-			temp_thunder_stun_bonus += 0.10
+			temp_thunder_stun_bonus += 0.16
 		"thunder_chain":
 			temp_thunder_chain += 1
 		"thunder_stun":
-			temp_thunder_stun_bonus += 0.22
+			temp_thunder_stun_bonus += 0.30
 		"thunder_overload":
 			temp_thunder_overload += 1
 		"thunder_wire":
-			temp_thunder_chain_damage += 1
+			temp_thunder_chain_damage += 2
 		"thunder_field":
 			temp_static_field += 1
 		"range":
 			temp_lance_range += 1
-		"damage":
-			temp_lance_damage += 1
 		"barbed_head":
-			temp_lance_hold_bonus += 0.22
+			temp_lance_hold_bonus += 0.34
 		"pierce":
 			temp_piercing_tip += 1
 		"quick_reel":
 			temp_quick_reel += 1
 		"tunnel_focus":
-			temp_tunnel_focus += 1
+			temp_tunnel_focus += 2
 		"stun":
-			temp_stun_bonus += 0.25
+			temp_stun_bonus += 0.30
 		"status_tip":
-			temp_status_damage_bonus += 1
+			temp_status_damage_bonus += 2
 		"field_dressing":
 			hp = mini(max_hp, hp + 2)
 		"gem_xp":
@@ -4093,7 +4254,7 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 			temp_boulder_chute += 1
 		"rock_ledger":
 			temp_boulder_xp_bonus += 2
-	message = "Found %s for this run." % _upgrade_name(choice["id"])
+	message = "Found %s for this run." % _upgrade_name(id)
 
 
 func _register_family_upgrade(id: String, source: String) -> void:
@@ -4104,23 +4265,23 @@ func _register_family_upgrade(id: String, source: String) -> void:
 	if count == 3:
 		match family:
 			"ice":
-				freeze_duration_bonus += 0.35
+				freeze_duration_bonus += 0.50
 				bonus_text = "Ice set: deeper freeze."
 			"fire":
-				burn_duration_bonus += 0.35
+				burn_duration_bonus += 0.50
 				bonus_text = "Fire set: hotter burn."
 			"thunder":
-				thunder_stun_bonus += 0.16
+				thunder_stun_bonus += 0.24
 				bonus_text = "Thunder set: stronger stun."
 			"lance":
-				stun_bonus += 0.18
+				stun_bonus += 0.30
 				bonus_text = "Lance set: steadier grip."
 			"gem":
-				gem_xp_bonus += 1
-				bonus_text = "Gem set: richer gems."
+				xp_magnet_bonus += 1
+				bonus_text = "Gem set: stronger pull."
 			"cave":
-				boulder_xp_bonus += 1
-				bonus_text = "Cave set: cleaner crushes."
+				boulder_snare += 1
+				bonus_text = "Cave set: stronger snare."
 	elif count == 5:
 		match family:
 			"ice":
@@ -4131,12 +4292,14 @@ func _register_family_upgrade(id: String, source: String) -> void:
 				bonus_text = "Fire mastery: extra flashover."
 			"thunder":
 				thunder_chain += 1
+				thunder_chain_damage += 1
 				bonus_text = "Thunder mastery: longer chain."
 			"lance":
-				lance_damage += 1
+				lance_damage += 2
 				bonus_text = "Lance mastery: heavier head."
 			"gem":
 				super_gem_bonus += 1
+				extra_gems_bonus += 1
 				bonus_text = "Gem mastery: richer seams."
 			"cave":
 				max_hp += 1
@@ -4146,22 +4309,28 @@ func _register_family_upgrade(id: String, source: String) -> void:
 		match family:
 			"ice":
 				frost_front += 1
+				freeze_duration_bonus += 0.30
 				bonus_text = "Endgame ice: cold front."
 			"fire":
 				fire_burst += 1
+				burn_damage_bonus += 1
 				bonus_text = "Endgame fire: backdraft."
 			"thunder":
 				thunder_overload += 1
+				static_field += 1
 				bonus_text = "Endgame thunder: overload."
 			"lance":
 				quick_reel += 1
+				piercing_tip += 1
 				bonus_text = "Endgame lance: quick reel."
 			"gem":
-				gem_xp_bonus += 2
+				super_gem_bonus += 1
+				extra_gems_bonus += 1
 				bonus_text = "Endgame gems: brilliant seams."
 			"cave":
-				boulder_xp_bonus += 2
-				bonus_text = "Endgame cave: rock ledger."
+				boulder_chute += 1
+				boulder_snare += 1
+				bonus_text = "Endgame cave: deeper chute."
 	if bonus_text != "":
 		message = bonus_text
 	elif source == "floor":
@@ -4175,7 +4344,7 @@ func _upgrade_family(id: String) -> String:
 	if element != "":
 		return element
 	match id:
-		"range", "damage", "stun", "barbed_head", "pierce", "quick_reel", "tunnel_focus", "status_tip":
+		"range", "stun", "barbed_head", "pierce", "quick_reel", "tunnel_focus", "status_tip":
 			return "lance"
 		"gem_xp", "prospector", "gem_vein", "magnet":
 			return "gem"
@@ -4247,10 +4416,11 @@ func _update_camera(delta: float) -> void:
 		camera_y_px = target
 	else:
 		camera_y_px = move_toward(camera_y_px, target, CAMERA_FOLLOW_SPEED * delta)
+	camera_y_px = roundf(camera_y_px)
 
 
 func _snap_camera_to_player() -> void:
-	camera_y_px = _camera_target_y()
+	camera_y_px = roundf(_camera_target_y())
 
 
 func _camera_target_y() -> float:
@@ -4319,17 +4489,19 @@ func _update_tunnel_regrowth(delta: float) -> void:
 		if not _can_regrow_cell(pos):
 			continue
 		_set_tile(pos, TILE_DIRT)
+		_restore_soil_cell_px(pos)
 		_add_cell_pulse(pos, DIRT, PULSE_FEEDBACK_TIME, 0.82)
 		regrown += 1
 
 	if regrown > 0:
-		_rebuild_soil_mask_from_grid()
 		if combo_count < 2 and rng.randf() < 0.35:
 			message = "Old tunnels are closing."
 
 
 func _can_regrow_cell(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _tile(pos) != TILE_TUNNEL:
+		return false
+	if pos.y <= SURFACE_ROW:
 		return false
 	if pos == player_pos or pos == player_target_cell or pos == player_step_from or pos == beacon_pos:
 		return false
@@ -4734,26 +4906,42 @@ func _draw_enemy_lunge_telegraph(enemy: Dictionary) -> void:
 func _draw_lance_cells() -> void:
 	var lance_color := _lance_color()
 	var dark := lance_color.darkened(0.55)
-	dark.a = 0.55
+	dark.a = 0.68
 	var hot := lance_color.lerp(Color.WHITE, 0.45)
 	hot.a = 0.82
 	var flicker := 0.5 + sin(anim_time * 22.0) * 0.5
 	var dir := Vector2(facing)
 	if dir == Vector2.ZERO:
 		dir = Vector2.RIGHT
+	dir = dir.normalized()
 	var horizontal := absf(dir.x) >= absf(dir.y)
+	var muzzle := _visual_to_center(player_visual_pos) + dir * 13.0
+	var tip_cell: Vector2i = last_attack_cells[last_attack_cells.size() - 1]
+	var tip_center := _cell_center(tip_cell)
+	var cable := Color("#07121a")
+	cable.a = 0.72
+	var inner := lance_color.lerp(Color.WHITE, 0.2)
+	inner.a = 0.9
+	_draw_pixel_segment(muzzle, tip_center - dir * 6.0, cable, 8)
+	_draw_pixel_segment(muzzle + Vector2(-dir.y, dir.x) * 2.0, tip_center - dir * 7.0 + Vector2(-dir.y, dir.x) * 2.0, dark, 3)
+	_draw_pixel_segment(muzzle, tip_center - dir * 8.0, inner, 3)
 	for i in range(last_attack_cells.size()):
 		var pos: Vector2i = last_attack_cells[i]
 		if not _cell_intersects_board_view(pos):
 			continue
 		var cell_px := _cell_to_px(pos)
-		var core_rect := Rect2(cell_px + Vector2(5, 11), Vector2(CELL - 10, 6))
-		var edge_rect := Rect2(cell_px + Vector2(8, 8), Vector2(CELL - 16, 12))
+		var core_rect := Rect2(cell_px + Vector2(4, 12), Vector2(CELL - 8, 4))
+		var edge_rect := Rect2(cell_px + Vector2(6, 9), Vector2(CELL - 12, 10))
+		var brace_rect := Rect2(cell_px + Vector2(12, 7), Vector2(4, 14))
 		if not horizontal:
-			core_rect = Rect2(cell_px + Vector2(11, 5), Vector2(6, CELL - 10))
-			edge_rect = Rect2(cell_px + Vector2(8, 8), Vector2(12, CELL - 16))
+			core_rect = Rect2(cell_px + Vector2(12, 4), Vector2(4, CELL - 8))
+			edge_rect = Rect2(cell_px + Vector2(9, 6), Vector2(10, CELL - 12))
+			brace_rect = Rect2(cell_px + Vector2(7, 12), Vector2(14, 4))
 		draw_rect(edge_rect, dark)
 		draw_rect(core_rect, lance_color)
+		if i % 2 == 0:
+			draw_rect(brace_rect, cable)
+			draw_rect(brace_rect.grow(-1), hot.darkened(0.2))
 		if ((i + floori(anim_time * 14.0)) % 2) == 0:
 			var spark_pos := cell_px + Vector2(6 + ((i * 7) % 15), 6 + ((i * 5) % 15))
 			draw_rect(Rect2(_snap_px(spark_pos), Vector2(4, 4)), hot)
@@ -4761,6 +4949,56 @@ func _draw_lance_cells() -> void:
 			var center := _cell_center(pos)
 			hot.a = 0.50 + flicker * 0.32
 			_draw_pixel_ring(center, 9.0 + flicker * 4.0, hot, 2)
+			_draw_lance_harpoon_head(center, dir, lance_color, hot, flicker)
+
+
+func _draw_lance_harpoon_head(center: Vector2, dir: Vector2, color: Color, hot: Color, flicker: float) -> void:
+	var p := _snap_px(center)
+	var dark := color.darkened(0.6)
+	dark.a = 0.86
+	var point := hot.lerp(Color.WHITE, 0.28)
+	point.a = 0.86 + flicker * 0.14
+	if absf(dir.x) >= absf(dir.y):
+		var sign := 1 if dir.x >= 0.0 else -1
+		draw_rect(Rect2(p + Vector2(-7 if sign > 0 else -5, -4), Vector2(12, 8)), dark)
+		draw_rect(Rect2(p + Vector2(-5 if sign > 0 else -7, -2), Vector2(12, 4)), color)
+		draw_rect(Rect2(p + Vector2(5 if sign > 0 else -10, -6), Vector2(5, 12)), point)
+		draw_rect(Rect2(p + Vector2(0 if sign > 0 else -4, -9), Vector2(4, 6)), dark)
+		draw_rect(Rect2(p + Vector2(0 if sign > 0 else -4, 3), Vector2(4, 6)), dark)
+	else:
+		var sign := 1 if dir.y >= 0.0 else -1
+		draw_rect(Rect2(p + Vector2(-4, -7 if sign > 0 else -5), Vector2(8, 12)), dark)
+		draw_rect(Rect2(p + Vector2(-2, -5 if sign > 0 else -7), Vector2(4, 12)), color)
+		draw_rect(Rect2(p + Vector2(-6, 5 if sign > 0 else -10), Vector2(12, 5)), point)
+		draw_rect(Rect2(p + Vector2(-9, 0 if sign > 0 else -4), Vector2(6, 4)), dark)
+		draw_rect(Rect2(p + Vector2(3, 0 if sign > 0 else -4), Vector2(6, 4)), dark)
+
+
+func _draw_lance_launcher(center: Vector2, dir: Vector2, color: Color) -> void:
+	var p := _snap_px(center)
+	var dark := Color("#09131a")
+	var metal := color.lerp(Color.WHITE, 0.34)
+	var grip := Color("#12333a")
+	if absf(dir.x) >= absf(dir.y):
+		var sign := 1 if dir.x >= 0.0 else -1
+		var body_pos := p + Vector2(-5 if sign > 0 else -13, -8)
+		var barrel_pos := p + Vector2(8 if sign > 0 else -22, -5)
+		draw_rect(Rect2(body_pos + Vector2(-1, 1), Vector2(18, 12)), dark)
+		draw_rect(Rect2(body_pos, Vector2(15, 9)), color.darkened(0.25))
+		draw_rect(Rect2(barrel_pos, Vector2(18, 5)), dark)
+		draw_rect(Rect2(barrel_pos + Vector2(2, 1), Vector2(14, 3)), metal)
+		draw_rect(Rect2(p + Vector2(0 if sign > 0 else -5, 2), Vector2(5, 9)), grip)
+		draw_rect(Rect2(p + Vector2(-12 if sign > 0 else 7, -4), Vector2(8, 5)), dark)
+	else:
+		var sign := 1 if dir.y >= 0.0 else -1
+		var body_pos := p + Vector2(-8, -5 if sign > 0 else -13)
+		var barrel_pos := p + Vector2(-5, 8 if sign > 0 else -22)
+		draw_rect(Rect2(body_pos + Vector2(1, -1), Vector2(12, 18)), dark)
+		draw_rect(Rect2(body_pos, Vector2(9, 15)), color.darkened(0.25))
+		draw_rect(Rect2(barrel_pos, Vector2(5, 18)), dark)
+		draw_rect(Rect2(barrel_pos + Vector2(1, 2), Vector2(3, 14)), metal)
+		draw_rect(Rect2(p + Vector2(2, 0 if sign > 0 else -5), Vector2(9, 5)), grip)
+		draw_rect(Rect2(p + Vector2(-4, -12 if sign > 0 else 7), Vector2(5, 8)), dark)
 
 
 func _draw_zap_feedback() -> void:
@@ -4860,6 +5098,8 @@ func _draw_player(pc: Vector2) -> void:
 		"L": PRESSURE
 	}
 	_draw_pixel_sprite(core, rows, palette, 3)
+	if lance_active:
+		_draw_lance_launcher(core, forward, _lance_color())
 
 
 func _draw_damage_feedback() -> void:
@@ -4901,31 +5141,35 @@ func _draw_ui() -> void:
 
 
 func _draw_portrait_hud() -> void:
-	_draw_pixel_panel(TOP_HUD_RECT, Color("#11121a"), UI_PANEL_EDGE)
-	_text(Vector2(26, 42), "DIGGY", 28, UI)
-	_text(Vector2(26, 68), "CAVERNS OF CHANCE", 13, MUTED)
+	var rect := _portrait_hud_rect()
+	var left := rect.position.x
+	_draw_pixel_panel(rect, Color("#11121a"), UI_PANEL_EDGE)
+	_text(Vector2(left + 14, 42), "DIGGY", 28, UI)
+	_text(Vector2(left + 14, 68), "CAVERNS OF CHANCE", 13, MUTED)
 	if show_touch_controls:
 		_draw_restart_button()
 
-	_text(Vector2(182, 36), "RUN", 13, UI_PANEL_HILITE)
-	_text(Vector2(226, 38), "%s / %s" % [_format_time(run_time), _format_time(RUN_GOAL_TIME)], 17, UI)
-	_draw_pixel_bar(Vector2(182, 50), Vector2(226, 8), clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0), BEACON_ARMED, Color("#29202b"))
+	_text(Vector2(left + 170, 36), "RUN", 13, UI_PANEL_HILITE)
+	_text(Vector2(left + 214, 38), "%s / %s" % [_format_time(run_time), _format_time(RUN_GOAL_TIME)], 17, UI)
+	_draw_pixel_bar(Vector2(left + 170, 50), Vector2(226, 8), clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0), BEACON_ARMED, Color("#29202b"))
 
 	var xp_ratio := clampf(float(xp) / float(maxi(1, xp_to_next)), 0.0, 1.0)
-	_text(Vector2(182, 76), "LV %d  XP %d/%d" % [player_level, xp, xp_to_next], 15, PRESSURE)
-	_draw_pixel_bar(Vector2(306, 66), Vector2(102, 8), xp_ratio, PRESSURE, Color("#29313a"))
+	_text(Vector2(left + 170, 76), "LV %d  XP %d/%d" % [player_level, xp, xp_to_next], 15, PRESSURE)
+	_draw_pixel_bar(Vector2(left + 294, 66), Vector2(102, 8), xp_ratio, PRESSURE, Color("#29313a"))
 
-	_text(Vector2(436, 37), "HP", 13, Color("#ff8fa3"))
-	_draw_hearts(Vector2(466, 26))
+	_text(Vector2(left + 424, 37), "HP", 13, Color("#ff8fa3"))
+	_draw_hearts(Vector2(left + 454, 26))
 
 
 func _draw_portrait_status_panel() -> void:
-	_draw_pixel_panel(STATUS_RECT, UI_PANEL, UI_PANEL_EDGE)
-	_text(Vector2(28, 628), "UPGRADES", 15, UI_PANEL_HILITE)
+	var rect := _portrait_status_rect()
+	var left := rect.position.x
+	_draw_pixel_panel(rect, UI_PANEL, UI_PANEL_EDGE)
+	_text(Vector2(left + 16, rect.position.y + 28), "UPGRADES", 15, UI_PANEL_HILITE)
 	if message != "":
-		_text(Vector2(104, 630), message, 16, WARN)
+		_text(Vector2(left + 104, rect.position.y + 30), _trim_text(message, 46), 16, WARN)
 
-	_draw_upgrade_summary(Vector2(28, 662), 390.0, 3)
+	_draw_upgrade_summary(Vector2(left + 16, rect.position.y + 62), 390.0, 2)
 	_draw_touch_button(_inventory_button_rect(), "UPGRADES", PRESSURE, show_upgrade_inventory)
 	_draw_crush_toast()
 
@@ -4934,7 +5178,7 @@ func _draw_mobile_controls() -> void:
 	_draw_dpad()
 	var action_label := "BEACON" if _can_use_beacon() else "LANCE"
 	var action_color := BEACON_ARMED if _can_use_beacon() else _lance_color()
-	_draw_touch_button(MOBILE_LANCE_RECT, action_label, action_color, lance_active or _can_use_beacon())
+	_draw_touch_button(_mobile_lance_rect(), action_label, action_color, lance_active or _can_use_beacon())
 
 
 func _draw_desktop_ui() -> void:
@@ -5027,7 +5271,8 @@ func _draw_upgrade_inventory_panel() -> void:
 
 func _inventory_button_rect() -> Rect2:
 	if show_touch_controls:
-		return Rect2(Vector2(430, 654), Vector2(128, 42))
+		var status_rect := _portrait_status_rect()
+		return Rect2(status_rect.position + Vector2(430, 42), Vector2(128, 42))
 	return DESKTOP_INVENTORY_BUTTON_RECT
 
 
@@ -5043,10 +5288,55 @@ func _inventory_close_rect() -> Rect2:
 	return INVENTORY_CLOSE_RECT
 
 
+func _portrait_layout_left() -> float:
+	return floorf(maxf(12.0, (get_viewport_rect().size.x - float(MOBILE_LAYOUT_W)) * 0.5 + 12.0))
+
+
+func _portrait_hud_rect() -> Rect2:
+	return Rect2(Vector2(_portrait_layout_left(), TOP_HUD_RECT.position.y), TOP_HUD_RECT.size)
+
+
+func _portrait_status_rect() -> Rect2:
+	var y := _portrait_board_origin_base().y + BOARD_VIEW_PX_H + 12.0
+	return Rect2(Vector2(_portrait_layout_left(), y), Vector2(STATUS_RECT.size.x, MOBILE_STATUS_H))
+
+
+func _portrait_board_origin_base() -> Vector2:
+	return Vector2(_portrait_layout_left(), BOARD_ORIGIN.y)
+
+
+func _mobile_dpad_center() -> Vector2:
+	var status_bottom := _portrait_status_rect().position.y + _portrait_status_rect().size.y
+	var min_center_y := status_bottom + 124.0
+	var bottom_center_y := get_viewport_rect().size.y - 128.0
+	return Vector2(_portrait_layout_left() + MOBILE_DPAD_CENTER.x - BOARD_ORIGIN.x, maxf(min_center_y, bottom_center_y))
+
+
+func _mobile_lance_rect() -> Rect2:
+	var center := _mobile_dpad_center()
+	var x := _portrait_layout_left() + MOBILE_LANCE_RECT.position.x - BOARD_ORIGIN.x
+	return Rect2(Vector2(x, center.y - 32.0), MOBILE_LANCE_RECT.size)
+
+
+func _mobile_restart_rect() -> Rect2:
+	return Rect2(Vector2(_portrait_layout_left() + MOBILE_RESTART_RECT.position.x - BOARD_ORIGIN.x, MOBILE_RESTART_RECT.position.y), MOBILE_RESTART_RECT.size)
+
+
 func _current_upgrade_entries() -> Array:
 	var entries := []
+	var damage_bonus := maxi(0, lance_damage - 1 + temp_lance_damage)
+	if damage_bonus > 0:
+		var damage_entry := _upgrade_by_id("damage")
+		if not damage_entry.is_empty():
+			damage_entry = damage_entry.duplicate()
+			damage_entry["name"] = "%s +%d" % [damage_entry["name"], damage_bonus]
+			damage_entry["desc"] = "+%d lance damage." % damage_bonus
+			damage_entry["source"] = "OWNED"
+			entries.append(damage_entry)
 	for upgrade in _upgrade_pool():
 		var id := String(upgrade["id"])
+		if id == "damage":
+			continue
 		if owned_upgrades.has(id):
 			var owned_entry: Dictionary = upgrade.duplicate()
 			owned_entry["source"] = "OWNED"
@@ -5065,9 +5355,10 @@ func _trim_text(value: String, max_chars: int) -> String:
 
 
 func _draw_restart_button() -> void:
-	draw_rect(MOBILE_RESTART_RECT, Color("#090910"))
-	draw_rect(MOBILE_RESTART_RECT.grow(-3), Color("#242132"))
-	_text(MOBILE_RESTART_RECT.position + Vector2(13, 23), "R", 15, MUTED)
+	var rect := _mobile_restart_rect()
+	draw_rect(rect, Color("#090910"))
+	draw_rect(rect.grow(-3), Color("#242132"))
+	_text(rect.position + Vector2(13, 23), "R", 15, MUTED)
 
 
 func _draw_small_stat_chip(pos: Vector2, label: String, value: String, color: Color) -> void:
@@ -5086,17 +5377,17 @@ func _draw_choice_modal() -> void:
 		var choice: Dictionary = upgrade_choices[i]
 		var rect := _choice_rect(i)
 		_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
-		_text(rect.position + Vector2(18, 30), choice["name"], 20, Color("#f7df86"))
-		_text(rect.position + Vector2(18, 58), choice["desc"], 15, MUTED)
+		_text(rect.position + Vector2(18, 25), choice["name"], 18, Color("#f7df86"))
+		_text(rect.position + Vector2(18, 49), choice["desc"], 13, MUTED)
 	_draw_touch_button(_choice_skip_rect(), "SKIP", MUTED, false)
 
 
 func _choice_rect(index: int) -> Rect2:
-	return Rect2(Vector2(54, 278 + index * 92), Vector2(532, 74))
+	return Rect2(Vector2(54, 274 + index * 68), Vector2(532, 58))
 
 
 func _choice_skip_rect() -> Rect2:
-	return Rect2(Vector2(214, 548), Vector2(212, 48))
+	return Rect2(Vector2(214, 558), Vector2(212, 42))
 
 
 func _status_detail_string() -> String:
@@ -5183,7 +5474,7 @@ func _dpad_button_rect(dir: Vector2i) -> Rect2:
 		offset = Vector2(-(MOBILE_DPAD_BUTTON + MOBILE_DPAD_GAP), 0)
 	elif dir == Vector2i.RIGHT:
 		offset = Vector2(MOBILE_DPAD_BUTTON + MOBILE_DPAD_GAP, 0)
-	return Rect2(MOBILE_DPAD_CENTER + offset - Vector2(MOBILE_DPAD_BUTTON * 0.5, MOBILE_DPAD_BUTTON * 0.5), Vector2(MOBILE_DPAD_BUTTON, MOBILE_DPAD_BUTTON))
+	return Rect2(_mobile_dpad_center() + offset - Vector2(MOBILE_DPAD_BUTTON * 0.5, MOBILE_DPAD_BUTTON * 0.5), Vector2(MOBILE_DPAD_BUTTON, MOBILE_DPAD_BUTTON))
 
 
 func _draw_dig_feedback() -> void:
@@ -5236,27 +5527,23 @@ func _draw_crush_feedback() -> void:
 		var progress := 1.0 - float(effect["time"]) / duration
 		var count := int(effect["count"])
 		var xp_award := int(effect["xp"])
+		var tier := int(effect.get("tier", count))
+		var seed := int(effect.get("seed", 0))
 		var crush_depth := int(effect.get("depth", 1 + mini(int(effect["fall_distance"]), 3)))
 		var alpha := 1.0 - progress
-		var dust := ROCK_SHADOW
-		dust.a = 0.72 * alpha
-		var bright := RUPTURE
-		bright.a = (0.72 if count >= 2 else 0.42) * alpha
 		for y in range(crush_depth + 1):
 			var center := _cell_center(pos + Vector2i.DOWN * y)
-			var crumble := _snap_px(center + Vector2(-8, -8 + progress * 10.0))
-			draw_rect(Rect2(crumble, Vector2(4, 4)), dust)
-			draw_rect(Rect2(crumble + Vector2(14, 5), Vector2(3, 3)), dust)
-			draw_rect(Rect2(crumble + Vector2(7, 15), Vector2(5, 3)), dust)
-			_draw_pixel_ring(center, 6.0 + progress * 12.0, bright, 2)
-		var text_pos := _cell_center(pos) + Vector2(-18, -18 - progress * 12.0)
-		var label := "x%d" % count if count >= 2 else "+%d" % xp_award
-		_text(text_pos, label, 16 if count >= 2 else 14, bright if count >= 2 else dust)
-		if count < 2:
+			_draw_crush_impact_cell(center, progress, tier, seed + y * 17)
+		var text_pos := _cell_center(pos) + Vector2(-22.0 - float(tier) * 2.0, -20.0 - progress * 14.0)
+		var text_color := _crush_tier_color(tier, alpha)
+		var label := "x%d" % tier if tier >= 2 else "+%d" % xp_award
+		_text(text_pos, label, 18 if tier >= 3 else 15, text_color)
+		if tier < 2:
 			continue
 		var xp_color := PRESSURE
 		xp_color.a = 0.78 * alpha
-		_text(text_pos + Vector2(22, 0), "+%d XP" % xp_award, 14, xp_color)
+		_text(text_pos + Vector2(28, 0), "+%d XP" % xp_award, 14, xp_color)
+		_draw_crush_fanfare(_cell_center(pos), progress, tier, seed)
 
 
 func _draw_crush_toast() -> void:
@@ -5266,9 +5553,10 @@ func _draw_crush_toast() -> void:
 	var duration := float(effect["duration"])
 	var progress := 1.0 - float(effect["time"]) / duration
 	var alpha := 1.0 - progress
-	var color := RUPTURE
-	color.a = 0.88 * alpha
-	var icon_pos := Vector2(24, 562)
+	var tier := int(effect.get("tier", int(effect["count"])))
+	var color := _crush_tier_color(tier, 0.88 * alpha)
+	var status_rect := _portrait_status_rect()
+	var icon_pos := status_rect.position + Vector2(16, status_rect.size.y - 22)
 	var icon_shadow := ROCK_SHADOW
 	icon_shadow.a = 0.85 * alpha
 	var icon_rock := ROCK
@@ -5276,8 +5564,94 @@ func _draw_crush_toast() -> void:
 	draw_rect(Rect2(icon_pos, Vector2(8, 8)), icon_shadow)
 	draw_rect(Rect2(icon_pos + Vector2(3, -3), Vector2(8, 8)), icon_rock)
 	var count := int(effect["count"])
-	var text := "Boulder +%d XP" % int(effect["xp"]) if count == 1 else "Boulder x%d +%d XP" % [count, int(effect["xp"])]
+	var text := "Boulder +%d XP" % int(effect["xp"])
+	if tier >= 2:
+		text = "Combo crush x%d +%d XP" % [tier, int(effect["xp"])]
+	elif count > 1:
+		text = "Boulder x%d +%d XP" % [count, int(effect["xp"])]
 	_text(icon_pos + Vector2(18, 7), text, 14, color)
+
+
+func _draw_crush_impact_cell(center: Vector2, progress: float, tier: int, seed: int) -> void:
+	var alpha := 1.0 - progress
+	var p := _snap_px(center)
+	var shadow := ROCK_SHADOW
+	shadow.a = 0.68 * alpha
+	var stone := ROCK
+	stone.a = 0.58 * alpha
+	var hot := _crush_tier_color(tier, (0.48 + float(tier) * 0.08) * alpha)
+	var width := 18.0 + float(tier) * 3.0
+	var flash_on := (floori(progress * float(5 + tier)) % 2) == 0
+	draw_rect(Rect2(_snap_px(p + Vector2(-width * 0.5, -3)), Vector2(width, 6)), shadow)
+	draw_rect(Rect2(_snap_px(p + Vector2(-5, -14)), Vector2(10, 28)), shadow.darkened(0.18))
+	if flash_on:
+		draw_rect(Rect2(_snap_px(p + Vector2(-width * 0.5 + 3.0, -1)), Vector2(width - 6.0, 2)), hot)
+		draw_rect(Rect2(_snap_px(p + Vector2(-2, -12)), Vector2(4, 24)), hot)
+	for i in range(6 + tier * 2):
+		var dir := _eight_bit_dir((i * 3 + seed) % 8)
+		var drift := 5.0 + progress * (10.0 + float(tier) * 3.0) + float((i + seed) % 3) * 3.0
+		var size := 2 + ((i + tier + seed) % 3)
+		var chip_color := hot if i % 3 == 0 else stone
+		if i % 4 == 0:
+			chip_color = shadow
+		var chip_pos := _snap_px(center + dir * drift + Vector2(float((seed + i * 5) % 5) - 2.0, float((seed + i * 7) % 5) - 2.0))
+		draw_rect(Rect2(chip_pos, Vector2(size, size)), chip_color)
+
+
+func _draw_crush_fanfare(center: Vector2, progress: float, tier: int, seed: int) -> void:
+	var alpha := 1.0 - progress
+	var color := _crush_tier_color(tier, 0.9 * alpha)
+	var bright := color.lerp(Color.WHITE, 0.35)
+	bright.a = 0.72 * alpha
+	var banner_pos := _snap_px(center + Vector2(-34.0 - float(tier) * 3.0, -40.0 - progress * 12.0))
+	var label := "COMBO x%d!" % tier
+	_text(banner_pos, label, 15 + mini(tier, 4), color)
+	for i in range(tier):
+		var step_pos := banner_pos + Vector2(float(i * 11), -10.0 - float((i + seed) % 2) * 4.0)
+		draw_rect(Rect2(_snap_px(step_pos), Vector2(7, 4)), bright)
+		draw_rect(Rect2(_snap_px(step_pos + Vector2(2, -4)), Vector2(3, 3)), color)
+	for i in range(tier + 2):
+		var dir := _eight_bit_dir((seed + i * 2) % 8)
+		var sparkle_pos := _snap_px(center + dir * (18.0 + progress * (12.0 + float(tier) * 2.0)))
+		draw_rect(Rect2(sparkle_pos, Vector2(5, 5)), bright)
+		draw_rect(Rect2(sparkle_pos + Vector2(1, -3), Vector2(3, 11)), bright)
+		draw_rect(Rect2(sparkle_pos + Vector2(-3, 1), Vector2(11, 3)), bright)
+
+
+func _eight_bit_dir(index: int) -> Vector2:
+	match index % 8:
+		0:
+			return Vector2.RIGHT
+		1:
+			return Vector2(1, 1).normalized()
+		2:
+			return Vector2.DOWN
+		3:
+			return Vector2(-1, 1).normalized()
+		4:
+			return Vector2.LEFT
+		5:
+			return Vector2(-1, -1).normalized()
+		6:
+			return Vector2.UP
+		_:
+			return Vector2(1, -1).normalized()
+
+
+func _crush_tier_color(tier: int, alpha: float) -> Color:
+	var color := RUPTURE
+	if tier >= 5:
+		color = SUPER_GEM.lerp(WARN, 0.35)
+	elif tier >= 4:
+		color = PRESSURE.lerp(THUNDER, 0.42)
+	elif tier >= 3:
+		color = WARN.lerp(RUPTURE, 0.28)
+	elif tier >= 2:
+		color = RUPTURE
+	else:
+		color = ROCK
+	color.a = alpha
+	return color
 
 
 func _enemy_color_for_kind(kind: int) -> Color:
@@ -5410,27 +5784,11 @@ func _draw_tunnel_tiles() -> void:
 				continue
 			if int(dig_masks.get(pos, full_mask)) != full_mask:
 				continue
-			var center := _cell_center(pos)
-			var center_rect := Rect2(center - Vector2(TUNNEL_CENTER_SIZE, TUNNEL_CENTER_SIZE) * 0.5, Vector2(TUNNEL_CENTER_SIZE, TUNNEL_CENTER_SIZE))
-			draw_rect(center_rect, TUNNEL)
-			draw_rect(center_rect.grow(-2), Color("#0f1018"))
-			for dir in DIRS:
-				var step_dir: Vector2i = dir
-				if (int(tunnel_edges.get(pos, 0)) & _dir_bit(step_dir)) == 0:
-					continue
-				var neighbor: Vector2i = pos + step_dir
-				if not _in_bounds(neighbor):
-					continue
-				var next_center := _cell_center(neighbor)
-				var corridor_center := center.lerp(next_center, 0.5)
-				var corridor_size := Vector2(TUNNEL_CORRIDOR_WIDTH, TUNNEL_CORRIDOR_WIDTH)
-				if step_dir.x != 0:
-					corridor_size.x = CELL + TUNNEL_CENTER_SIZE
-				else:
-					corridor_size.y = CELL + TUNNEL_CENTER_SIZE
-				draw_rect(Rect2(corridor_center - corridor_size * 0.5, corridor_size), Color("#0f1018"))
+			var cell_rect := Rect2(_cell_center(pos) - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
+			draw_rect(cell_rect, TUNNEL)
+			draw_rect(cell_rect.grow(-2), Color("#0f1018"))
 			if ((x * 5 + y * 3 + floor_index) % 4) == 0:
-				draw_rect(Rect2(center_rect.position + Vector2(4, 4), Vector2(3, 3)), TUNNEL_EDGE)
+				draw_rect(Rect2(cell_rect.position + Vector2(4, 4), Vector2(3, 3)), TUNNEL_EDGE)
 
 
 func _draw_rock_sprite(center: Vector2) -> void:
@@ -6238,7 +6596,8 @@ func _add_zap_feedback(from: Vector2i, to: Vector2i, jump: int) -> void:
 
 
 func _add_boulder_crush_feedback(pos: Vector2i, fall_distance: int, count: int, xp_award: int) -> void:
-	var duration := BOULDER_CRUSH_FEEDBACK_TIME + minf(0.22, float(count - 1) * 0.08)
+	var tier := _crush_fanfare_tier(count)
+	var duration := BOULDER_CRUSH_FEEDBACK_TIME + minf(0.36, float(tier - 1) * 0.09)
 	var depth := 1 + mini(fall_distance, 3) + _effective_boulder_chute()
 	crush_feedback.append({
 		"pos": pos,
@@ -6247,13 +6606,21 @@ func _add_boulder_crush_feedback(pos: Vector2i, fall_distance: int, count: int, 
 		"fall_distance": fall_distance,
 		"depth": depth,
 		"count": count,
+		"tier": tier,
+		"seed": rng.randi_range(0, 9999),
 		"xp": xp_award
 	})
 	for y in range(depth + 1):
 		var cell := pos + Vector2i.DOWN * y
 		if _in_bounds(cell):
-			_add_cell_pulse(cell, RUPTURE, PULSE_FEEDBACK_TIME + 0.08, 0.75 + float(count) * 0.16, count >= 2)
-	_shake(0.18 + minf(0.32, float(count) * 0.08))
+			_add_cell_pulse(cell, _crush_tier_color(tier, 0.75), PULSE_FEEDBACK_TIME + 0.08, 0.75 + float(tier) * 0.16, tier >= 2)
+	_play_crush_fanfare(tier)
+	_shake(0.18 + minf(0.36, float(tier) * 0.08))
+
+
+func _crush_fanfare_tier(count: int) -> int:
+	var active_combo := combo_count if combo_timer > 0.0 else 0
+	return clampi(maxi(count, active_combo), 1, BOULDER_FANFARE_MAX_TIER)
 
 
 func _add_cell_pulse(pos: Vector2i, color: Color, duration: float, radius: float, burst := false) -> void:
@@ -6414,13 +6781,10 @@ func _carve_cell(pos: Vector2i, connect_neighbors := true, reveal := true) -> vo
 		return
 	if not tunnel_edges.has(pos):
 		tunnel_edges[pos] = 0
-	if reveal:
-		dig_masks[pos] = DIG_FULL_MASK
-	elif not dig_masks.has(pos):
-		_mark_enemy_tunnel_center(pos)
+	_set_tunnel_tile(pos)
+	dig_masks[pos] = DIG_FULL_MASK
 	tunnel_age[pos] = 0.0
-	if reveal:
-		_clear_tunnel_center_px(pos)
+	_clear_dug_subcells_px(pos)
 	if connect_neighbors:
 		for dir in DIRS:
 			var next: Vector2i = pos + dir
@@ -6436,8 +6800,6 @@ func _open_tunnel_step(from: Vector2i, to: Vector2i, reveal := true) -> void:
 	_carve_cell(from, false, reveal)
 	_carve_cell(to, false, reveal)
 	_connect_tunnel_cells(from, to, reveal)
-	if not reveal:
-		_mark_enemy_tunnel_step(from, to)
 
 
 func _connect_tunnel_cells(a: Vector2i, b: Vector2i, reveal := true) -> void:
@@ -6449,10 +6811,6 @@ func _connect_tunnel_cells(a: Vector2i, b: Vector2i, reveal := true) -> void:
 		return
 	tunnel_edges[a] = int(tunnel_edges.get(a, 0)) | bit
 	tunnel_edges[b] = int(tunnel_edges.get(b, 0)) | _opposite_dir_bit(dir)
-	if reveal:
-		_clear_tunnel_center_px(a)
-		_clear_tunnel_center_px(b)
-		_clear_soil_capsule_px(_cell_center_px(a), _cell_center_px(b), TUNNEL_HALF_WIDTH)
 
 
 func _tunnel_allows_step(from: Vector2i, to: Vector2i) -> bool:
@@ -6462,50 +6820,6 @@ func _tunnel_allows_step(from: Vector2i, to: Vector2i) -> bool:
 	if dir.length_squared() != 1:
 		return false
 	return _cell_has_tunnel_opening(from) and _cell_has_tunnel_opening(to)
-
-
-func _clear_tunnel_center_px(pos: Vector2i) -> void:
-	_clear_soil_rect_px(_cell_center_px(pos), Vector2(TUNNEL_CENTER_SIZE, TUNNEL_CENTER_SIZE))
-
-
-func _mark_enemy_tunnel_center(pos: Vector2i) -> void:
-	var center := _cell_center_px(pos)
-	_mark_enemy_tunnel_capsule_px(center, center, TUNNEL_HALF_WIDTH)
-
-
-func _mark_enemy_tunnel_step(from: Vector2i, to: Vector2i) -> void:
-	_mark_enemy_tunnel_capsule_px(_cell_center_px(from), _cell_center_px(to), TUNNEL_HALF_WIDTH)
-
-
-func _mark_enemy_tunnel_capsule_px(from_px: Vector2, to_px: Vector2, radius: float) -> void:
-	var min_cell_x := clampi(floori((minf(from_px.x, to_px.x) - radius) / CELL), 0, BOARD_W - 1)
-	var max_cell_x := clampi(floori((maxf(from_px.x, to_px.x) + radius) / CELL), 0, BOARD_W - 1)
-	var min_cell_y := clampi(floori((minf(from_px.y, to_px.y) - radius) / CELL), 0, BOARD_H - 1)
-	var max_cell_y := clampi(floori((maxf(from_px.y, to_px.y) + radius) / CELL), 0, BOARD_H - 1)
-	var segment := to_px - from_px
-	var length_sq := segment.length_squared()
-	var radius_sq := radius * radius
-	var sub_size := float(CELL) / float(DIG_SUBDIV)
-	for cell_x in range(min_cell_x, max_cell_x + 1):
-		for cell_y in range(min_cell_y, max_cell_y + 1):
-			var cell := Vector2i(cell_x, cell_y)
-			var mask := int(dig_masks.get(cell, 0))
-			var previous_mask := mask
-			var cell_origin := Vector2(cell.x * CELL, cell.y * CELL)
-			for sy in range(DIG_SUBDIV):
-				for sx in range(DIG_SUBDIV):
-					var sub_center := cell_origin + Vector2(float(sx) + 0.5, float(sy) + 0.5) * sub_size
-					var t := 0.0
-					if length_sq > 0.0:
-						t = clampf((sub_center - from_px).dot(segment) / length_sq, 0.0, 1.0)
-					var closest := from_px + segment * t
-					if sub_center.distance_squared_to(closest) <= radius_sq:
-						mask |= 1 << (sy * DIG_SUBDIV + sx)
-			if mask == previous_mask:
-				continue
-			dig_masks[cell] = mask
-			tunnel_age[cell] = 0.0
-			_clear_dug_subcell_bits_px(cell, mask & ~previous_mask)
 
 
 func _dig_player_body_path(from: Vector2, to: Vector2) -> void:
@@ -6581,6 +6895,8 @@ func _mark_dug_subcells_in_rect(cell: Vector2i, rect: Rect2) -> void:
 		_clear_dug_subcell_bits_px(cell, new_bits)
 	if _tile(cell) == TILE_DIRT and dug_count >= DIG_PROMOTE_SUBCELLS:
 		_promote_dug_cell(cell)
+	if _body_open_at_cell(cell):
+		_set_tunnel_tile(cell)
 
 
 func _promote_dug_cell(cell: Vector2i) -> void:
@@ -6590,6 +6906,12 @@ func _promote_dug_cell(cell: Vector2i) -> void:
 	_add_dig_feedback(cell)
 	_award_score(2, false, "Dig")
 	_collect_super_gem_at(cell)
+
+
+func _set_tunnel_tile(pos: Vector2i) -> void:
+	if not _in_bounds(pos) or _tile(pos) == TILE_BEACON:
+		return
+	grid[pos.x][pos.y] = TILE_TUNNEL
 
 
 func _bit_count(value: int) -> int:
@@ -6615,16 +6937,8 @@ func _rebuild_soil_mask_from_grid() -> void:
 				_clear_dug_subcells_px(pos)
 				continue
 			var mask := int(dig_masks.get(pos, full_mask))
-			if mask == full_mask:
-				_clear_tunnel_center_px(pos)
-			else:
+			if mask != 0:
 				_clear_dug_subcells_px(pos)
-			for dir in [Vector2i.RIGHT, Vector2i.DOWN]:
-				var next: Vector2i = pos + dir
-				if _tunnel_allows_step(pos, next):
-					var next_mask := int(dig_masks.get(next, full_mask))
-					if mask == full_mask and next_mask == full_mask:
-						_clear_soil_capsule_px(_cell_center_px(pos), _cell_center_px(next), TUNNEL_HALF_WIDTH)
 
 	soil_texture = ImageTexture.create_from_image(soil_image)
 	soil_dirty = false
@@ -6643,6 +6957,19 @@ func _soil_color_at(x: int, y: int) -> Color:
 	if grain >= 8:
 		return DIRT_LAYER_COLORS[layer].lerp(DIRT_LAYER_SHADOWS[layer], 0.58)
 	return DIRT_LAYER_COLORS[layer]
+
+
+func _restore_soil_cell_px(cell: Vector2i) -> void:
+	if soil_image == null:
+		return
+	var min_x := clampi(cell.x * CELL, 0, BOARD_PX_W - 1)
+	var max_x := clampi((cell.x + 1) * CELL - 1, 0, BOARD_PX_W - 1)
+	var min_y := clampi(cell.y * CELL, 0, BOARD_PX_H - 1)
+	var max_y := clampi((cell.y + 1) * CELL - 1, 0, BOARD_PX_H - 1)
+	for y in range(min_y, max_y + 1):
+		for x in range(min_x, max_x + 1):
+			soil_image.set_pixel(x, y, _soil_color_at(x, y))
+	soil_dirty = true
 
 
 func _clear_soil_circle_px(center: Vector2, radius: float) -> void:
@@ -6679,6 +7006,9 @@ func _clear_dug_subcells_px(cell: Vector2i) -> void:
 	var mask := int(dig_masks.get(cell, 0))
 	if mask == 0:
 		return
+	if mask == DIG_FULL_MASK:
+		_clear_soil_rect_px(_cell_center_px(cell), Vector2(CELL, CELL))
+		return
 	_clear_dug_subcell_bits_px(cell, mask)
 
 
@@ -6691,32 +7021,6 @@ func _clear_dug_subcell_bits_px(cell: Vector2i, bits: int) -> void:
 				continue
 			var center := Vector2(cell.x * CELL + (float(sx) + 0.5) * sub_size, cell.y * CELL + (float(sy) + 0.5) * sub_size)
 			_clear_soil_rect_px(center, Vector2(sub_size + 0.5, sub_size + 0.5))
-
-
-func _clear_soil_capsule_px(from: Vector2, to: Vector2, radius: float) -> void:
-	if soil_image == null:
-		return
-	var min_x := clampi(floori(minf(from.x, to.x) - radius), 0, BOARD_PX_W - 1)
-	var max_x := clampi(ceili(maxf(from.x, to.x) + radius), 0, BOARD_PX_W - 1)
-	var min_y := clampi(floori(minf(from.y, to.y) - radius), 0, BOARD_PX_H - 1)
-	var max_y := clampi(ceili(maxf(from.y, to.y) + radius), 0, BOARD_PX_H - 1)
-	var segment := to - from
-	var length_sq := segment.length_squared()
-	var radius_sq := radius * radius
-	for y in range(min_y, max_y + 1):
-		for x in range(min_x, max_x + 1):
-			var point := Vector2(float(x) + 0.5, float(y) + 0.5)
-			var t := 0.0
-			if length_sq > 0.0:
-				t = clampf((point - from).dot(segment) / length_sq, 0.0, 1.0)
-			var closest := from + segment * t
-			if point.distance_squared_to(closest) <= radius_sq:
-				soil_image.set_pixel(x, y, Color.TRANSPARENT)
-	soil_dirty = true
-
-
-func _clear_soil_capsule_visual(from: Vector2, to: Vector2, radius: float) -> void:
-	_clear_soil_capsule_px(_visual_to_board_px(from), _visual_to_board_px(to), radius)
 
 
 func _flush_soil_texture() -> void:
@@ -6736,7 +7040,7 @@ func _add_dig_segment(from: Vector2, to: Vector2) -> void:
 	dig_segments.append({"from": from, "to": to})
 	if dig_segments.size() > 1200:
 		dig_segments.remove_at(0)
-	_clear_soil_capsule_visual(from, to, TUNNEL_HALF_WIDTH)
+	_dig_player_body_path(from, to)
 
 
 func _add_room(rooms: Array, center: Vector2i, radius_x: int, radius_y: int) -> void:
@@ -6944,7 +7248,7 @@ func _dict_visual(data: Dictionary) -> Vector2:
 
 
 func _board_origin() -> Vector2:
-	var origin := BOARD_ORIGIN if show_touch_controls else DESKTOP_BOARD_ORIGIN
+	var origin := _portrait_board_origin_base() if show_touch_controls else DESKTOP_BOARD_ORIGIN
 	if screen_shake <= 0.0:
 		return origin
 	return origin + screen_shake_offset
