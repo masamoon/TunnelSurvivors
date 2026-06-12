@@ -74,8 +74,10 @@ const PRESSURE_SURGE_INTERVAL_MULT := 0.56
 const PRESSURE_SURGE_CAP_BONUS := 4
 const PRESSURE_SURGE_BURST_BONUS := 1
 const PRESSURE_SURGE_CHARGE_BONUS := 1
-const XP_BASE_TO_NEXT := 8
-const XP_GROWTH := 6
+const XP_BASE_TO_NEXT := 24
+const XP_GROWTH := 16
+const ELEMENT_TIP_MIN_LEVEL := 4
+const ELEMENT_TIP_MIN_TIME := 75.0
 const XP_PICKUP_RADIUS := 0.52
 const XP_MAGNET_RADIUS := 2.35
 const XP_MAGNET_SPEED := 6.5
@@ -4107,7 +4109,7 @@ func _upgrade_pool() -> Array:
 		{"id": "quick_reel", "name": "Quick Reel", "desc": "Lance recovers faster."},
 		{"id": "tunnel_focus", "name": "Tunnel Focus", "desc": "Bonus lance damage in tight tunnels."},
 		{"id": "stun", "name": "Steady Grip", "desc": "Lance control effects last longer."},
-			{"id": "status_tip", "name": "Catalyst Tip", "desc": "Lance hits disabled enemies harder."},
+			{"id": "status_tip", "name": "Catalyst Tip", "desc": "Lance hits elementally disabled enemies harder."},
 			{"id": "field_dressing", "name": "Field Dressing", "desc": "+1 max heart and heal."},
 			{"id": "gem_xp", "name": "Gem Appetite", "desc": "Gems give even more XP."},
 			{"id": "prospector", "name": "Prospector", "desc": "More super gems appear, with nearby hints."},
@@ -4232,7 +4234,7 @@ func _upgrade_is_available(id: String) -> bool:
 		if lance_element != LANCE_ELEMENT_BASE and lance_element != element:
 			return false
 		if lance_element == LANCE_ELEMENT_BASE:
-			return id.ends_with("_tip")
+			return id.ends_with("_tip") and player_level >= ELEMENT_TIP_MIN_LEVEL and run_time >= ELEMENT_TIP_MIN_TIME
 	match id:
 		"barbed_head", "pierce", "tunnel_focus":
 			return floor_index >= 2 or _active_lance_element() != LANCE_ELEMENT_BASE
@@ -6742,8 +6744,8 @@ func _enemy_status_damage_bonus(enemy: Dictionary) -> int:
 	var bonus := 0
 	if _effective_brittle_frost() > 0 and float(enemy.get("frozen", 0.0)) > 0.0:
 		bonus += _effective_brittle_frost()
-	if _effective_status_damage_bonus() > 0:
-		var disabled := float(enemy.get("frozen", 0.0)) > 0.0 or float(enemy.get("frost_lock", 0.0)) > 0.0 or float(enemy.get("burning", 0.0)) > 0.0 or float(enemy.get("stun", 0.0)) > 0.0
+	if _effective_status_damage_bonus() > 0 and _active_lance_element() != LANCE_ELEMENT_BASE:
+		var disabled := float(enemy.get("frozen", 0.0)) > 0.0 or float(enemy.get("frost_lock", 0.0)) > 0.0 or float(enemy.get("burning", 0.0)) > 0.0 or float(enemy.get("shocked", 0.0)) > 0.0
 		if disabled:
 			bonus += _effective_status_damage_bonus()
 	return bonus
