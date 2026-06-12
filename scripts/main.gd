@@ -15,7 +15,7 @@ const BOARD_ORIGIN := Vector2(12, 112)
 const DESKTOP_BOARD_ORIGIN := Vector2(24, 74)
 const TOP_HUD_RECT := Rect2(Vector2(12, 12), Vector2(616, 82))
 const STATUS_RECT := Rect2(Vector2(12, 604), Vector2(616, 140))
-const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 320), Vector2(196, 44))
+const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 348), Vector2(196, 44))
 const INVENTORY_CLOSE_RECT := Rect2(Vector2(690, 544), Vector2(168, 44))
 const MOBILE_DPAD_CENTER := Vector2(140, 822)
 const MOBILE_STATUS_H := 112
@@ -61,6 +61,19 @@ const STATE_GAME_OVER := 2
 const STATE_WIN := 3
 
 const RUN_GOAL_TIME := 8.0 * 60.0
+const BEACON_CHARGE_GOAL := 120
+const BEACON_GEM_CHARGE := 1
+const BEACON_SUPER_GEM_CHARGE := 7
+const BEACON_RELIC_CHARGE := 8
+const BEACON_TREASURE_CHARGE_DIVISOR := 3
+const PRESSURE_SURGE_FIRST_DELAY := 32.0
+const PRESSURE_SURGE_DURATION := 12.0
+const PRESSURE_SURGE_COOLDOWN_MIN := 34.0
+const PRESSURE_SURGE_COOLDOWN_MAX := 48.0
+const PRESSURE_SURGE_INTERVAL_MULT := 0.56
+const PRESSURE_SURGE_CAP_BONUS := 4
+const PRESSURE_SURGE_BURST_BONUS := 1
+const PRESSURE_SURGE_CHARGE_BONUS := 1
 const XP_BASE_TO_NEXT := 8
 const XP_GROWTH := 6
 const XP_PICKUP_RADIUS := 0.52
@@ -69,13 +82,13 @@ const XP_MAGNET_SPEED := 6.5
 const GEM_XP_VALUE := 3
 const SUPER_GEM_XP_VALUE := 22
 const SUPER_GEM_BASE_COUNT := 1
-const SPAWN_START_DELAY := 7.0
-const SPAWN_INTERVAL_MIN := 0.90
-const SPAWN_INTERVAL_MAX := 4.0
-const SPAWN_CAP_BASE := 5
+const SPAWN_START_DELAY := 6.0
+const SPAWN_INTERVAL_MIN := 0.75
+const SPAWN_INTERVAL_MAX := 3.4
+const SPAWN_CAP_BASE := 7
 const SPAWN_CAP_GROWTH := 3
 const SPAWN_BURST_MIN := 1
-const SPAWN_BURST_MAX := 3
+const SPAWN_BURST_MAX := 4
 const SPAWN_PLAYER_SAFE_RADIUS := 5
 const SPAWN_BREACH_PLAYER_SAFE_RADIUS := 6
 const SPAWN_RECENT_MEMORY := 10
@@ -147,8 +160,8 @@ const ENEMY_LEECH_SPEED_RATIO := 1.18
 const ENEMY_BROOD_POD_SPEED_RATIO := 0.0
 const ENEMY_BOSS_SPEED_RATIO := 0.55
 const ENEMY_PHASE_SPEED_RATIO := 0.25
-const ENEMY_ATTACK_WARN := 0.44
-const ENEMY_ATTACK_LUNGE_CELLS := 0.34
+const ENEMY_ATTACK_WARN := 0.30
+const ENEMY_ATTACK_LUNGE_CELLS := 0.48
 const SPITTER_MIN_TIME := 45.0
 const SPITTER_MIN_LEVEL := 2
 const SPITTER_WARN := 0.48
@@ -192,9 +205,9 @@ const ATTACK_RECOVERY_DELAY := 0.32
 const ATTACK_FLASH_TIME := 0.32
 const LANCE_HIT_DELAY := 0.10
 const LANCE_RETRACT_DELAY := 0.22
-const LANCE_PUMP_INTERVAL := 0.78
-const LANCE_TAP_PUMP_INTERVAL := 0.62
-const LANCE_HOLD_STUN := 0.10
+const LANCE_PUMP_INTERVAL := 0.70
+const LANCE_TAP_PUMP_INTERVAL := 0.56
+const LANCE_HOLD_STUN := 0.18
 const ENEMY_INFLATE_RECOVER_DELAY := 0.42
 const LANCE_ELEMENT_BASE := "base"
 const LANCE_ELEMENT_ICE := "ice"
@@ -320,6 +333,9 @@ var player_level := 1
 var xp := 0
 var xp_to_next := XP_BASE_TO_NEXT
 var run_time := 0.0
+var beacon_charge := 0
+var pressure_surge_timer := 0.0
+var pressure_surge_cooldown := PRESSURE_SURGE_FIRST_DELAY
 var spawn_timer := 0.0
 var regrow_timer := 0.0
 var rock_spawn_timer := 0.0
@@ -384,6 +400,9 @@ var thunder_stun_bonus := 0.0
 var thunder_overload := 0
 var thunder_chain_damage := 0
 var static_field := 0
+var steam_core := 0
+var storm_cell := 0
+var glacier_rod := 0
 var quick_reel := 0
 var piercing_tip := 0
 var tunnel_focus := 0
@@ -414,6 +433,9 @@ var temp_thunder_stun_bonus := 0.0
 var temp_thunder_overload := 0
 var temp_thunder_chain_damage := 0
 var temp_static_field := 0
+var temp_steam_core := 0
+var temp_storm_cell := 0
+var temp_glacier_rod := 0
 var temp_quick_reel := 0
 var temp_piercing_tip := 0
 var temp_tunnel_focus := 0
@@ -551,6 +573,9 @@ func _new_run() -> void:
 	xp = 0
 	xp_to_next = XP_BASE_TO_NEXT
 	run_time = 0.0
+	beacon_charge = 0
+	pressure_surge_timer = 0.0
+	pressure_surge_cooldown = PRESSURE_SURGE_FIRST_DELAY
 	spawn_timer = SPAWN_START_DELAY
 	regrow_timer = REGROW_CHECK_INTERVAL
 	rock_spawn_timer = ROCK_SPAWN_START_DELAY
@@ -582,6 +607,9 @@ func _new_run() -> void:
 	thunder_overload = 0
 	thunder_chain_damage = 0
 	static_field = 0
+	steam_core = 0
+	storm_cell = 0
+	glacier_rod = 0
 	quick_reel = 0
 	piercing_tip = 0
 	tunnel_focus = 0
@@ -650,6 +678,9 @@ func _start_floor() -> void:
 	temp_thunder_overload = 0
 	temp_thunder_chain_damage = 0
 	temp_static_field = 0
+	temp_steam_core = 0
+	temp_storm_cell = 0
+	temp_glacier_rod = 0
 	temp_quick_reel = 0
 	temp_piercing_tip = 0
 	temp_tunnel_focus = 0
@@ -725,7 +756,7 @@ func _build_cavern() -> void:
 	beacon_pos = Vector2i(rng.randi_range(3, BOARD_W - 4), BOARD_H - 2)
 	_set_tile(beacon_pos, TILE_BEACON)
 
-	var enemy_count := 3 + floor_index
+	var enemy_count := 4 + floor_index
 	var patrol_cells := _carve_enemy_patrols(enemy_count)
 
 	_place_rocks(12 + floor_index * 2)
@@ -1204,6 +1235,7 @@ func _process(delta: float) -> void:
 	attack_cooldown = maxf(0.0, attack_cooldown - delta)
 	run_time += delta
 	floor_index = 1 + floori(run_time / 60.0)
+	_update_pressure_surge(delta)
 	_update_boss_spawning()
 
 	if lance_active:
@@ -1220,9 +1252,7 @@ func _process(delta: float) -> void:
 	_update_tunnel_regrowth(delta)
 
 	if run_time >= RUN_GOAL_TIME and not beacon_armed:
-		beacon_armed = true
-		_add_cell_pulse(beacon_pos, BEACON_ARMED, PULSE_FEEDBACK_TIME + 0.24, 1.15)
-		message = "The extraction beacon is armed. Reach it and %s." % _interact_prompt_text()
+		_arm_extraction_beacon("The extraction beacon is armed. Reach it and %s." % _interact_prompt_text())
 
 	_update_visual_positions(delta)
 	_update_camera(delta)
@@ -1623,11 +1653,65 @@ func _try_interact() -> void:
 		state = STATE_WIN
 		message = "The beacon hauls you out with a pack full of strange gems."
 	else:
-		message = "The beacon arms after %s." % _format_time(RUN_GOAL_TIME)
+		var remaining_charge := maxi(0, BEACON_CHARGE_GOAL - beacon_charge)
+		message = "Beacon needs %d charge or %s." % [remaining_charge, _format_time(maxf(0.0, RUN_GOAL_TIME - run_time))]
 
 
 func _can_use_beacon() -> bool:
 	return player_pos == beacon_pos and beacon_armed
+
+
+func _update_pressure_surge(delta: float) -> void:
+	if beacon_armed:
+		pressure_surge_timer = 0.0
+		return
+	if pressure_surge_timer > 0.0:
+		pressure_surge_timer = maxf(0.0, pressure_surge_timer - delta)
+		if pressure_surge_timer <= 0.0 and combo_count < 2:
+			message = "The cave exhales."
+		return
+
+	pressure_surge_cooldown -= delta
+	if pressure_surge_cooldown > 0.0:
+		return
+	pressure_surge_timer = PRESSURE_SURGE_DURATION
+	var run_pressure := clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0)
+	pressure_surge_cooldown = rng.randf_range(PRESSURE_SURGE_COOLDOWN_MIN, PRESSURE_SURGE_COOLDOWN_MAX) * lerpf(1.0, 0.72, run_pressure)
+	_add_cell_pulse(player_pos, PRESSURE, PULSE_FEEDBACK_TIME + 0.18, 1.3, true)
+	_shake(0.12)
+	message = "Pressure surge: kills charge the beacon."
+
+
+func _is_pressure_surge() -> bool:
+	return pressure_surge_timer > 0.0 and not beacon_armed
+
+
+func _arm_extraction_beacon(text: String) -> void:
+	if beacon_armed:
+		return
+	beacon_armed = true
+	beacon_charge = BEACON_CHARGE_GOAL
+	pressure_surge_timer = 0.0
+	_add_cell_pulse(beacon_pos, BEACON_ARMED, PULSE_FEEDBACK_TIME + 0.24, 1.15, true)
+	_shake(0.18)
+	message = text
+
+
+func _add_beacon_charge(amount: int, label := "") -> bool:
+	if amount <= 0 or beacon_armed:
+		return false
+	var previous := beacon_charge
+	beacon_charge = mini(BEACON_CHARGE_GOAL, beacon_charge + amount)
+	if previous < BEACON_CHARGE_GOAL and beacon_charge >= BEACON_CHARGE_GOAL:
+		_arm_extraction_beacon("Beacon charged. Reach it and %s." % _interact_prompt_text())
+		return true
+	if label != "" and combo_count < 2:
+		message = "%s charged beacon +%d." % [label, amount]
+	return false
+
+
+func _beacon_charge_ratio() -> float:
+	return clampf(float(beacon_charge) / float(BEACON_CHARGE_GOAL), 0.0, 1.0)
 
 
 func _award_floor_bonus() -> void:
@@ -1750,18 +1834,22 @@ func _update_spawning(delta: float) -> void:
 	var cap := _spawn_cap()
 	if enemies.size() >= cap:
 		return
-	var burst := mini(rng.randi_range(SPAWN_BURST_MIN, SPAWN_BURST_MAX), cap - enemies.size())
+	var burst_max := SPAWN_BURST_MAX + (PRESSURE_SURGE_BURST_BONUS if _is_pressure_surge() else 0)
+	var burst := mini(rng.randi_range(SPAWN_BURST_MIN, burst_max), cap - enemies.size())
 	for i in range(burst):
 		_spawn_survival_enemy()
 
 
 func _spawn_interval() -> float:
 	var pressure := clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0)
-	return lerpf(SPAWN_INTERVAL_MAX, SPAWN_INTERVAL_MIN, pressure)
+	var interval := lerpf(SPAWN_INTERVAL_MAX, SPAWN_INTERVAL_MIN, pressure)
+	if _is_pressure_surge():
+		interval *= PRESSURE_SURGE_INTERVAL_MULT
+	return interval
 
 
 func _spawn_cap() -> int:
-	return SPAWN_CAP_BASE + floori(run_time / 45.0) * SPAWN_CAP_GROWTH
+	return SPAWN_CAP_BASE + floori(run_time / 45.0) * SPAWN_CAP_GROWTH + (PRESSURE_SURGE_CAP_BONUS if _is_pressure_surge() else 0)
 
 
 func _update_boss_spawning() -> void:
@@ -1795,8 +1883,7 @@ func _spawn_reaper() -> void:
 		_add_dig_feedback(spawn_pos)
 	_add_enemy(spawn_pos, ENEMY_REAPER_KIND)
 	if not beacon_armed:
-		beacon_armed = true
-		_add_cell_pulse(beacon_pos, BEACON_ARMED, PULSE_FEEDBACK_TIME + 0.24, 1.15)
+		_arm_extraction_beacon("The Reaper woke the beacon. Run for the hatch!")
 	_add_cell_pulse(spawn_pos, ENEMY_REAPER, PULSE_FEEDBACK_TIME + 0.48, 2.2, true)
 	_shake(0.55)
 	message = "The Reaper is here. Run for the hatch!"
@@ -2826,12 +2913,13 @@ func _update_enemy_phase_chase(enemy: Dictionary, delta: float) -> void:
 	enemy["attack_dir"] = Vector2i.ZERO
 	enemy["fire_windup"] = 0.0
 	enemy["fire_active"] = 0.0
+	_damage_player_from_phasing_enemy(enemy)
 
 	if _dict_visual(enemy).distance_to(target_visual) <= PLAYER_CENTER_EPS:
 		enemy["visual_pos"] = target_visual
 		enemy["pos"] = target
 		if target == player_pos:
-			_hurt_player(1)
+			_damage_player_from_phasing_enemy(enemy)
 			_end_enemy_phase(enemy)
 			return
 		if _cell_has_tunnel_opening(target):
@@ -2845,6 +2933,21 @@ func _update_enemy_phase_chase(enemy: Dictionary, delta: float) -> void:
 		else:
 			enemy["phase_target"] = next_target
 			enemy["phase_steps"] = int(enemy.get("phase_steps", 0)) + 1
+
+
+func _damage_player_from_phasing_enemy(enemy: Dictionary) -> void:
+	if state != STATE_PLAYING:
+		return
+	if not bool(enemy.get("phasing", false)):
+		return
+	var enemy_visual := _dict_visual(enemy)
+	if enemy_visual.distance_to(player_visual_pos) > 0.48 and _cell_from_visual(enemy_visual) != player_pos:
+		return
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND:
+		_game_over("The Reaper claimed you.")
+		_shake(0.7)
+	else:
+		_hurt_player(1)
 
 
 func _update_enemy_fire(enemy: Dictionary, delta: float) -> bool:
@@ -3807,6 +3910,10 @@ func _shake(amount: float) -> void:
 
 func _drop_xp(pos: Vector2i, amount: int) -> int:
 	var actual_amount := _depth_xp_amount(pos, amount)
+	var charge := maxi(1, roundi(float(actual_amount) * 0.35))
+	if _is_pressure_surge():
+		charge += PRESSURE_SURGE_CHARGE_BONUS
+	_add_beacon_charge(charge, "Kill")
 	for i in range(actual_amount):
 		var jitter := Vector2(rng.randf_range(-0.18, 0.18), rng.randf_range(-0.18, 0.18))
 		xp_pickups.append({
@@ -3852,7 +3959,6 @@ func _gain_xp(amount: int) -> void:
 		xp -= xp_to_next
 		player_level += 1
 		xp_to_next = XP_BASE_TO_NEXT + (player_level - 1) * XP_GROWTH
-		hp = mini(max_hp, hp + 1)
 		_offer_upgrades()
 		return
 	if combo_count < 2:
@@ -3868,7 +3974,8 @@ func _collect_gem_at(pos: Vector2i) -> void:
 			floor_gems_collected += 1
 			_award_score(20, true, "Gem")
 			_gain_xp(GEM_XP_VALUE + _effective_gem_xp_bonus())
-			if combo_count < 2:
+			var charged_beacon := _add_beacon_charge(BEACON_GEM_CHARGE, "Gem")
+			if combo_count < 2 and not charged_beacon:
 				message = "Gem pocket."
 			return
 
@@ -3886,7 +3993,8 @@ func _collect_super_gem_at(pos: Vector2i) -> void:
 				crystal_charge = maxi(crystal_charge, 1)
 			_add_cell_pulse(pos, SUPER_GEM, PULSE_FEEDBACK_TIME + 0.22, 1.45, true)
 			_shake(0.18)
-			message = "Super gem!"
+			if not _add_beacon_charge(BEACON_SUPER_GEM_CHARGE, "Super gem"):
+				message = "Super gem!"
 			return
 
 
@@ -3900,6 +4008,7 @@ func _collect_relic_at(pos: Vector2i) -> void:
 			_award_score(60 + floor_index * 10, true, "Relic")
 			_add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.12, 1.15, true)
 			_shake(0.12)
+			_add_beacon_charge(BEACON_RELIC_CHARGE, "Relic")
 			return
 
 
@@ -3916,19 +4025,21 @@ func _collect_treasure_chest_at(pos: Vector2i) -> void:
 				if hp < max_hp:
 					hp = mini(max_hp, hp + int(reward.get("amount", 2)))
 					_award_score(70 + floor_index * 12, true, "Chest heal")
-					message = "Chest heal."
+					if not _add_beacon_charge(2, "Chest"):
+						message = "Chest heal."
 				else:
-					_award_treasure_gems(pos, 4)
-					message = "Chest overflow: gems."
+					if not _award_treasure_gems(pos, 4):
+						message = "Chest overflow: gems."
 			TREASURE_KIND_UPGRADE:
 				var upgrade: Dictionary = reward.get("upgrade", {})
 				if not upgrade.is_empty() and _upgrade_is_available(String(upgrade.get("id", ""))):
 					_apply_temp_upgrade(upgrade)
 					_award_score(140 + floor_index * 20, true, "Chest relic")
-					message = "Chest relic: %s." % _upgrade_name(String(upgrade["id"]))
+					if not _add_beacon_charge(BEACON_RELIC_CHARGE, "Chest relic"):
+						message = "Chest relic: %s." % _upgrade_name(String(upgrade["id"]))
 				else:
-					_award_treasure_gems(pos, 5 + floor_index)
-					message = "Chest cache: gems."
+					if not _award_treasure_gems(pos, 5 + floor_index):
+						message = "Chest cache: gems."
 			_:
 				_award_treasure_gems(pos, int(reward.get("amount", TREASURE_JACKPOT_MIN)))
 		_add_cell_pulse(pos, TREASURE_CHEST_LOCK, PULSE_FEEDBACK_TIME + 0.28, 1.55, true)
@@ -3936,15 +4047,18 @@ func _collect_treasure_chest_at(pos: Vector2i) -> void:
 		return
 
 
-func _award_treasure_gems(pos: Vector2i, amount: int) -> void:
+func _award_treasure_gems(pos: Vector2i, amount: int) -> bool:
 	var gem_count := maxi(1, amount)
 	gem_bank += gem_count
 	gems_collected += gem_count
 	_award_score(55 + gem_count * 18 + floor_index * 8, true, "Treasure")
 	_gain_xp(gem_count * (GEM_XP_VALUE + _effective_gem_xp_bonus()))
+	var treasure_charge := maxi(1, ceili(float(gem_count) / float(BEACON_TREASURE_CHARGE_DIVISOR)))
+	var charged_beacon := _add_beacon_charge(treasure_charge, "Treasure")
 	_sprout_treasure_lure(pos, mini(4, gem_count))
-	if state == STATE_PLAYING:
+	if state == STATE_PLAYING and not charged_beacon:
 		message = "Treasure chest: +%d gems!" % gem_count
+	return charged_beacon
 
 
 func _eat_gem_at(pos: Vector2i) -> void:
@@ -3983,6 +4097,9 @@ func _upgrade_pool() -> Array:
 		{"id": "thunder_overload", "name": "Overload", "desc": "Thunder kills release a final arc."},
 		{"id": "thunder_wire", "name": "Live Wire", "desc": "Thunder chain hits deal more damage."},
 		{"id": "thunder_field", "name": "Static Field", "desc": "Thunder hits stun nearby enemies."},
+		{"id": "steam_core", "name": "Steam Core", "desc": "Ice and Fire vent steam when statuses clash."},
+		{"id": "storm_cell", "name": "Storm Cell", "desc": "Fire and Thunder cross-charge burn and arcs."},
+		{"id": "glacier_rod", "name": "Glacier Rod", "desc": "Ice and Thunder cross-charge chill and arcs."},
 		{"id": "range", "name": "Longer Shaft", "desc": "+1 lance range."},
 		{"id": "damage", "name": "Heavy Head", "desc": "Boss reward: +1 lance damage."},
 		{"id": "barbed_head", "name": "Barbed Head", "desc": "Lance pins enemies longer."},
@@ -4023,10 +4140,46 @@ func _offer_upgrades() -> void:
 	normal_choices.shuffle()
 	if not heal_choice.is_empty():
 		upgrade_choices.append(heal_choice.duplicate())
-	for i in range(mini(3, normal_choices.size())):
-		var choice: Dictionary = normal_choices[i].duplicate()
+	for choice in _draft_upgrade_choices(normal_choices, 3):
 		upgrade_choices.append(choice)
 	message = "Choose a relic."
+
+
+func _draft_upgrade_choices(normal_choices: Array, max_count: int) -> Array:
+	var selected := []
+	var selected_ids := {}
+	var selected_families := {}
+	var hybrid_choices := []
+	for upgrade in normal_choices:
+		var pool_id := String(upgrade["id"])
+		if _is_hybrid_upgrade(pool_id):
+			hybrid_choices.append(upgrade)
+	if not hybrid_choices.is_empty() and rng.randf() < 0.75:
+		var hybrid_choice: Dictionary = hybrid_choices[rng.randi_range(0, hybrid_choices.size() - 1)].duplicate()
+		selected.append(hybrid_choice)
+		selected_ids[String(hybrid_choice["id"])] = true
+		selected_families[_upgrade_family(String(hybrid_choice["id"]))] = true
+	for upgrade in normal_choices:
+		if selected.size() >= max_count:
+			return selected
+		var unique_id := String(upgrade["id"])
+		var family := _upgrade_family(unique_id)
+		if selected_ids.has(unique_id) or selected_families.has(family):
+			continue
+		var unique_choice: Dictionary = upgrade.duplicate()
+		selected.append(unique_choice)
+		selected_ids[unique_id] = true
+		selected_families[family] = true
+	for upgrade in normal_choices:
+		if selected.size() >= max_count:
+			return selected
+		var fill_id := String(upgrade["id"])
+		if selected_ids.has(fill_id):
+			continue
+		var fill_choice: Dictionary = upgrade.duplicate()
+		selected.append(fill_choice)
+		selected_ids[fill_id] = true
+	return selected
 
 
 func _choose_upgrade(index: int) -> void:
@@ -4048,7 +4201,7 @@ func _upgrade_cost(id: String) -> int:
 		return 0
 	var base := 7 + floor_index
 	match id:
-		"damage", "ice_shatter", "fire_burst", "thunder_chain", "thunder_overload", "status_tip", "fire_coals", "thunder_wire", "gravity_snare", "chute_drill":
+		"damage", "ice_shatter", "fire_burst", "thunder_chain", "thunder_overload", "status_tip", "fire_coals", "thunder_wire", "steam_core", "storm_cell", "glacier_rod", "gravity_snare", "chute_drill":
 			return base + 3
 		"stun", "gem_xp", "magnet":
 			return base - 1
@@ -4073,6 +4226,8 @@ func _upgrade_is_available(id: String) -> bool:
 	if owned_upgrades.has(id) or temp_upgrades.has(id):
 		return false
 	var element := _upgrade_element(id)
+	if _is_hybrid_upgrade(id):
+		return _hybrid_upgrade_is_available(id)
 	if element != "":
 		if lance_element != LANCE_ELEMENT_BASE and lance_element != element:
 			return false
@@ -4142,6 +4297,12 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
 			thunder_chain_damage += 2
 		"thunder_field":
 			static_field += 1
+		"steam_core":
+			steam_core += 1
+		"storm_cell":
+			storm_cell += 1
+		"glacier_rod":
+			glacier_rod += 1
 		"range":
 			lance_range = mini(lance_range + 1, 5)
 		"barbed_head":
@@ -4229,6 +4390,12 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 			temp_thunder_chain_damage += 2
 		"thunder_field":
 			temp_static_field += 1
+		"steam_core":
+			temp_steam_core += 1
+		"storm_cell":
+			temp_storm_cell += 1
+		"glacier_rod":
+			temp_glacier_rod += 1
 		"range":
 			temp_lance_range += 1
 		"barbed_head":
@@ -4281,6 +4448,9 @@ func _register_family_upgrade(id: String, source: String) -> void:
 			"thunder":
 				thunder_stun_bonus += 0.24
 				bonus_text = "Thunder set: stronger stun."
+			"hybrid":
+				status_damage_bonus += 1
+				bonus_text = "Hybrid set: charged reactions."
 			"lance":
 				stun_bonus += 0.30
 				bonus_text = "Lance set: steadier grip."
@@ -4351,6 +4521,8 @@ func _upgrade_family(id: String) -> String:
 	var element := _upgrade_element(id)
 	if element != "":
 		return element
+	if _is_hybrid_upgrade(id):
+		return "hybrid"
 	match id:
 		"range", "stun", "barbed_head", "pierce", "quick_reel", "tunnel_focus", "status_tip":
 			return "lance"
@@ -4384,6 +4556,30 @@ func _upgrade_element(id: String) -> String:
 	if id.begins_with("thunder_"):
 		return LANCE_ELEMENT_THUNDER
 	return ""
+
+
+func _is_hybrid_upgrade(id: String) -> bool:
+	return id == "steam_core" or id == "storm_cell" or id == "glacier_rod"
+
+
+func _hybrid_upgrade_elements(id: String) -> Array:
+	match id:
+		"steam_core":
+			return [LANCE_ELEMENT_ICE, LANCE_ELEMENT_FIRE]
+		"storm_cell":
+			return [LANCE_ELEMENT_FIRE, LANCE_ELEMENT_THUNDER]
+		"glacier_rod":
+			return [LANCE_ELEMENT_ICE, LANCE_ELEMENT_THUNDER]
+		_:
+			return []
+
+
+func _hybrid_upgrade_is_available(id: String) -> bool:
+	var active := _active_lance_element()
+	if active == LANCE_ELEMENT_BASE:
+		return false
+	var elements := _hybrid_upgrade_elements(id)
+	return elements.has(active)
 
 
 func _commit_upgrade_element(id: String, temporary: bool) -> void:
@@ -5160,10 +5356,12 @@ func _draw_portrait_hud() -> void:
 	_text(Vector2(left + 170, 36), "RUN", 13, UI_PANEL_HILITE)
 	_text(Vector2(left + 214, 38), "%s / %s" % [_format_time(run_time), _format_time(RUN_GOAL_TIME)], 17, UI)
 	_draw_pixel_bar(Vector2(left + 170, 50), Vector2(226, 8), clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0), BEACON_ARMED, Color("#29202b"))
+	_text(Vector2(left + 170, 68), "BCN %d/%d" % [beacon_charge, BEACON_CHARGE_GOAL], 13, BEACON_ARMED if beacon_armed else MUTED)
+	_draw_pixel_bar(Vector2(left + 260, 60), Vector2(136, 7), _beacon_charge_ratio(), BEACON_ARMED, Color("#243020"))
 
 	var xp_ratio := clampf(float(xp) / float(maxi(1, xp_to_next)), 0.0, 1.0)
-	_text(Vector2(left + 170, 76), "LV %d  XP %d/%d" % [player_level, xp, xp_to_next], 15, PRESSURE)
-	_draw_pixel_bar(Vector2(left + 294, 66), Vector2(102, 8), xp_ratio, PRESSURE, Color("#29313a"))
+	_text(Vector2(left + 424, 67), "LV %d" % player_level, 13, PRESSURE)
+	_draw_pixel_bar(Vector2(left + 470, 58), Vector2(76, 8), xp_ratio, PRESSURE, Color("#29313a"))
 
 	_text(Vector2(left + 424, 37), "HP", 13, Color("#ff8fa3"))
 	_draw_hearts(Vector2(left + 454, 26))
@@ -5176,8 +5374,11 @@ func _draw_portrait_status_panel() -> void:
 	_text(Vector2(left + 16, rect.position.y + 28), "UPGRADES", 15, UI_PANEL_HILITE)
 	if message != "":
 		_text(Vector2(left + 104, rect.position.y + 30), _trim_text(message, 46), 16, WARN)
+	var detail := _status_detail_string()
+	if detail != "":
+		_text(Vector2(left + 16, rect.position.y + 54), _trim_text(detail, 52), 13, MUTED)
 
-	_draw_upgrade_summary(Vector2(left + 16, rect.position.y + 62), 390.0, 2)
+	_draw_upgrade_summary(Vector2(left + 16, rect.position.y + 76), 390.0, 1)
 	_draw_touch_button(_inventory_button_rect(), "UPGRADES", PRESSURE, show_upgrade_inventory)
 	_draw_crush_toast()
 
@@ -5197,15 +5398,20 @@ func _draw_desktop_ui() -> void:
 	_text(Vector2(700, 78), "RUN", 15, UI_PANEL_HILITE)
 	_text(Vector2(746, 80), "%s / %s" % [_format_time(run_time), _format_time(RUN_GOAL_TIME)], 18, UI)
 	_draw_pixel_bar(Vector2(700, 96), Vector2(196, 8), clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0), BEACON_ARMED, Color("#29202b"))
+	_text(Vector2(700, 120), "BEACON %d / %d" % [beacon_charge, BEACON_CHARGE_GOAL], 15, BEACON_ARMED if beacon_armed else MUTED)
+	_draw_pixel_bar(Vector2(700, 134), Vector2(196, 8), _beacon_charge_ratio(), BEACON_ARMED, Color("#243020"))
 
 	var xp_ratio := clampf(float(xp) / float(maxi(1, xp_to_next)), 0.0, 1.0)
-	_text(Vector2(700, 126), "LV %d  XP %d / %d" % [player_level, xp, xp_to_next], 18, PRESSURE)
-	_draw_pixel_bar(Vector2(700, 142), Vector2(196, 10), xp_ratio, PRESSURE, Color("#29313a"))
+	_text(Vector2(700, 166), "LV %d  XP %d / %d" % [player_level, xp, xp_to_next], 18, PRESSURE)
+	_draw_pixel_bar(Vector2(700, 182), Vector2(196, 10), xp_ratio, PRESSURE, Color("#29313a"))
 
-	_text(Vector2(700, 184), "HP", 15, Color("#ff8fa3"))
-	_draw_hearts(Vector2(742, 172))
-	_text(Vector2(700, 230), "UPGRADES", 15, UI_PANEL_HILITE)
-	_draw_upgrade_summary(Vector2(700, 260), 196.0, 3)
+	_text(Vector2(700, 220), "HP", 15, Color("#ff8fa3"))
+	_draw_hearts(Vector2(742, 208))
+	var detail := _status_detail_string()
+	if detail != "":
+		_text(Vector2(700, 260), _trim_status_text(detail), 13, MUTED)
+	_text(Vector2(700, 288), "UPGRADES", 15, UI_PANEL_HILITE)
+	_draw_upgrade_summary(Vector2(700, 314), 196.0, 1)
 	_draw_touch_button(_inventory_button_rect(), "UPGRADES", PRESSURE, show_upgrade_inventory)
 	if message != "":
 		_text(Vector2(24, 594), message, 18, WARN)
@@ -5400,6 +5606,15 @@ func _choice_skip_rect() -> Rect2:
 
 func _status_detail_string() -> String:
 	var parts := []
+	if beacon_armed:
+		parts.append("Beacon armed")
+	else:
+		parts.append("Beacon %d/%d" % [beacon_charge, BEACON_CHARGE_GOAL])
+		if _is_pressure_surge():
+			parts.append("Surge %s" % _format_time(pressure_surge_timer))
+		else:
+			parts.append("Surge in %s" % _format_time(pressure_surge_cooldown))
+	parts.append("Enemies %d/%d" % [enemies.size(), _spawn_cap()])
 	if crystal_charge > 0:
 		parts.append("Charge %d" % crystal_charge)
 	if _synergy_string() != "":
@@ -6108,6 +6323,18 @@ func _effective_static_field() -> int:
 	return static_field + temp_static_field
 
 
+func _effective_steam_core() -> int:
+	return steam_core + temp_steam_core
+
+
+func _effective_storm_cell() -> int:
+	return storm_cell + temp_storm_cell
+
+
+func _effective_glacier_rod() -> int:
+	return glacier_rod + temp_glacier_rod
+
+
 func _effective_quick_reel() -> int:
 	return quick_reel + temp_quick_reel
 
@@ -6165,6 +6392,12 @@ func _synergy_string() -> String:
 			parts.append("Fire")
 		LANCE_ELEMENT_THUNDER:
 			parts.append("Thunder")
+	if _effective_steam_core() > 0:
+		parts.append("Steam %d" % _effective_steam_core())
+	if _effective_storm_cell() > 0:
+		parts.append("Storm %d" % _effective_storm_cell())
+	if _effective_glacier_rod() > 0:
+		parts.append("Glacier %d" % _effective_glacier_rod())
 	if _effective_piercing_tip() > 0:
 		parts.append("Pierce %d" % _effective_piercing_tip())
 	if _effective_quick_reel() > 0:
@@ -6193,7 +6426,7 @@ func _synergy_string() -> String:
 
 func _family_string() -> String:
 	var parts := []
-	for family in ["ice", "fire", "thunder", "lance", "gem", "cave"]:
+	for family in ["ice", "fire", "thunder", "hybrid", "lance", "gem", "cave"]:
 		var count := int(family_points.get(family, 0))
 		if count > 0:
 			parts.append("%s %d" % [_family_label(family), count])
@@ -6208,6 +6441,8 @@ func _family_label(family: String) -> String:
 			return "Fire"
 		"thunder":
 			return "Thunder"
+		"hybrid":
+			return "Hybrid"
 		"lance":
 			return "Lance"
 		"gem":
@@ -6222,25 +6457,56 @@ func _apply_lance_element(enemy_i: int, hit_pos: Vector2i, shot_damage: int) -> 
 	var element := _active_lance_element()
 	match element:
 		LANCE_ELEMENT_ICE:
+			var ice_was_burning := enemy_i >= 0 and enemy_i < enemies.size() and float(enemies[enemy_i].get("burning", 0.0)) > 0.0
 			_freeze_enemy(enemy_i, ICE_FREEZE_DURATION + _effective_freeze_duration_bonus())
 			if _effective_frost_front() > 0:
 				_chill_enemies_near(hit_pos, 1 + mini(_effective_frost_front(), 2), ICE_FRONT_CHILL_DURATION + _effective_freeze_duration_bonus() * 0.25)
+			if ice_was_burning and _effective_steam_core() > 0:
+				_vent_steam(hit_pos, _effective_steam_core())
+			if _effective_glacier_rod() > 0:
+				_chain_thunder_from(enemy_i, hit_pos, _effective_glacier_rod(), maxi(0, shot_damage - 1))
 			_add_cell_pulse(hit_pos, ICE, PULSE_FEEDBACK_TIME + 0.08, 1.0)
-			message = "Frozen."
+			if ice_was_burning and _effective_steam_core() > 0:
+				message = "Steam burst."
+			elif _effective_glacier_rod() > 0:
+				message = "Glacier arc."
+			else:
+				message = "Frozen."
 		LANCE_ELEMENT_FIRE:
-			var was_burning := enemy_i >= 0 and enemy_i < enemies.size() and float(enemies[enemy_i].get("burning", 0.0)) > 0.0
+			var fire_was_burning := enemy_i >= 0 and enemy_i < enemies.size() and float(enemies[enemy_i].get("burning", 0.0)) > 0.0
+			var fire_was_frozen := enemy_i >= 0 and enemy_i < enemies.size() and float(enemies[enemy_i].get("frozen", 0.0)) > 0.0
 			_ignite_enemy(enemy_i, FIRE_BURN_DURATION + _effective_burn_duration_bonus())
+			if _effective_storm_cell() > 0:
+				_shock_enemy(enemy_i, 0.20 + _effective_thunder_stun_bonus() * 0.45, false)
+				if fire_was_burning:
+					_chain_thunder_from(enemy_i, hit_pos, _effective_storm_cell(), 1)
+			if fire_was_frozen and _effective_steam_core() > 0:
+				_vent_steam(hit_pos, _effective_steam_core())
 			_add_cell_pulse(hit_pos, FIRE, PULSE_FEEDBACK_TIME + 0.08, 1.0)
-			if was_burning and not _fire_scorch_enemy(enemy_i, hit_pos):
+			if fire_was_burning and not _fire_scorch_enemy(enemy_i, hit_pos):
 				return false
-			message = "Ignited."
+			if fire_was_frozen and _effective_steam_core() > 0:
+				message = "Steam burst."
+			elif _effective_storm_cell() > 0:
+				message = "Storm charged."
+			else:
+				message = "Ignited."
 		LANCE_ELEMENT_THUNDER:
 			_shock_enemy(enemy_i, THUNDER_STUN_DURATION + _effective_thunder_stun_bonus(), true)
 			_chain_thunder_from(enemy_i, hit_pos, 1 + _effective_thunder_chain(), maxi(1, shot_damage - 1))
+			if _effective_storm_cell() > 0:
+				_ignite_enemy(enemy_i, maxf(0.70, FIRE_BURN_DURATION * 0.45 + _effective_burn_duration_bonus() * 0.25))
+			if _effective_glacier_rod() > 0:
+				_chill_enemies_near(hit_pos, 1 + mini(_effective_glacier_rod(), 2), ICE_FRONT_CHILL_DURATION + _effective_freeze_duration_bonus() * 0.18)
 			if _effective_static_field() > 0:
 				_stun_enemies_near(hit_pos, 1 + mini(_effective_static_field(), 2), 0.20 + _effective_thunder_stun_bonus() * 0.35)
 			_add_cell_pulse(hit_pos, THUNDER, PULSE_FEEDBACK_TIME + 0.08, 1.0)
-			message = "Shocked."
+			if _effective_storm_cell() > 0:
+				message = "Storm charged."
+			elif _effective_glacier_rod() > 0:
+				message = "Glacier chill."
+			else:
+				message = "Shocked."
 	return enemy_i >= 0 and enemy_i < enemies.size()
 
 
@@ -6300,6 +6566,15 @@ func _chill_enemies_near(center: Vector2i, radius: int, duration: float) -> void
 			enemies[i]["stun"] = maxf(float(enemies[i].get("stun", 0.0)), chill_duration)
 		enemies[i]["hit_flash"] = ENEMY_HIT_FLASH * 0.65
 		_add_cell_pulse(pos, ICE, PULSE_FEEDBACK_TIME, 0.65)
+
+
+func _vent_steam(center: Vector2i, strength: int) -> void:
+	var radius := 1 + mini(strength, 2)
+	var duration := 0.22 + float(strength) * 0.10 + _effective_stun_bonus() * 0.25
+	_stun_enemies_near(center, radius, duration)
+	var steam_color := ICE.lerp(FIRE, 0.5).lerp(PRESSURE, 0.35)
+	_add_cell_pulse(center, steam_color, PULSE_FEEDBACK_TIME + 0.10, 1.0 + float(radius) * 0.25, true)
+	message = "Steam burst."
 
 
 func _ignite_enemy(enemy_i: int, duration: float) -> void:
@@ -6455,6 +6730,9 @@ func _trigger_elemental_death_effects(pos: Vector2i, was_frozen: bool, was_burni
 	if was_burning and _effective_fire_burst() > 0:
 		_burst_nearby_enemies(pos, _effective_fire_burst(), 1 + mini(_effective_fire_burst(), 2), "Backdraft!")
 		_add_cell_pulse(pos, FIRE, PULSE_FEEDBACK_TIME + 0.12, 1.15, true)
+	if was_burning and _effective_storm_cell() > 0:
+		_chain_thunder_from(-1, pos, _effective_storm_cell(), 1)
+		_add_cell_pulse(pos, THUNDER, PULSE_FEEDBACK_TIME + 0.10, 0.95, true)
 	if was_thundered and _effective_thunder_overload() > 0:
 		_chain_thunder_from(-1, pos, _effective_thunder_overload(), 1)
 		_add_cell_pulse(pos, THUNDER, PULSE_FEEDBACK_TIME + 0.12, 1.05, true)
