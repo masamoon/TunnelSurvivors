@@ -18,6 +18,10 @@ On touch devices, use the on-screen directional pad, `LANCE` button, and pause b
 
 Completed runs earn relic research and runes from survival time, gems, kills, relic finds, and extraction. Research milestones add more relics to future upgrade rotations, while runes buy permanent hub upgrades that improve starts, research gain, and chest relic odds. Achievements can still unlock maps, loadouts, elements, and special relics early.
 
+The boulder upgrade branch includes Boulder Lance, a shorter weaker lance that can create boulders where lance-killed enemies fall. Later ranks improve its boulder chance, and those ranks can appear in chests once unlocked. Your first boulder crush also unlocks the Stonecaller starting build, which begins runs with Boulder Lance.
+
+The base lance branch uses standalone upgrades such as Anchor Chain, Snap Reel, Piston Head, Rupture Wave, and Beacon Coupler. These do not require elemental status setups to pay off.
+
 The pause settings include master audio, music, SFX volume, music volume, screen shake, first-run hints, and a double-confirm wipe-save button.
 
 Boss kills unlock the harder Obsidian Rift site, the Field Kit loadout, and the Treasure Compass beacon mod.

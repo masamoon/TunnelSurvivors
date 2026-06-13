@@ -129,6 +129,7 @@ const REGROW_MAX_PER_TICK := 3
 const ROCK_SPAWN_START_DELAY := 12.0
 const ROCK_SPAWN_INTERVAL_MIN := 5.5
 const ROCK_SPAWN_INTERVAL_MAX := 10.0
+const ROCK_BURIED_GROWTH_CHANCE := 0.45
 const ROCK_CAP_BASE := 12
 const ROCK_CAP_GROWTH := 2
 const ROCK_SPAWN_SAFE_RADIUS := 5
@@ -478,11 +479,15 @@ var glacier_rod := 0
 var quick_reel := 0
 var piercing_tip := 0
 var tunnel_focus := 0
+var piston_damage_bonus := 0
+var lance_aftershock := 0
+var lance_charge_bonus := 0
 var super_gem_bonus := 0
 var brittle_frost := 0
 var status_damage_bonus := 0
 var xp_magnet_bonus := 0
 var extra_gems_bonus := 0
+var boulder_lance := 0
 var boulder_lure := 0
 var boulder_snare := 0
 var boulder_chute := 0
@@ -511,12 +516,16 @@ var temp_glacier_rod := 0
 var temp_quick_reel := 0
 var temp_piercing_tip := 0
 var temp_tunnel_focus := 0
+var temp_piston_damage_bonus := 0
+var temp_lance_aftershock := 0
+var temp_lance_charge_bonus := 0
 var temp_super_gem_bonus := 0
 var temp_gem_xp_bonus := 0
 var temp_brittle_frost := 0
 var temp_status_damage_bonus := 0
 var temp_xp_magnet_bonus := 0
 var temp_extra_gems_bonus := 0
+var temp_boulder_lance := 0
 var temp_boulder_lure := 0
 var temp_boulder_snare := 0
 var temp_boulder_chute := 0
@@ -1154,6 +1163,7 @@ func _loadout_defs() -> Dictionary:
 		"long_shaft": {"id": "long_shaft", "name": "Long Shaft", "desc": "Start with +1 lance range.", "upgrade": "range"},
 		"amber_magnet": {"id": "amber_magnet", "name": "Amber Magnet", "desc": "Start with XP pull.", "upgrade": "magnet"},
 		"rock_whistle": {"id": "rock_whistle", "name": "Rock Whistle", "desc": "Start with boulder lures.", "upgrade": "rock_whistle"},
+		"stonecaller": {"id": "stonecaller", "name": "Stonecaller", "desc": "Start with Boulder Lance.", "upgrade": "boulder_lance"},
 		"field_kit": {"id": "field_kit", "name": "Field Kit", "desc": "Start with +1 max heart and heal.", "upgrade": "field_dressing"}
 	}
 
@@ -1211,13 +1221,16 @@ func _achievement_defs() -> Dictionary:
 				{"kind": "loadout", "id": "rock_whistle"},
 				{"kind": "beacon_mod", "id": BEACON_MOD_SIGNAL_SCANNER},
 				{"kind": "element", "id": LANCE_ELEMENT_ICE},
-				{"kind": "relics", "ids": ["gem_xp", "prospector", "gem_vein", "barbed_head"]}
+				{"kind": "relics", "ids": ["gem_xp", "prospector", "gem_vein", "anchor_chain"]}
 			]
 		},
 		"first_boulder_kill": {
 			"name": "Rock Plan",
 			"desc": "Crush an enemy with a boulder.",
-			"rewards": [{"kind": "relics", "ids": ["gravity_snare", "chute_drill", "rock_ledger"]}]
+			"rewards": [
+				{"kind": "loadout", "id": "stonecaller"},
+				{"kind": "relics", "ids": ["boulder_lance", "gravity_snare", "chute_drill", "rock_ledger"]}
+			]
 		},
 		"first_boss_kill": {
 			"name": "Deep Boss Down",
@@ -1226,7 +1239,7 @@ func _achievement_defs() -> Dictionary:
 				{"kind": "map", "id": MAP_OBSIDIAN_RIFT},
 				{"kind": "beacon_mod", "id": BEACON_MOD_TREASURE_COMPASS},
 				{"kind": "loadout", "id": "field_kit"},
-				{"kind": "relics", "ids": ["pierce", "quick_reel", "tunnel_focus"]}
+				{"kind": "relics", "ids": ["snap_reel", "piston_head", "rupture_wave"]}
 			]
 		},
 		"super_gem_collector_10": {
@@ -1247,14 +1260,17 @@ func _relic_research_milestones() -> Array:
 		{"id": "gem_xp", "cost": 3},
 		{"id": "prospector", "cost": 7},
 		{"id": "gem_vein", "cost": 12},
-		{"id": "barbed_head", "cost": 18},
-		{"id": "status_tip", "cost": 25},
-		{"id": "quick_reel", "cost": 33},
-		{"id": "pierce", "cost": 42},
-		{"id": "tunnel_focus", "cost": 52},
+		{"id": "anchor_chain", "cost": 18},
+		{"id": "boulder_lance", "cost": 22},
+		{"id": "piston_head", "cost": 25},
+		{"id": "snap_reel", "cost": 33},
+		{"id": "rupture_wave", "cost": 42},
+		{"id": "boulder_lance_2", "cost": 48},
+		{"id": "beacon_coupler", "cost": 52},
 		{"id": "field_dressing", "cost": 57},
 		{"id": "gravity_snare", "cost": 63},
 		{"id": "chute_drill", "cost": 75},
+		{"id": "boulder_lance_3", "cost": 82},
 		{"id": "rock_ledger", "cost": 88}
 	]
 
@@ -1562,8 +1578,24 @@ func _cycle_meta_upgrade(dir: int) -> void:
 	queue_redraw()
 
 
+func _buy_meta_upgrade_by_index(index: int) -> void:
+	var defs := _meta_upgrade_defs()
+	if index < 0 or index >= defs.size():
+		return
+	var def: Dictionary = defs[index]
+	selected_meta_upgrade_index = index
+	_buy_meta_upgrade(String(def.get("id", "")))
+
+
 func _buy_selected_meta_upgrade() -> void:
 	var def := _selected_meta_upgrade_def()
+	if def.is_empty():
+		return
+	_buy_meta_upgrade(String(def.get("id", "")))
+
+
+func _buy_meta_upgrade(upgrade_id: String) -> void:
+	var def := _meta_upgrade_def(upgrade_id)
 	if def.is_empty():
 		return
 	var id := String(def.get("id", ""))
@@ -1721,11 +1753,15 @@ func _new_run() -> void:
 	quick_reel = 0
 	piercing_tip = 0
 	tunnel_focus = 0
+	piston_damage_bonus = 0
+	lance_aftershock = 0
+	lance_charge_bonus = 0
 	super_gem_bonus = 0
 	brittle_frost = 0
 	status_damage_bonus = 0
 	xp_magnet_bonus = 0
 	extra_gems_bonus = 0
+	boulder_lance = 0
 	boulder_lure = 0
 	boulder_snare = 0
 	boulder_chute = 0
@@ -1794,12 +1830,16 @@ func _start_run_map() -> void:
 	temp_quick_reel = 0
 	temp_piercing_tip = 0
 	temp_tunnel_focus = 0
+	temp_piston_damage_bonus = 0
+	temp_lance_aftershock = 0
+	temp_lance_charge_bonus = 0
 	temp_super_gem_bonus = 0
 	temp_gem_xp_bonus = 0
 	temp_brittle_frost = 0
 	temp_status_damage_bonus = 0
 	temp_xp_magnet_bonus = 0
 	temp_extra_gems_bonus = 0
+	temp_boulder_lance = 0
 	temp_boulder_lure = 0
 	temp_boulder_snare = 0
 	temp_boulder_chute = 0
@@ -2596,6 +2636,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_start_selected_run()
 		elif event.keycode == KEY_B:
 			_buy_selected_meta_upgrade()
+		elif event.keycode == KEY_1 or event.keycode == KEY_KP_1:
+			_buy_meta_upgrade_by_index(0)
+		elif event.keycode == KEY_2 or event.keycode == KEY_KP_2:
+			_buy_meta_upgrade_by_index(1)
+		elif event.keycode == KEY_3 or event.keycode == KEY_KP_3:
+			_buy_meta_upgrade_by_index(2)
+		elif event.keycode == KEY_4 or event.keycode == KEY_KP_4:
+			_buy_meta_upgrade_by_index(3)
 		elif event.keycode == KEY_Q:
 			_cycle_meta_upgrade(-1)
 		elif event.keycode == KEY_E:
@@ -2694,7 +2742,7 @@ func _restart_prompt_text() -> String:
 
 
 func _meta_prompt_text() -> String:
-	return "Tap panels to cycle. Tap START RUN." if show_touch_controls else "Enter starts. Arrows choose setup. Q/E meta, B buys."
+	return "Tap setup panels. Tap a meta row to buy." if show_touch_controls else "Enter starts. Arrows choose setup. 1-4 buys meta upgrades."
 
 
 func _toggle_pause() -> void:
@@ -3734,14 +3782,18 @@ func _update_rock_spawning(delta: float) -> void:
 
 func _rock_spawn_interval() -> float:
 	var pressure := clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0)
-	return lerpf(ROCK_SPAWN_INTERVAL_MAX, ROCK_SPAWN_INTERVAL_MIN, pressure)
+	var map_mult := maxf(0.65, float(current_map_def.get("rock_mult", 1.0)))
+	return lerpf(ROCK_SPAWN_INTERVAL_MAX, ROCK_SPAWN_INTERVAL_MIN, pressure) / map_mult
 
 
 func _rock_cap() -> int:
-	return ROCK_CAP_BASE + floori(run_time / 90.0) * ROCK_CAP_GROWTH
+	var base_cap := ROCK_CAP_BASE + floori(run_time / 90.0) * ROCK_CAP_GROWTH
+	return maxi(4, roundi(float(base_cap) * float(current_map_def.get("rock_mult", 1.0))))
 
 
 func _spawn_survival_rock() -> void:
+	if rng.randf() < ROCK_BURIED_GROWTH_CHANCE and _spawn_buried_survival_rock(false):
+		return
 	var best := Vector2i.ZERO
 	var best_score := -999999.0
 	for attempt in range(120):
@@ -3759,11 +3811,36 @@ func _spawn_survival_rock() -> void:
 			best_score = score_value
 			best = pos
 	if best_score < 0.0:
+		_spawn_buried_survival_rock(true)
 		return
 	_add_rock(best)
 	_add_cell_pulse(best, ROCK, PULSE_FEEDBACK_TIME + 0.16, 1.0, true)
 	if combo_count < 2 and rng.randf() < 0.35:
 		message = "The cave is growing new boulders."
+
+
+func _spawn_buried_survival_rock(announce: bool) -> bool:
+	var best := Vector2i.ZERO
+	var best_score := -999999.0
+	for attempt in range(160):
+		var pos := Vector2i(rng.randi_range(1, BOARD_W - 2), rng.randi_range(UNDERGROUND_SPAWN_MIN_ROW, BOARD_H - 3))
+		if not _can_spawn_buried_rock_at(pos):
+			continue
+		var distance := sqrt(float(pos.distance_squared_to(player_pos)))
+		var center_pull := 1.0 - absf(float(pos.x) - float(BOARD_W) * 0.5) / float(BOARD_W)
+		var score_value := distance * 1.5 + center_pull * 12.0 + _depth_reward_ratio(pos) * 24.0 + rng.randf_range(0.0, 28.0)
+		if _cell_open_mask(pos + Vector2i.DOWN) != 0:
+			score_value += 8.0
+		if score_value > best_score:
+			best_score = score_value
+			best = pos
+	if best_score < 0.0:
+		return false
+	_add_rock(best)
+	_add_cell_pulse(best, ROCK, PULSE_FEEDBACK_TIME + 0.12, 0.72, true)
+	if announce and combo_count < 2 and rng.randf() < 0.45:
+		message = "New boulders are forming."
+	return true
 
 
 func _can_spawn_rock_at(pos: Vector2i) -> bool:
@@ -3784,6 +3861,70 @@ func _can_spawn_rock_at(pos: Vector2i) -> bool:
 	if _has_rock(pos) or _has_rock(pos + Vector2i.DOWN):
 		return false
 	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _enemy_index_at(pos) != -1 or _enemy_index_at(pos + Vector2i.DOWN) != -1:
+		return false
+	return true
+
+
+func _can_spawn_buried_rock_at(pos: Vector2i) -> bool:
+	if not _in_bounds(pos) or not _can_spawn_underground_at(pos):
+		return false
+	if _cell_open_mask(pos) != 0:
+		return false
+	if _terrain_at(pos) != "":
+		return false
+	if pos.distance_squared_to(player_pos) < ROCK_SPAWN_SAFE_RADIUS * ROCK_SPAWN_SAFE_RADIUS:
+		return false
+	if pos == beacon_pos or pos + Vector2i.DOWN == beacon_pos:
+		return false
+	if _has_rock(pos) or _has_rock(pos + Vector2i.DOWN) or _has_rock(pos + Vector2i.UP):
+		return false
+	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _enemy_index_at(pos) != -1:
+		return false
+	return true
+
+
+func _try_spawn_boulder_lance_rock(pos: Vector2i) -> bool:
+	if _effective_boulder_lance_level() <= 0 or rng.randf() >= _boulder_lance_chance():
+		return false
+	if not _can_place_boulder_lance_rock_at(pos):
+		return false
+	_add_rock(pos)
+	_add_cell_pulse(pos, ROCK, PULSE_FEEDBACK_TIME + 0.18, 1.2, true)
+	_shake(0.10)
+	return true
+
+
+func _trigger_lance_kill_effects(pos: Vector2i) -> String:
+	var boulder_spawned := _try_spawn_boulder_lance_rock(pos)
+	var wave_triggered := false
+	if _effective_lance_aftershock() > 0:
+		var radius := 1 + mini(_effective_lance_aftershock(), 2)
+		_burst_nearby_enemies(pos, _effective_lance_aftershock(), radius, "Rupture wave!")
+		_add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.12, 1.0 + float(radius) * 0.22, true)
+		wave_triggered = true
+	if _effective_lance_charge_bonus() > 0:
+		_add_beacon_charge(_effective_lance_charge_bonus(), "Coupler")
+	if boulder_spawned and wave_triggered:
+		return "Boulder wave!"
+	if boulder_spawned:
+		return "Boulder lance!"
+	if wave_triggered:
+		return "Rupture wave!"
+	return "Lance burst!"
+
+
+func _can_place_boulder_lance_rock_at(pos: Vector2i) -> bool:
+	if not _in_bounds(pos) or not _can_spawn_underground_at(pos):
+		return false
+	if pos == player_pos or pos == player_target_cell or pos == player_step_from or pos == beacon_pos:
+		return false
+	if not _is_open_tile(pos):
+		return false
+	if _has_rock(pos) or _has_treasure_chest(pos) or _has_relic(pos):
+		return false
+	if _enemy_index_at(pos) != -1:
+		return false
+	if _has_loose_boulder_threat(pos):
 		return false
 	return true
 
@@ -4098,9 +4239,9 @@ func _direct_lance_damage_for_enemy(enemy: Dictionary, amount: int) -> int:
 
 
 func _enemy_xp_drop(enemy: Dictionary, dead_kind: int) -> int:
-	var base := 1 + mini(dead_kind, ENEMY_BROOD_POD_KIND)
+	var base := 3 + mini(dead_kind, ENEMY_BROOD_POD_KIND) * 2
 	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND:
-		base = 18
+		base = 28
 	return base + int(enemy.get("stolen_loot", 0))
 
 
@@ -4162,8 +4303,9 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
 		_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind), enemy)
 		_add_rupture_feedback(dead_pos)
 		_trigger_elemental_death_effects(dead_pos, was_frozen, was_burning, was_thundered)
+		var lance_kill_message := _trigger_lance_kill_effects(dead_pos)
 		_shake(0.16)
-		message = "Lance burst!"
+		message = lance_kill_message
 		return false
 	_shake(0.06)
 	message = "Pumping."
@@ -5333,7 +5475,7 @@ func _crush_at(pos: Vector2i, fall_distance: int) -> void:
 
 
 func _boulder_crush_xp(enemy_kind: int, fall_distance: int, chain_index: int) -> int:
-	return 3 + enemy_kind + mini(fall_distance, 3) + mini(chain_index, 2) + _effective_boulder_xp_bonus()
+	return 5 + enemy_kind * 2 + mini(fall_distance, 3) + mini(chain_index, 2) + _effective_boulder_xp_bonus()
 
 
 func _enemy_crushed_by_rock(enemy: Dictionary, rock_pos: Vector2i, fall_distance: int) -> bool:
@@ -5677,17 +5819,20 @@ func _upgrade_pool() -> Array:
 		{"id": "glacier_rod", "name": "Glacier Rod", "desc": "Ice and Thunder cross-charge chill and arcs."},
 		{"id": "range", "name": "Longer Shaft", "desc": "+1 lance range."},
 		{"id": "damage", "name": "Heavy Head", "desc": "Boss reward: +1 lance damage."},
-		{"id": "barbed_head", "name": "Barbed Head", "desc": "Lance pins enemies longer."},
-		{"id": "pierce", "name": "Piercing Tip", "desc": "On lance kill, hits next enemy straight ahead."},
-		{"id": "quick_reel", "name": "Quick Reel", "desc": "Lance recovers faster."},
-		{"id": "tunnel_focus", "name": "Tunnel Focus", "desc": "Bonus lance damage in tight tunnels."},
+		{"id": "anchor_chain", "name": "Anchor Chain", "desc": "Lance pins and stuns enemies longer."},
+		{"id": "snap_reel", "name": "Snap Reel", "desc": "Lance recovers faster after every shot."},
+		{"id": "piston_head", "name": "Piston Head", "desc": "+1 lance damage, no setup needed."},
+		{"id": "rupture_wave", "name": "Rupture Wave", "desc": "Lance kills damage nearby enemies."},
+		{"id": "beacon_coupler", "name": "Beacon Coupler", "desc": "Lance kills add extra beacon charge."},
 		{"id": "stun", "name": "Steady Grip", "desc": "Lance control effects last longer."},
-			{"id": "status_tip", "name": "Catalyst Tip", "desc": "Lance hits elementally disabled enemies harder."},
 			{"id": "field_dressing", "name": "Field Dressing", "desc": "+1 max heart and heal."},
 			{"id": "gem_xp", "name": "Gem Appetite", "desc": "Gems give even more XP."},
 			{"id": "prospector", "name": "Prospector", "desc": "More super gems appear, with nearby hints."},
 			{"id": "gem_vein", "name": "Gem Vein", "desc": "More gems appear now."},
 			{"id": "magnet", "name": "Amber Magnet", "desc": "XP pickups pull from farther away."},
+			{"id": "boulder_lance", "name": "Boulder Lance", "desc": "Shorter weaker lance. Lance kills can leave boulders."},
+			{"id": "boulder_lance_2", "name": "Boulder Lance II", "desc": "Boulder Lance kill boulder chance improves."},
+			{"id": "boulder_lance_3", "name": "Boulder Lance III", "desc": "Boulder Lance kill boulder chance improves again."},
 			{"id": "rock_whistle", "name": "Rock Whistle", "desc": "Enemies favor open lanes beneath boulders."},
 			{"id": "gravity_snare", "name": "Gravity Snare", "desc": "Falling boulders tug nearby enemies into line."},
 			{"id": "chute_drill", "name": "Chute Drill", "desc": "Boulder crush lanes reach one extra open cell."},
@@ -5805,10 +5950,12 @@ func _upgrade_is_available(id: String) -> bool:
 		if lance_element == LANCE_ELEMENT_BASE:
 			return id.ends_with("_tip") and player_level >= ELEMENT_TIP_MIN_LEVEL and run_time >= ELEMENT_TIP_MIN_TIME
 	match id:
-		"barbed_head", "pierce", "tunnel_focus":
-			return depth_tier >= 2 or _active_lance_element() != LANCE_ELEMENT_BASE
-		"prospector", "gem_vein", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger":
+		"prospector", "gem_vein", "boulder_lance", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger":
 			return depth_tier >= 2
+		"boulder_lance_2":
+			return _effective_boulder_lance_level() >= 1
+		"boulder_lance_3":
+			return _effective_boulder_lance_level() >= 2
 		"field_dressing":
 			return max_hp < 5
 		_:
@@ -5876,18 +6023,19 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
 			glacier_rod += 1
 		"range":
 			lance_range = mini(lance_range + 1, 5)
-		"barbed_head":
+		"anchor_chain":
 			lance_hold_bonus += 0.34
-		"pierce":
-			piercing_tip += 1
-		"quick_reel":
+			stun_bonus += 0.10
+		"snap_reel":
 			quick_reel += 1
-		"tunnel_focus":
-			tunnel_focus += 2
+		"piston_head":
+			piston_damage_bonus += 1
+		"rupture_wave":
+			lance_aftershock += 1
+		"beacon_coupler":
+			lance_charge_bonus += 3
 		"stun":
 			stun_bonus += 0.30
-		"status_tip":
-			status_damage_bonus += 2
 		"field_dressing":
 			max_hp += 1
 			hp = mini(max_hp, hp + 2)
@@ -5900,6 +6048,12 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
 			_sprout_extra_gems(3)
 		"magnet":
 			xp_magnet_bonus += 1
+		"boulder_lance":
+			boulder_lance += 1
+		"boulder_lance_2":
+			boulder_lance += 1
+		"boulder_lance_3":
+			boulder_lance += 1
 		"rock_whistle":
 			boulder_lure += 1
 		"gravity_snare":
@@ -5969,18 +6123,19 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 			temp_glacier_rod += 1
 		"range":
 			temp_lance_range += 1
-		"barbed_head":
+		"anchor_chain":
 			temp_lance_hold_bonus += 0.34
-		"pierce":
-			temp_piercing_tip += 1
-		"quick_reel":
+			temp_stun_bonus += 0.10
+		"snap_reel":
 			temp_quick_reel += 1
-		"tunnel_focus":
-			temp_tunnel_focus += 2
+		"piston_head":
+			temp_piston_damage_bonus += 1
+		"rupture_wave":
+			temp_lance_aftershock += 1
+		"beacon_coupler":
+			temp_lance_charge_bonus += 3
 		"stun":
 			temp_stun_bonus += 0.30
-		"status_tip":
-			temp_status_damage_bonus += 2
 		"field_dressing":
 			hp = mini(max_hp, hp + 2)
 		"gem_xp":
@@ -5992,6 +6147,12 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 			_sprout_extra_gems(3)
 		"magnet":
 			temp_xp_magnet_bonus += 1
+		"boulder_lance":
+			temp_boulder_lance += 1
+		"boulder_lance_2":
+			temp_boulder_lance += 1
+		"boulder_lance_3":
+			temp_boulder_lance += 1
 		"rock_whistle":
 			temp_boulder_lure += 1
 		"gravity_snare":
@@ -6070,8 +6231,8 @@ func _register_family_upgrade(id: String, source: String) -> void:
 				bonus_text = "Endgame thunder: overload."
 			"lance":
 				quick_reel += 1
-				piercing_tip += 1
-				bonus_text = "Endgame lance: quick reel."
+				lance_aftershock += 1
+				bonus_text = "Endgame lance: rupture reel."
 			"gem":
 				super_gem_bonus += 1
 				extra_gems_bonus += 1
@@ -6095,11 +6256,11 @@ func _upgrade_family(id: String) -> String:
 	if _is_hybrid_upgrade(id):
 		return "hybrid"
 	match id:
-		"range", "stun", "barbed_head", "pierce", "quick_reel", "tunnel_focus", "status_tip":
+		"range", "stun", "anchor_chain", "snap_reel", "piston_head", "rupture_wave", "beacon_coupler":
 			return "lance"
 		"gem_xp", "prospector", "gem_vein", "magnet":
 			return "gem"
-		"field_dressing", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger":
+		"field_dressing", "boulder_lance", "boulder_lance_2", "boulder_lance_3", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger":
 			return "cave"
 		_:
 			return "lance"
@@ -7251,25 +7412,35 @@ func _draw_meta_selector(rect: Rect2, label: String, value: String, desc: String
 func _draw_meta_progress_panel(rect: Rect2) -> void:
 	_draw_pixel_panel(rect, Color("#12131c"), UI_PANEL_EDGE)
 	var lifetime: Dictionary = meta.get("lifetime", {})
-	var achievements: Dictionary = meta.get("achievements", {})
 	var relics: Dictionary = meta.get("unlocked_relics", {})
-	var maps: Dictionary = meta.get("unlocked_maps", {})
-	var elements: Dictionary = meta.get("researched_elements", {})
 	var research := int(lifetime.get("relic_research", 0))
 	var runes := int(lifetime.get("runes", 0))
-	var selected := _selected_meta_upgrade_def()
-	var upgrade_id := String(selected.get("id", ""))
-	var level := _meta_upgrade_level(upgrade_id)
-	var max_level := int(selected.get("max", 1))
-	var cost := _meta_upgrade_cost(upgrade_id)
-	var top_line := "RUNES %d   Research %d   Relics %d   %s" % [runes, research, _true_count(relics), _next_relic_research_text()]
-	_text_fit(rect.position + Vector2(18, 24), top_line, 14, UI, rect.size.x - 36.0, 10)
-	_text(rect.position + Vector2(18, 50), "META UPGRADE", 12, UI_PANEL_HILITE)
-	_text_fit(rect.position + Vector2(18, 76), String(selected.get("name", "Upgrade")), 20, Color("#f7df86"), rect.size.x - 128.0, 14)
-	_text_fit(rect.position + Vector2(rect.size.x - 152, 76), "Rank %d/%d" % [level, max_level], 13, UI, 62.0, 10)
-	_draw_wrapped_text(rect.position + Vector2(18, 100), String(selected.get("desc", "")), 13, MUTED, rect.size.x - 36.0, 2, 16.0)
-	_text_fit(rect.position + Vector2(18, 132), "%s | Runs %d | Map %d Elem %d Achv %d" % ["MAX" if level >= max_level else "Cost %d" % cost, int(lifetime.get("runs_completed", 0)), _true_count(maps), _true_count(elements), _true_count(achievements)], 12, MUTED, rect.size.x - 36.0, 9)
-	_draw_touch_button(_meta_buy_rect(), "BUY", BEACON_ARMED if runes >= cost and level < max_level else MUTED, false)
+	_text(rect.position + Vector2(18, 23), "RUNES %d" % runes, 17, RUPTURE)
+	_text(rect.position + Vector2(98, 23), "spendable currency", 11, MUTED)
+	_text_fit(rect.position + Vector2(244, 23), "Research %d | Relics %d | %s" % [research, _true_count(relics), _next_relic_research_text()], 12, MUTED, rect.size.x - 262.0, 9)
+	_text(rect.position + Vector2(18, 48), "PERMANENT UPGRADES", 12, UI_PANEL_HILITE)
+	var defs := _meta_upgrade_defs()
+	for i in range(defs.size()):
+		var upgrade: Dictionary = defs[i]
+		_draw_meta_upgrade_row(_meta_upgrade_row_rect(i), upgrade, i, runes)
+
+
+func _draw_meta_upgrade_row(rect: Rect2, upgrade: Dictionary, index: int, runes: int) -> void:
+	var id := String(upgrade.get("id", ""))
+	var level := _meta_upgrade_level(id)
+	var max_level := int(upgrade.get("max", 1))
+	var cost := _meta_upgrade_cost(id)
+	var can_buy := level < max_level and runes >= cost
+	var edge := BEACON_ARMED.darkened(0.12) if can_buy else UI_PANEL_EDGE
+	var fill := Color("#171823") if index % 2 == 0 else Color("#141620")
+	_draw_pixel_panel(rect, fill, edge)
+	_text(rect.position + Vector2(10, 15), "%d" % (index + 1), 11, MUTED)
+	_text_fit(rect.position + Vector2(28, 16), String(upgrade.get("name", "Upgrade")), 14, Color("#f7df86"), 116.0, 10)
+	_text_fit(rect.position + Vector2(154, 16), _meta_upgrade_short_text(id), 11, MUTED, rect.size.x - 282.0, 9)
+	_text(rect.position + Vector2(rect.size.x - 116, 16), "%d/%d" % [level, max_level], 12, UI)
+	var state_text := "MAX" if level >= max_level else "%d rune%s" % [cost, "" if cost == 1 else "s"]
+	var state_color := BEACON_ARMED if can_buy else (MUTED if level >= max_level else WARN)
+	_text_fit(rect.position + Vector2(rect.size.x - 66, 16), state_text, 12, state_color, 54.0, 9)
 
 
 func _true_count(values: Dictionary) -> int:
@@ -7291,6 +7462,20 @@ func _next_relic_research_text() -> String:
 		var remaining := maxi(0, int(milestone.get("cost", 0)) - research)
 		return "Next relic +%d" % remaining
 	return "All relics found"
+
+
+func _meta_upgrade_short_text(id: String) -> String:
+	match id:
+		"deep_pockets":
+			return "Start beacon charge"
+		"sturdy_frame":
+			return "Start max hearts"
+		"field_notes":
+			return "More relic research"
+		"cache_sense":
+			return "Better chest relic odds"
+		_:
+			return ""
 
 
 func _map_choice_text() -> String:
@@ -7322,16 +7507,20 @@ func _handle_meta_pointer(pos: Vector2) -> void:
 		_start_selected_run()
 	elif _meta_guide_rect().has_point(pos):
 		_toggle_guide()
-	elif _meta_buy_rect().has_point(pos):
-		_buy_selected_meta_upgrade()
 	elif _meta_map_rect().has_point(pos):
 		_cycle_selected_map(1)
 	elif _meta_loadout_rect().has_point(pos):
 		_cycle_selected_loadout(1)
 	elif _meta_beacon_mod_rect().has_point(pos):
 		_cycle_selected_beacon_mod(1)
-	elif _meta_progress_rect().has_point(pos):
-		_cycle_meta_upgrade(1)
+	else:
+		var defs := _meta_upgrade_defs()
+		for i in range(defs.size()):
+			if _meta_upgrade_row_rect(i).has_point(pos):
+				var def: Dictionary = defs[i]
+				selected_meta_upgrade_index = i
+				_buy_meta_upgrade(String(def.get("id", "")))
+				return
 
 
 func _handle_pause_pointer(pos: Vector2) -> void:
@@ -7399,6 +7588,11 @@ func _meta_guide_rect() -> Rect2:
 func _meta_buy_rect() -> Rect2:
 	var rect := _meta_progress_rect()
 	return Rect2(rect.position + Vector2(rect.size.x - 86, 50), Vector2(68, 34))
+
+
+func _meta_upgrade_row_rect(index: int) -> Rect2:
+	var rect := _meta_progress_rect()
+	return Rect2(rect.position + Vector2(18, 56 + float(index) * 23.0), Vector2(rect.size.x - 36, 20))
 
 
 func _draw_portrait_hud() -> void:
@@ -8509,11 +8703,17 @@ func _format_time(value: float) -> String:
 
 
 func _effective_lance_range() -> int:
-	return lance_range + temp_lance_range
+	var value := lance_range + temp_lance_range
+	if _effective_boulder_lance_level() > 0:
+		value -= 1
+	return maxi(2, value)
 
 
 func _effective_lance_damage() -> int:
-	return lance_damage + temp_lance_damage
+	var value := lance_damage + temp_lance_damage + piston_damage_bonus + temp_piston_damage_bonus
+	if _effective_boulder_lance_level() > 0:
+		value -= 1
+	return maxi(1, value)
 
 
 func _effective_stun_bonus() -> float:
@@ -8610,6 +8810,14 @@ func _effective_tunnel_focus() -> int:
 	return tunnel_focus + temp_tunnel_focus
 
 
+func _effective_lance_aftershock() -> int:
+	return lance_aftershock + temp_lance_aftershock
+
+
+func _effective_lance_charge_bonus() -> int:
+	return lance_charge_bonus + temp_lance_charge_bonus
+
+
 func _effective_super_gem_bonus() -> int:
 	return super_gem_bonus + temp_super_gem_bonus
 
@@ -8628,6 +8836,22 @@ func _effective_xp_magnet_bonus() -> int:
 
 func _effective_extra_gems_bonus() -> int:
 	return extra_gems_bonus + temp_extra_gems_bonus
+
+
+func _effective_boulder_lance_level() -> int:
+	return boulder_lance + temp_boulder_lance
+
+
+func _boulder_lance_chance() -> float:
+	match _effective_boulder_lance_level():
+		1:
+			return 0.20
+		2:
+			return 0.35
+		3:
+			return 0.50
+		_:
+			return 0.0
 
 
 func _effective_boulder_lure() -> int:
@@ -8661,16 +8885,18 @@ func _synergy_string() -> String:
 		parts.append("Storm %d" % _effective_storm_cell())
 	if _effective_glacier_rod() > 0:
 		parts.append("Glacier %d" % _effective_glacier_rod())
-	if _effective_piercing_tip() > 0:
-		parts.append("Pierce %d" % _effective_piercing_tip())
 	if _effective_quick_reel() > 0:
 		parts.append("Reel %d" % _effective_quick_reel())
-	if _effective_tunnel_focus() > 0:
-		parts.append("Focus %d" % _effective_tunnel_focus())
 	if _effective_status_damage_bonus() > 0:
 		parts.append("Catalyst %d" % _effective_status_damage_bonus())
+	if _effective_lance_aftershock() > 0:
+		parts.append("Wave %d" % _effective_lance_aftershock())
+	if _effective_lance_charge_bonus() > 0:
+		parts.append("Coupler +%d" % _effective_lance_charge_bonus())
 	if _effective_super_gem_bonus() > 0:
 		parts.append("Prospect %d" % _effective_super_gem_bonus())
+	if _effective_boulder_lance_level() > 0:
+		parts.append("Boulder Lance %d%%" % roundi(_boulder_lance_chance() * 100.0))
 	if _effective_boulder_lure() > 0:
 		parts.append("Whistle %d" % _effective_boulder_lure())
 	if _effective_boulder_snare() > 0:
@@ -9014,7 +9240,7 @@ func _enemy_status_damage_bonus(enemy: Dictionary) -> int:
 	return bonus
 
 
-func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: String) -> bool:
+func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: String, from_lance := false) -> bool:
 	if enemy_i < 0 or enemy_i >= enemies.size():
 		return false
 	var enemy: Dictionary = enemies[enemy_i]
@@ -9050,8 +9276,9 @@ func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: Strin
 		_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind), enemy)
 		_add_rupture_feedback(dead_pos)
 		_trigger_elemental_death_effects(dead_pos, was_frozen, was_burning, was_thundered)
+		var lance_kill_message := _trigger_lance_kill_effects(dead_pos) if from_lance else kill_text
 		_shake(0.16)
-		message = kill_text
+		message = lance_kill_message
 		return false
 	else:
 		_add_pressure_feedback(enemy["pos"], 0.8)
@@ -9074,7 +9301,7 @@ func _trigger_pierce_from(center: Vector2i, dir: Vector2i, damage: int) -> void:
 			last_attack_cells.append(pos)
 		var enemy_i := _lance_enemy_index_at(pos)
 		if enemy_i != -1:
-			var alive := _damage_enemy(enemy_i, damage, "Pierced!", "Pierce hit.")
+			var alive := _damage_enemy(enemy_i, damage, "Pierced!", "Pierce hit.", true)
 			if alive and enemy_i >= 0 and enemy_i < enemies.size():
 				_apply_lance_element(enemy_i, pos, damage)
 			_add_cell_pulse(pos, _lance_color(), PULSE_FEEDBACK_TIME, 0.8)
