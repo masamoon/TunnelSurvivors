@@ -377,6 +377,7 @@ var sfx_players: Array[AudioStreamPlayer] = []
 var sfx_next := 0
 var sfx_cache := {}
 var dig_sfx_cooldown := 0.0
+var kill_sfx_cooldown := 0.0
 var music_player: AudioStreamPlayer
 var ambience_player: AudioStreamPlayer
 var mobile_touch_dirs := {}
@@ -418,10 +419,12 @@ var score := 0
 var gems_collected := 0
 var beacon_pos := Vector2i.ZERO
 var beacon_armed := false
+var beacon_armed_flash := 0.0
 var boss_spawn_index := 0
 var reaper_spawned := false
 var message := ""
 var last_run_summary := ""
+var result_input_lock := 0.0
 
 var move_cooldown := 0.0
 var attack_cooldown := 0.0
@@ -637,6 +640,13 @@ func _play_sfx(id: String) -> void:
 	player.play()
 
 
+func _play_enemy_kill_sfx() -> void:
+	if kill_sfx_cooldown > 0.0:
+		return
+	kill_sfx_cooldown = 0.045
+	_play_sfx("kill")
+
+
 func _build_sfx_stream(id: String) -> AudioStreamWAV:
 	var notes := []
 	match id:
@@ -657,6 +667,12 @@ func _build_sfx_stream(id: String) -> AudioStreamWAV:
 			]
 		"pump":
 			notes = [{"freq": 128.0, "duration": 0.06, "volume": 0.20, "wave": "square"}]
+		"kill":
+			notes = [
+				{"freq": 124.0, "duration": 0.035, "volume": 0.22, "wave": "noise"},
+				{"freq": 246.94, "duration": 0.045, "volume": 0.18, "wave": "square"},
+				{"freq": 493.88, "duration": 0.055, "volume": 0.16, "wave": "sine"}
+			]
 		"gem":
 			notes = [
 				{"freq": 659.25, "duration": 0.045, "volume": 0.16, "wave": "sine"},
@@ -2521,6 +2537,9 @@ func _process(delta: float) -> void:
 	player_step_squash = maxf(0.0, player_step_squash - delta)
 	screen_shake = maxf(0.0, screen_shake - delta)
 	dig_sfx_cooldown = maxf(0.0, dig_sfx_cooldown - delta)
+	kill_sfx_cooldown = maxf(0.0, kill_sfx_cooldown - delta)
+	beacon_armed_flash = maxf(0.0, beacon_armed_flash - delta)
+	result_input_lock = maxf(0.0, result_input_lock - delta)
 	screen_shake_offset = Vector2.ZERO
 	if screen_shake > 0.0:
 		screen_shake_offset = Vector2(rng.randf_range(-screen_shake, screen_shake), rng.randf_range(-screen_shake, screen_shake)) * 12.0
@@ -2688,7 +2707,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_0 or event.keycode == KEY_KP_0 or event.keycode == KEY_E or event.keycode == KEY_ENTER:
 			_skip_upgrade_choice()
 	elif state == STATE_GAME_OVER or state == STATE_WIN:
-		if event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
+		if result_input_lock > 0.0:
+			return
+		if event.keycode == KEY_ENTER:
 			_go_to_meta()
 
 
@@ -2871,6 +2892,8 @@ func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
 		return
 
 	if state == STATE_GAME_OVER or state == STATE_WIN:
+		if result_input_lock > 0.0:
+			return
 		_go_to_meta()
 		return
 
@@ -2955,7 +2978,7 @@ func _update_player_motion(delta: float, input_dir: Vector2i) -> void:
 
 	var enemy_i := _solid_enemy_index_at(player_target_cell)
 	if enemy_i != -1 and player_target_cell != player_pos:
-		_hurt_player(1)
+		_hurt_player(1, "You ran into an enemy.")
 		player_move_dir = Vector2i.ZERO
 		player_target_digging = false
 		player_digging = false
@@ -3093,6 +3116,8 @@ func _try_interact() -> void:
 		_record_extraction()
 		_mark_tutorial_complete()
 		state = STATE_WIN
+		result_input_lock = 0.85
+		_clear_mobile_input()
 		message = "The beacon hauls you out with a pack full of strange gems."
 		_play_sfx("win")
 	else:
@@ -3219,6 +3244,7 @@ func _arm_extraction_beacon(text: String) -> void:
 		return
 	beacon_armed = true
 	beacon_charge = BEACON_CHARGE_GOAL
+	beacon_armed_flash = 3.6
 	pressure_surge_timer = 0.0
 	_clear_bounty_targets()
 	_add_cell_pulse(beacon_pos, BEACON_ARMED, PULSE_FEEDBACK_TIME + 0.24, 1.15, true)
@@ -4507,7 +4533,7 @@ func _enemy_phase_target(enemy: Dictionary, allow_open_tunnel := true) -> Vector
 func _can_enemy_ghost_to(target: Vector2i) -> bool:
 	if not _in_bounds(target) or _has_rock(target):
 		return false
-	if _solid_enemy_index_at(target) != -1 or target == player_target_cell:
+	if _enemy_body_index_at(target) != -1 or target == player_target_cell:
 		return false
 	return true
 
@@ -4591,7 +4617,7 @@ func _damage_player_from_phasing_enemy(enemy: Dictionary) -> bool:
 		_shake(0.7)
 		return true
 	else:
-		if _hurt_player(1):
+		if _hurt_player(1, "A ghosting %s hit you." % _enemy_kind_name(int(enemy.get("kind", ENEMY_GRUB_KIND)))):
 			_repel_phasing_enemy_after_player_hit(enemy)
 			return true
 	return false
@@ -4623,7 +4649,7 @@ func _update_enemy_fire(enemy: Dictionary, delta: float) -> bool:
 	if float(enemy.get("fire_active", 0.0)) > 0.0:
 		enemy["fire_active"] = maxf(0.0, float(enemy["fire_active"]) - delta)
 		if _player_in_fire_lane(enemy):
-			if _hurt_player(1):
+			if _hurt_player(1, "Fygar fire got you."):
 				enemy["fire_active"] = 0.0
 				enemy["fire_cooldown"] = rng.randf_range(FYGAR_FIRE_COOLDOWN_MIN, FYGAR_FIRE_COOLDOWN_MAX)
 				return true
@@ -4646,7 +4672,7 @@ func _update_enemy_melee(enemy: Dictionary, delta: float) -> bool:
 	var pos: Vector2i = enemy["pos"]
 	var dir: Vector2i = enemy.get("attack_dir", Vector2i.ZERO)
 	if dir != Vector2i.ZERO and player_pos == pos + dir and _open_line_between_cells(pos, player_pos):
-		if _hurt_player(1):
+		if _hurt_player(1, "A %s caught you." % _enemy_kind_name(int(enemy.get("kind", ENEMY_GRUB_KIND)))):
 			enemy["timer"] = maxf(float(enemy.get("timer", 0.0)), _enemy_step_delay(enemy))
 	enemy["attack_dir"] = Vector2i.ZERO
 	return true
@@ -4726,7 +4752,7 @@ func _update_enemy_spit(enemy: Dictionary, delta: float) -> bool:
 	if float(enemy.get("spit_active", 0.0)) > 0.0:
 		enemy["spit_active"] = maxf(0.0, float(enemy["spit_active"]) - delta)
 		if _player_in_spit_lane(enemy):
-			if _hurt_player(1):
+			if _hurt_player(1, "A Spitter shot got you."):
 				enemy["spit_active"] = 0.0
 				enemy["spit_cooldown"] = rng.randf_range(SPITTER_COOLDOWN_MIN, SPITTER_COOLDOWN_MAX)
 				return true
@@ -4892,7 +4918,7 @@ func _can_enemy_path_cell(pos: Vector2i, start: Vector2i, goal: Vector2i) -> boo
 		return false
 	if not _cell_has_tunnel_opening(pos):
 		return false
-	if pos != start and pos != goal and _solid_enemy_index_at(pos) != -1:
+	if pos != start and pos != player_pos and pos != player_target_cell and _enemy_body_index_at(pos) != -1:
 		return false
 	return true
 
@@ -4943,7 +4969,8 @@ func _try_boulder_lure_step(enemy: Dictionary) -> bool:
 
 	if best_dir == Vector2i.ZERO:
 		return false
-	_move_enemy_to(enemy, pos + best_dir)
+	if not _move_enemy_to(enemy, pos + best_dir):
+		return false
 	enemy["stun"] = maxf(float(enemy.get("stun", 0.0)), 0.06)
 	_add_cell_pulse(pos + best_dir, ROCK, PULSE_FEEDBACK_TIME, 0.58)
 	return true
@@ -5071,8 +5098,11 @@ func _step_enemy(enemy: Dictionary) -> void:
 
 	var path_dir := _enemy_tunnel_route_dir(pos)
 	if path_dir != Vector2i.ZERO:
-		enemy["stuck_steps"] = 0
-		_move_enemy_to(enemy, pos + path_dir)
+		if _move_enemy_to(enemy, pos + path_dir):
+			enemy["stuck_steps"] = 0
+		else:
+			enemy["stuck_steps"] = 0
+			enemy["phase_cooldown"] = maxf(float(enemy.get("phase_cooldown", 0.0)), 0.65)
 		return
 
 	enemy["stuck_steps"] = int(enemy.get("stuck_steps", 0)) + 1
@@ -5081,7 +5111,10 @@ func _step_enemy(enemy: Dictionary) -> void:
 		if _enemy_can_ghost(enemy) and int(enemy.get("stuck_steps", 0)) >= ENEMY_STUCK_STEPS_TO_SQUEEZE and float(enemy.get("phase_cooldown", 0.0)) <= 0.0:
 			_begin_enemy_phase(enemy)
 			return
-		_move_enemy_to(enemy, pos + fallback_dir)
+		if _move_enemy_to(enemy, pos + fallback_dir):
+			enemy["stuck_steps"] = 0
+		else:
+			enemy["phase_cooldown"] = maxf(float(enemy.get("phase_cooldown", 0.0)), 0.65)
 		return
 
 	if _enemy_can_ghost(enemy) and int(enemy.get("stuck_steps", 0)) >= ENEMY_STUCK_STEPS_TO_SQUEEZE and float(enemy.get("phase_cooldown", 0.0)) <= 0.0:
@@ -5167,7 +5200,7 @@ func _step_boss(enemy: Dictionary) -> void:
 	)
 	for dir in dirs:
 		var target: Vector2i = pos + dir
-		if not _in_bounds(target) or _has_rock(target) or _terrain_blocks_dig(target) or target == player_target_cell or _solid_enemy_index_at(target) != -1:
+		if not _in_bounds(target) or _has_rock(target) or _terrain_blocks_dig(target) or target == player_target_cell or _enemy_body_index_at(target) != -1:
 			continue
 		if target == player_pos:
 			_begin_enemy_melee(enemy, dir)
@@ -5291,18 +5324,26 @@ func _end_enemy_phase(enemy: Dictionary) -> void:
 		enemy["stuck_steps"] = 0
 
 
-func _move_enemy_to(enemy: Dictionary, target: Vector2i, digs := false) -> void:
+func _move_enemy_to(enemy: Dictionary, target: Vector2i, digs := false) -> bool:
 	if digs and _terrain_blocks_dig(target):
-		return
+		return false
 	var from_pos: Vector2i = enemy["pos"]
-	var from_visual := _dict_visual(enemy)
-	var target_visual := _visual_from_pos(target)
+	if target != from_pos and not bool(enemy.get("phasing", false)):
+		if target == player_target_cell and target != player_pos:
+			enemy["stuck_steps"] = 0
+			enemy["timer"] = maxf(float(enemy.get("timer", 0.0)), _enemy_step_delay(enemy) * 0.5)
+			return false
+		if target != player_pos and _enemy_body_index_at(target) != -1:
+			enemy["stuck_steps"] = int(enemy.get("stuck_steps", 0)) + 1
+			enemy["timer"] = maxf(float(enemy.get("timer", 0.0)), _enemy_step_delay(enemy) * 0.5)
+			return false
 	if target != from_pos:
 		enemy["face_dir"] = target - from_pos
 	enemy["pos"] = target
 	enemy["visual_speed"] = _enemy_move_speed(enemy)
 	if digs:
 		_open_tunnel_step(from_pos, target, false)
+	return true
 
 
 func _enemy_step_delay(enemy: Dictionary) -> float:
@@ -5417,7 +5458,7 @@ func _can_boulder_snare_enemy_step(from: Vector2i, target: Vector2i) -> bool:
 		return false
 	if not _cell_has_tunnel_opening(target):
 		return false
-	if _solid_enemy_index_at(target) != -1:
+	if _enemy_body_index_at(target) != -1:
 		return false
 	return _tunnel_allows_step(from, target)
 
@@ -5515,7 +5556,7 @@ func _rock_crush_line_reaches_cell(rock_pos: Vector2i, target: Vector2i, open_de
 	return true
 
 
-func _hurt_player(amount: int) -> bool:
+func _hurt_player(amount: int, defeat_reason := "The den got you.") -> bool:
 	if player_hit_recovery > 0.0 or state != STATE_PLAYING:
 		return false
 	hp -= amount
@@ -5534,7 +5575,7 @@ func _hurt_player(amount: int) -> bool:
 	_play_sfx("hurt")
 	message = "Ouch."
 	if hp <= 0:
-		_game_over("The den got you.")
+		_game_over(defeat_reason)
 	return true
 
 
@@ -5542,6 +5583,8 @@ func _game_over(reason: String) -> void:
 	paused = false
 	_record_run_meta_progress(false)
 	state = STATE_GAME_OVER
+	result_input_lock = 0.85
+	_clear_mobile_input()
 	message = reason
 	_play_sfx("fail")
 
@@ -7157,6 +7200,9 @@ func _draw_ui() -> void:
 	else:
 		_draw_desktop_ui()
 
+	if state == STATE_PLAYING and beacon_armed and not paused and not show_upgrade_inventory:
+		_draw_beacon_ready_notice()
+
 	if state == STATE_CHOOSING:
 		_draw_choice_modal()
 	elif state == STATE_GAME_OVER:
@@ -7173,6 +7219,27 @@ func _draw_ui() -> void:
 		_draw_tutorial_hint()
 	if show_guide:
 		_draw_guide_overlay()
+
+
+func _draw_beacon_ready_notice() -> void:
+	var board := _board_view_rect()
+	var is_flash := beacon_armed_flash > 0.0
+	var width := minf(board.size.x - 36.0, 438.0 if is_flash else 250.0)
+	var height := 58.0 if is_flash else 32.0
+	var x := board.position.x + (board.size.x - width) * 0.5
+	var y := board.position.y + 14.0
+	if not is_flash:
+		x = board.position.x + board.size.x - width - 14.0
+		y = board.position.y + 10.0
+	var rect := Rect2(_snap_px(Vector2(x, y)), Vector2(width, height))
+	var pulse := 0.5 + 0.5 * sin(anim_time * 9.0)
+	var edge := BEACON_ARMED.lerp(UI, pulse * 0.35)
+	_draw_pixel_panel(rect, Color("#102018ee"), edge)
+	if is_flash:
+		_text_fit(rect.position + Vector2(18, 28), "BEACON CHARGED", 24, BEACON_ARMED, rect.size.x - 36.0, 16)
+		_text_fit(rect.position + Vector2(18, 48), "Return to hatch and %s." % _interact_prompt_text(), 13, UI, rect.size.x - 36.0, 10)
+	else:
+		_text_fit(rect.position + Vector2(12, 22), "BEACON READY", 14, BEACON_ARMED, rect.size.x - 24.0, 10)
 
 
 func _draw_pause_overlay() -> void:
@@ -8299,6 +8366,28 @@ func _enemy_color_for_kind(kind: int) -> Color:
 			return ENEMY_GRUB
 
 
+func _enemy_kind_name(kind: int) -> String:
+	match kind:
+		ENEMY_BURROWER_KIND:
+			return "Burrower"
+		ENEMY_FYGAR_KIND:
+			return "Fygar"
+		ENEMY_SPITTER_KIND:
+			return "Spitter"
+		ENEMY_SHIELDBUG_KIND:
+			return "Shieldbug"
+		ENEMY_LEECH_KIND:
+			return "Leech"
+		ENEMY_BROOD_POD_KIND:
+			return "Brood Pod"
+		ENEMY_BOSS_KIND:
+			return "Queen"
+		ENEMY_REAPER_KIND:
+			return "Reaper"
+		_:
+			return "Grub"
+
+
 func _draw_boss_health_bar(center: Vector2, enemy: Dictionary) -> void:
 	var max_enemy_hp := maxi(1, int(enemy.get("max_hp", enemy["hp"])))
 	var ratio := clampf(float(enemy["hp"]) / float(max_enemy_hp), 0.0, 1.0)
@@ -9367,6 +9456,7 @@ func _add_pressure_feedback(pos: Vector2i, radius: float) -> void:
 
 
 func _add_rupture_feedback(pos: Vector2i) -> void:
+	_play_enemy_kill_sfx()
 	_add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.16, 1.25, true)
 
 
@@ -10016,6 +10106,14 @@ func _solid_enemy_index_at(pos: Vector2i) -> int:
 		var enemy: Dictionary = enemies[i]
 		var frozen := float(enemy.get("frozen", 0.0)) > 0.0
 		if enemy["pos"] == pos and not enemy["phasing"] and (frozen or not bool(enemy.get("inflated", false))):
+			return i
+	return -1
+
+
+func _enemy_body_index_at(pos: Vector2i) -> int:
+	for i in range(enemies.size()):
+		var enemy: Dictionary = enemies[i]
+		if enemy["pos"] == pos and not bool(enemy.get("phasing", false)):
 			return i
 	return -1
 
