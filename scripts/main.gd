@@ -16,6 +16,7 @@ const DESKTOP_BOARD_ORIGIN := Vector2(24, 74)
 const TOP_HUD_RECT := Rect2(Vector2(12, 12), Vector2(616, 82))
 const STATUS_RECT := Rect2(Vector2(12, 604), Vector2(616, 140))
 const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 348), Vector2(196, 44))
+const DESKTOP_PAUSE_BUTTON_RECT := Rect2(Vector2(826, 18), Vector2(104, 34))
 const INVENTORY_CLOSE_RECT := Rect2(Vector2(690, 544), Vector2(168, 44))
 const MOBILE_DPAD_CENTER := Vector2(140, 822)
 const MOBILE_STATUS_H := 112
@@ -23,7 +24,7 @@ const MOBILE_DPAD_BUTTON := 64
 const MOBILE_DPAD_GAP := 8
 const MOBILE_LANCE_RECT := Rect2(Vector2(396, 790), Vector2(208, 128))
 const MOBILE_RESTART_RECT := Rect2(Vector2(552, 22), Vector2(66, 34))
-const MAX_FLOOR := 8
+const MOBILE_PAUSE_RECT := Rect2(Vector2(478, 22), Vector2(66, 34))
 const SURFACE_ROW := 0
 const UNDERGROUND_SPAWN_MIN_ROW := 3
 const CAMERA_FOLLOW_BIAS := 0.52
@@ -45,6 +46,9 @@ const TILE_DIRT := 0
 const TILE_TUNNEL := 1
 const TILE_BEACON := 2
 
+const TERRAIN_CRYSTAL_SHALE := "crystal_shale"
+const TERRAIN_CRYSTAL_SEAL := "crystal_seal"
+
 const ENEMY_GRUB_KIND := 0
 const ENEMY_BURROWER_KIND := 1
 const ENEMY_FYGAR_KIND := 2
@@ -59,6 +63,18 @@ const STATE_PLAYING := 0
 const STATE_CHOOSING := 1
 const STATE_GAME_OVER := 2
 const STATE_WIN := 3
+const STATE_META := 4
+
+const META_SAVE_VERSION := 1
+const META_SAVE_PATH := "user://diggy_meta.json"
+const MAP_OLD_MINE := "old_mine"
+const MAP_CRYSTAL_VEINS := "crystal_veins"
+const LOADOUT_NONE := "none"
+const BEACON_MOD_NONE := "none"
+const BEACON_MOD_SIGNAL_SCANNER := "signal_scanner"
+const CRYSTAL_SPROUT_CHANCE := 0.35
+const CRYSTAL_SCAN_PULSE_INTERVAL := 2.2
+const CRYSTAL_SHALE_DIG_DELAY_MULT := 1.65
 
 const RUN_GOAL_TIME := 8.0 * 60.0
 const BEACON_CHARGE_GOAL := 120
@@ -74,6 +90,9 @@ const PRESSURE_SURGE_INTERVAL_MULT := 0.56
 const PRESSURE_SURGE_CAP_BONUS := 4
 const PRESSURE_SURGE_BURST_BONUS := 1
 const PRESSURE_SURGE_CHARGE_BONUS := 1
+const PRESSURE_BOUNTY_CHARGE := 9
+const PRESSURE_BOUNTY_XP_BONUS := 5
+const PRESSURE_BOUNTY_SCORE := 150
 const XP_BASE_TO_NEXT := 24
 const XP_GROWTH := 16
 const ELEMENT_TIP_MIN_LEVEL := 4
@@ -131,7 +150,7 @@ const TREASURE_KIND_HEAL := "heal"
 const DIRS := [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]
 const ROCK_LOOSE_DELAY := 1.12
 const ROCK_STEP_DELAY := 0.25
-const PHASE_MIN_FLOOR := 1
+const PHASE_MIN_DEPTH_TIER := 1
 const PHASE_COOLDOWN_MIN := 3.0
 const PHASE_COOLDOWN_MAX := 6.0
 const PHASE_ESCAPE_SEARCH_RADIUS := 12
@@ -146,7 +165,7 @@ const ENEMY_PHASE_DIRS := [
 	Vector2i(-1, 1),
 	Vector2i(-1, -1)
 ]
-const FYGAR_MIN_FLOOR := 2
+const FYGAR_MIN_DEPTH_TIER := 2
 const FYGAR_FIRE_WARN := 0.52
 const FYGAR_FIRE_ACTIVE := 0.42
 const FYGAR_FIRE_COOLDOWN_MIN := 2.2
@@ -203,6 +222,7 @@ const ZAP_FEEDBACK_TIME := 0.30
 const BOULDER_CRUSH_FEEDBACK_TIME := 0.85
 const BOULDER_FANFARE_MAX_TIER := 5
 const BOULDER_FANFARE_SAMPLE_RATE := 22050
+const SFX_SAMPLE_RATE := 22050
 const ATTACK_RECOVERY_DELAY := 0.32
 const ATTACK_FLASH_TIME := 0.32
 const LANCE_HIT_DELAY := 0.10
@@ -228,8 +248,9 @@ const BASE_DIG_DELAY_MULT := 1.0
 const PLAYER_CENTER_EPS := 0.015
 const PLAYER_TARGET_GATE := 0.22
 const PLAYER_TURN_GATE := 0.22
+const PLAYER_HURT_FLASH_TIME := 0.75
+const PLAYER_HIT_RECOVERY_TIME := 1.15
 const COMBO_WINDOW := 2.2
-const SHOP_SKIP_KEY_TEXT := "0 / Enter skips"
 const BG := Color("#090b12")
 const DIRT := Color("#8a4d27")
 const DIRT_DARK := Color("#4f2a1a")
@@ -255,6 +276,32 @@ const DIRT_LAYER_SHADOWS := [
 	Color("#4d332c"),
 	Color("#3b2a28")
 ]
+const CRYSTAL_SURFACE_SOIL := Color("#293747")
+const CRYSTAL_GRASS := Color("#63d0b0")
+const CRYSTAL_GRASS_DARK := Color("#287b7d")
+const CRYSTAL_SURFACE_CRUST := Color("#171d2d")
+const CRYSTAL_DIRT_LAYER_COLORS := [
+	Color("#465a66"),
+	Color("#3c4d60"),
+	Color("#334052"),
+	Color("#292f3f")
+]
+const CRYSTAL_DIRT_LAYER_HIGHLIGHTS := [
+	Color("#78a4a7"),
+	Color("#6e88a5"),
+	Color("#5d6590"),
+	Color("#514d79")
+]
+const CRYSTAL_DIRT_LAYER_SHADOWS := [
+	Color("#26323c"),
+	Color("#222b38"),
+	Color("#1d2331"),
+	Color("#181c29")
+]
+const CRYSTAL_SHALE := Color("#53677b")
+const CRYSTAL_SHALE_HIGHLIGHT := Color("#91d3df")
+const CRYSTAL_SEAL := Color("#7f65c9")
+const CRYSTAL_SEAL_DARK := Color("#211a3a")
 const DIRT_LAYER_SCORE_MULTIPLIERS := [1.0, 1.5, 2.0, 2.5]
 const TUNNEL := Color("#151420")
 const TUNNEL_EDGE := Color("#242133")
@@ -307,7 +354,7 @@ var treasure_chests := []
 var xp_pickups := []
 var enemies := []
 var recent_spawn_cells: Array[Vector2i] = []
-var floor_relics := []
+var run_relics := []
 var upgrade_choices := []
 var last_attack_cells := []
 var dig_feedback := []
@@ -318,19 +365,33 @@ var player_dug_cells := {}
 var pulse_feedback := []
 var crush_feedback := []
 var zap_feedback := []
+var upgrade_pickup_toast := {}
 var crush_sfx_players: Array[AudioStreamPlayer] = []
 var crush_sfx_next := 0
+var sfx_players: Array[AudioStreamPlayer] = []
+var sfx_next := 0
+var sfx_cache := {}
+var dig_sfx_cooldown := 0.0
 var mobile_touch_dirs := {}
 var mobile_move_dir := Vector2i.ZERO
 var show_touch_controls := true
 var show_upgrade_inventory := false
+var paused := false
+var wipe_save_confirm := false
 
-var state := STATE_PLAYING
+var meta := {}
+var meta_notice := ""
+var current_map_id := MAP_OLD_MINE
+var current_map_def := {}
+var crystal_cells := {}
+var terrain_cells := {}
+var beacon_scan_timer := 0.0
+var state := STATE_META
 var player_pos := Vector2i.ZERO
 var facing := Vector2i.RIGHT
 var hp := 3
 var max_hp := 3
-var floor_index := 1
+var depth_tier := 1
 var player_level := 1
 var xp := 0
 var xp_to_next := XP_BASE_TO_NEXT
@@ -345,13 +406,12 @@ var treasure_chest_timer := 0.0
 var tunnel_age := {}
 var score := 0
 var gems_collected := 0
-var gem_bank := 0
 var beacon_pos := Vector2i.ZERO
 var beacon_armed := false
 var boss_spawn_index := 0
 var reaper_spawned := false
 var message := ""
-var last_floor_summary := ""
+var last_run_summary := ""
 
 var move_cooldown := 0.0
 var attack_cooldown := 0.0
@@ -366,6 +426,7 @@ var lance_pump_count := 0
 var lance_has_struck := false
 var lance_pulse_queued := false
 var hurt_flash := 0.0
+var player_hit_recovery := 0.0
 var anim_time := 0.0
 var screen_shake := 0.0
 var screen_shake_offset := Vector2.ZERO
@@ -457,23 +518,39 @@ var family_points := {}
 var combo_count := 0
 var combo_timer := 0.0
 var best_combo := 0
-var floor_gems_available := 0
-var floor_gems_collected := 0
-var floor_super_gems_available := 0
-var floor_super_gems_collected := 0
-var floor_kills := 0
-var floor_boulder_kills := 0
-var floor_relics_found := 0
-var floor_damage_taken := 0
+var run_gems_available := 0
+var run_gems_collected := 0
+var run_super_gems_available := 0
+var run_super_gems_collected := 0
+var run_kills := 0
+var run_boulder_kills := 0
+var run_relics_found := 0
+var run_damage_taken := 0
+var run_meta_recorded := false
 
 func _ready() -> void:
 	font = ThemeDB.get_fallback_font()
 	rng.randomize()
-	_setup_crush_audio()
+	_load_meta()
+	_setup_audio()
 	_refresh_touch_control_visibility()
 	_apply_content_scale()
 	_refresh_touch_control_visibility()
-	_new_run()
+	state = STATE_META
+	message = "Choose a dig site."
+	queue_redraw()
+
+
+func _setup_audio() -> void:
+	_setup_crush_audio()
+	if not sfx_players.is_empty():
+		return
+	for i in range(8):
+		var player := AudioStreamPlayer.new()
+		player.bus = "Master"
+		player.volume_db = -10.0
+		add_child(player)
+		sfx_players.append(player)
 
 
 func _notification(what: int) -> void:
@@ -503,13 +580,134 @@ func _setup_crush_audio() -> void:
 
 
 func _play_crush_fanfare(tier: int) -> void:
-	if crush_sfx_players.is_empty():
+	if crush_sfx_players.is_empty() or not _audio_enabled():
 		return
 	var player := crush_sfx_players[crush_sfx_next]
 	crush_sfx_next = (crush_sfx_next + 1) % crush_sfx_players.size()
 	player.stop()
 	player.stream = _build_crush_fanfare_stream(clampi(tier, 1, BOULDER_FANFARE_MAX_TIER))
 	player.play()
+
+
+func _play_sfx(id: String) -> void:
+	if sfx_players.is_empty() or not _audio_enabled():
+		return
+	if not sfx_cache.has(id):
+		sfx_cache[id] = _build_sfx_stream(id)
+	var player := sfx_players[sfx_next]
+	sfx_next = (sfx_next + 1) % sfx_players.size()
+	player.stop()
+	player.stream = sfx_cache[id]
+	player.play()
+
+
+func _build_sfx_stream(id: String) -> AudioStreamWAV:
+	var notes := []
+	match id:
+		"ui":
+			notes = [{"freq": 392.0, "duration": 0.035, "volume": 0.16, "wave": "square"}]
+		"start":
+			notes = [
+				{"freq": 196.0, "duration": 0.05, "volume": 0.18, "wave": "square"},
+				{"freq": 293.66, "duration": 0.06, "volume": 0.18, "wave": "square"},
+				{"freq": 392.0, "duration": 0.08, "volume": 0.20, "wave": "square"}
+			]
+		"dig":
+			notes = [{"freq": 92.0, "duration": 0.045, "volume": 0.16, "wave": "noise"}]
+		"lance":
+			notes = [
+				{"freq": 185.0, "duration": 0.035, "volume": 0.14, "wave": "saw"},
+				{"freq": 320.0, "duration": 0.05, "volume": 0.17, "wave": "square"}
+			]
+		"pump":
+			notes = [{"freq": 128.0, "duration": 0.06, "volume": 0.20, "wave": "square"}]
+		"gem":
+			notes = [
+				{"freq": 659.25, "duration": 0.045, "volume": 0.16, "wave": "sine"},
+				{"freq": 987.77, "duration": 0.06, "volume": 0.17, "wave": "sine"}
+			]
+		"super":
+			notes = [
+				{"freq": 523.25, "duration": 0.045, "volume": 0.18, "wave": "sine"},
+				{"freq": 783.99, "duration": 0.055, "volume": 0.18, "wave": "sine"},
+				{"freq": 1174.66, "duration": 0.08, "volume": 0.20, "wave": "sine"}
+			]
+		"relic":
+			notes = [
+				{"freq": 246.94, "duration": 0.06, "volume": 0.18, "wave": "square"},
+				{"freq": 493.88, "duration": 0.10, "volume": 0.19, "wave": "sine"}
+			]
+		"level":
+			notes = [
+				{"freq": 329.63, "duration": 0.045, "volume": 0.17, "wave": "square"},
+				{"freq": 415.30, "duration": 0.045, "volume": 0.17, "wave": "square"},
+				{"freq": 659.25, "duration": 0.09, "volume": 0.19, "wave": "square"}
+			]
+		"beacon":
+			notes = [
+				{"freq": 174.61, "duration": 0.08, "volume": 0.18, "wave": "sine"},
+				{"freq": 349.23, "duration": 0.10, "volume": 0.20, "wave": "sine"},
+				{"freq": 698.46, "duration": 0.12, "volume": 0.20, "wave": "sine"}
+			]
+		"hurt":
+			notes = [
+				{"freq": 164.81, "duration": 0.05, "volume": 0.22, "wave": "noise"},
+				{"freq": 82.41, "duration": 0.08, "volume": 0.20, "wave": "square"}
+			]
+		"boss":
+			notes = [
+				{"freq": 73.42, "duration": 0.10, "volume": 0.26, "wave": "saw"},
+				{"freq": 55.0, "duration": 0.14, "volume": 0.24, "wave": "noise"}
+			]
+		"win":
+			notes = [
+				{"freq": 392.0, "duration": 0.07, "volume": 0.18, "wave": "square"},
+				{"freq": 493.88, "duration": 0.07, "volume": 0.18, "wave": "square"},
+				{"freq": 659.25, "duration": 0.12, "volume": 0.20, "wave": "sine"}
+			]
+		"fail":
+			notes = [
+				{"freq": 220.0, "duration": 0.08, "volume": 0.19, "wave": "square"},
+				{"freq": 146.83, "duration": 0.16, "volume": 0.18, "wave": "saw"}
+			]
+		_:
+			notes = [{"freq": 330.0, "duration": 0.04, "volume": 0.14, "wave": "square"}]
+
+	var data := PackedByteArray()
+	var global_sample := 0
+	for note_i in range(notes.size()):
+		var note: Dictionary = notes[note_i]
+		var sample_count := roundi(float(note["duration"]) * float(SFX_SAMPLE_RATE))
+		for s in range(sample_count):
+			var t := float(s) / float(SFX_SAMPLE_RATE)
+			var progress := float(s) / float(maxi(1, sample_count - 1))
+			var envelope := sin(progress * PI) * (1.0 - progress * 0.18)
+			var wave := _sfx_wave_value(String(note.get("wave", "square")), float(note["freq"]), t, global_sample, note_i)
+			var sample := wave * float(note["volume"]) * envelope
+			_append_s16_sample(data, clampi(roundi(sample * 32767.0), -32768, 32767))
+			global_sample += 1
+		for s in range(roundi(0.01 * float(SFX_SAMPLE_RATE))):
+			_append_s16_sample(data, 0)
+			global_sample += 1
+
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = SFX_SAMPLE_RATE
+	stream.stereo = false
+	stream.data = data
+	return stream
+
+
+func _sfx_wave_value(kind: String, freq: float, t: float, sample_index: int, salt: int) -> float:
+	match kind:
+		"sine":
+			return sin(t * freq * TAU)
+		"saw":
+			return fmod(t * freq, 1.0) * 2.0 - 1.0
+		"noise":
+			return float((sample_index * 37 + salt * 131) % 31) / 15.5 - 1.0
+		_:
+			return 1.0 if fmod(t * freq, 1.0) < 0.5 else -1.0
 
 
 func _build_crush_fanfare_stream(tier: int) -> AudioStreamWAV:
@@ -568,9 +766,611 @@ func _append_s16_sample(data: PackedByteArray, sample: int) -> void:
 	data.append((packed >> 8) & 0xff)
 
 
-func _new_run() -> void:
+func _default_meta() -> Dictionary:
+	return {
+		"version": META_SAVE_VERSION,
+		"unlocked_maps": {MAP_OLD_MINE: true},
+		"selected_map": MAP_OLD_MINE,
+		"unlocked_relics": _baseline_relic_unlocks(),
+		"researched_elements": {
+			LANCE_ELEMENT_ICE: false,
+			LANCE_ELEMENT_FIRE: false,
+			LANCE_ELEMENT_THUNDER: false
+		},
+		"unlocked_loadouts": {LOADOUT_NONE: true},
+		"selected_loadout": LOADOUT_NONE,
+		"unlocked_beacon_mods": {BEACON_MOD_NONE: true},
+		"selected_beacon_mod": BEACON_MOD_NONE,
+		"achievements": {},
+		"settings": {
+			"audio": true,
+			"screen_shake": true,
+			"tutorial": true
+		},
+		"tutorial": {
+			"complete": false
+		},
+		"lifetime": {
+			"runs_completed": 0,
+			"total_run_time": 0,
+			"total_gems": 0,
+			"total_kills": 0,
+			"relic_research": 0,
+			"extractions": 0,
+			"boss_kills": 0,
+			"boulder_kills": 0,
+			"super_gems": 0,
+			"fygar_kills": 0,
+			"map_clears": {}
+		}
+	}
+
+
+func _baseline_relic_unlocks() -> Dictionary:
+	return {
+		HEAL_UPGRADE_ID: true,
+		"range": true,
+		"stun": true,
+		"field_dressing": true,
+		"magnet": true,
+		"rock_whistle": true
+	}
+
+
+func _load_meta() -> void:
+	meta = _default_meta()
+	if FileAccess.file_exists(META_SAVE_PATH):
+		var file := FileAccess.open(META_SAVE_PATH, FileAccess.READ)
+		if file != null:
+			var parsed = JSON.parse_string(file.get_as_text())
+			if typeof(parsed) == TYPE_DICTIONARY:
+				_merge_meta(parsed)
+	var research_unlocks := _unlock_relic_research_milestones()
+	_validate_meta_selection()
+	if research_unlocks > 0:
+		_save_meta()
+
+
+func _merge_meta(saved: Dictionary) -> void:
+	for key in saved.keys():
+		if not meta.has(key):
+			continue
+		if typeof(meta[key]) == TYPE_DICTIONARY:
+			if typeof(saved[key]) != TYPE_DICTIONARY:
+				continue
+			var merged: Dictionary = meta[key]
+			for sub_key in saved[key].keys():
+				if typeof(merged.get(sub_key, null)) == TYPE_DICTIONARY:
+					if typeof(saved[key][sub_key]) != TYPE_DICTIONARY:
+						continue
+					var sub_merged: Dictionary = merged[sub_key]
+					for nested_key in saved[key][sub_key].keys():
+						sub_merged[nested_key] = saved[key][sub_key][nested_key]
+					merged[sub_key] = sub_merged
+				else:
+					merged[sub_key] = saved[key][sub_key]
+			meta[key] = merged
+		else:
+			meta[key] = saved[key]
+	meta["version"] = META_SAVE_VERSION
+
+
+func _save_meta() -> void:
+	var file := FileAccess.open(META_SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(JSON.stringify(meta))
+
+
+func _settings() -> Dictionary:
+	return meta.get("settings", {})
+
+
+func _setting_enabled(id: String, fallback := true) -> bool:
+	var settings := _settings()
+	return bool(settings.get(id, fallback))
+
+
+func _audio_enabled() -> bool:
+	return _setting_enabled("audio", true)
+
+
+func _screen_shake_enabled() -> bool:
+	return _setting_enabled("screen_shake", true)
+
+
+func _tutorial_enabled() -> bool:
+	return _setting_enabled("tutorial", true)
+
+
+func _toggle_setting(id: String) -> void:
+	wipe_save_confirm = false
+	var settings := _settings()
+	settings[id] = not bool(settings.get(id, true))
+	meta["settings"] = settings
+	_save_meta()
+	_play_sfx("ui")
+	queue_redraw()
+
+
+func _press_wipe_save() -> void:
+	if not wipe_save_confirm:
+		wipe_save_confirm = true
+		message = "Tap wipe again to reset all progress."
+		_play_sfx("ui")
+		queue_redraw()
+		return
+	_wipe_save_data()
+
+
+func _wipe_save_data() -> void:
+	wipe_save_confirm = false
+	_clear_mobile_input()
+	if lance_active:
+		_release_lance(false)
+	meta = _default_meta()
+	_validate_meta_selection()
+	_save_meta()
+	meta_notice = "Save wiped. Fresh dig ready."
+	current_map_id = MAP_OLD_MINE
+	current_map_def = _selected_map_def()
+	paused = false
 	show_upgrade_inventory = false
-	floor_index = 1
+	state = STATE_META
+	message = "Choose a dig site."
+	_play_sfx("fail")
+	queue_redraw()
+
+
+func _tutorial_complete() -> bool:
+	var tutorial: Dictionary = meta.get("tutorial", {})
+	return bool(tutorial.get("complete", false))
+
+
+func _mark_tutorial_complete() -> void:
+	if _tutorial_complete():
+		return
+	var tutorial: Dictionary = meta.get("tutorial", {})
+	tutorial["complete"] = true
+	meta["tutorial"] = tutorial
+	_save_meta()
+
+
+func _validate_meta_selection() -> void:
+	if not _map_is_unlocked(String(meta.get("selected_map", MAP_OLD_MINE))):
+		meta["selected_map"] = MAP_OLD_MINE
+	if not _loadout_is_unlocked(String(meta.get("selected_loadout", LOADOUT_NONE))):
+		meta["selected_loadout"] = LOADOUT_NONE
+	if not _beacon_mod_is_unlocked(String(meta.get("selected_beacon_mod", BEACON_MOD_NONE))):
+		meta["selected_beacon_mod"] = BEACON_MOD_NONE
+
+
+func _map_defs() -> Dictionary:
+	return {
+		MAP_OLD_MINE: {
+			"id": MAP_OLD_MINE,
+			"name": "Old Mine",
+			"desc": "Classic dirt, boulders, gems, and den pressure.",
+			"rock_mult": 1.0,
+			"gem_mult": 1.0,
+			"super_bonus": 0,
+			"crystal": false,
+			"spitter_weight_bonus": 0,
+			"leech_weight_bonus": 0
+		},
+		MAP_CRYSTAL_VEINS: {
+			"id": MAP_CRYSTAL_VEINS,
+			"name": "Crystal Veins",
+			"desc": "Cold soil, hard crystal shale, sealed seams, richer gems.",
+			"rock_mult": 0.72,
+			"gem_mult": 1.12,
+			"super_bonus": 2,
+			"crystal": true,
+			"spitter_weight_bonus": 16,
+			"leech_weight_bonus": 18
+		}
+	}
+
+
+func _loadout_defs() -> Dictionary:
+	return {
+		LOADOUT_NONE: {"id": LOADOUT_NONE, "name": "None", "desc": "Start with no relic.", "upgrade": ""},
+		"long_shaft": {"id": "long_shaft", "name": "Long Shaft", "desc": "Start with +1 lance range.", "upgrade": "range"},
+		"amber_magnet": {"id": "amber_magnet", "name": "Amber Magnet", "desc": "Start with XP pull.", "upgrade": "magnet"},
+		"rock_whistle": {"id": "rock_whistle", "name": "Rock Whistle", "desc": "Start with boulder lures.", "upgrade": "rock_whistle"}
+	}
+
+
+func _beacon_mod_defs() -> Dictionary:
+	return {
+		BEACON_MOD_NONE: {"id": BEACON_MOD_NONE, "name": "None", "desc": "Beacon behaves normally."},
+		BEACON_MOD_SIGNAL_SCANNER: {"id": BEACON_MOD_SIGNAL_SCANNER, "name": "Signal Scanner", "desc": "Shows beacon direction before it arms."}
+	}
+
+
+func _achievement_defs() -> Dictionary:
+	return {
+		"first_extraction": {
+			"name": "First Extraction",
+			"desc": "Escape once.",
+			"rewards": [
+				{"kind": "map", "id": MAP_CRYSTAL_VEINS},
+				{"kind": "loadout", "id": "long_shaft"},
+				{"kind": "loadout", "id": "amber_magnet"},
+				{"kind": "loadout", "id": "rock_whistle"},
+				{"kind": "beacon_mod", "id": BEACON_MOD_SIGNAL_SCANNER},
+				{"kind": "element", "id": LANCE_ELEMENT_ICE},
+				{"kind": "relics", "ids": ["gem_xp", "prospector", "gem_vein", "barbed_head"]}
+			]
+		},
+		"first_boulder_kill": {
+			"name": "Rock Plan",
+			"desc": "Crush an enemy with a boulder.",
+			"rewards": [{"kind": "relics", "ids": ["gravity_snare", "chute_drill", "rock_ledger"]}]
+		},
+		"first_boss_kill": {
+			"name": "Deep Boss Down",
+			"desc": "Defeat a boss.",
+			"rewards": [{"kind": "relics", "ids": ["pierce", "quick_reel", "tunnel_focus"]}]
+		},
+		"super_gem_collector_10": {
+			"name": "Storm Research",
+			"desc": "Collect 10 super gems.",
+			"rewards": [{"kind": "element", "id": LANCE_ELEMENT_THUNDER}]
+		},
+		"fygar_hunter_10": {
+			"name": "Fire Research",
+			"desc": "Kill 10 Fygars.",
+			"rewards": [{"kind": "element", "id": LANCE_ELEMENT_FIRE}]
+		}
+	}
+
+
+func _relic_research_milestones() -> Array:
+	return [
+		{"id": "gem_xp", "cost": 3},
+		{"id": "prospector", "cost": 7},
+		{"id": "gem_vein", "cost": 12},
+		{"id": "barbed_head", "cost": 18},
+		{"id": "status_tip", "cost": 25},
+		{"id": "quick_reel", "cost": 33},
+		{"id": "pierce", "cost": 42},
+		{"id": "tunnel_focus", "cost": 52},
+		{"id": "gravity_snare", "cost": 63},
+		{"id": "chute_drill", "cost": 75},
+		{"id": "rock_ledger", "cost": 88}
+	]
+
+
+func _relic_is_discovered(id: String) -> bool:
+	if id == HEAL_UPGRADE_ID:
+		return true
+	if _is_hybrid_upgrade(id):
+		for element in _hybrid_upgrade_elements(id):
+			if not _element_is_researched(String(element)):
+				return false
+		return true
+	var element := _upgrade_element(id)
+	if element != "":
+		return _element_is_researched(element)
+	var unlocked: Dictionary = meta.get("unlocked_relics", {})
+	return bool(unlocked.get(id, false))
+
+
+func _element_is_researched(element: String) -> bool:
+	if element == "":
+		return true
+	var researched: Dictionary = meta.get("researched_elements", {})
+	return bool(researched.get(element, false))
+
+
+func _map_is_unlocked(id: String) -> bool:
+	var unlocked: Dictionary = meta.get("unlocked_maps", {})
+	return bool(unlocked.get(id, false))
+
+
+func _loadout_is_unlocked(id: String) -> bool:
+	var unlocked: Dictionary = meta.get("unlocked_loadouts", {})
+	return bool(unlocked.get(id, false))
+
+
+func _beacon_mod_is_unlocked(id: String) -> bool:
+	var unlocked: Dictionary = meta.get("unlocked_beacon_mods", {})
+	return bool(unlocked.get(id, false))
+
+
+func _unlock_meta_reward(reward: Dictionary) -> bool:
+	var changed := false
+	var kind := String(reward.get("kind", ""))
+	match kind:
+		"map":
+			var maps: Dictionary = meta.get("unlocked_maps", {})
+			var id := String(reward.get("id", ""))
+			if id != "" and not bool(maps.get(id, false)):
+				maps[id] = true
+				meta["unlocked_maps"] = maps
+				changed = true
+		"loadout":
+			var loadouts: Dictionary = meta.get("unlocked_loadouts", {})
+			var id := String(reward.get("id", ""))
+			if id != "" and not bool(loadouts.get(id, false)):
+				loadouts[id] = true
+				meta["unlocked_loadouts"] = loadouts
+				changed = true
+		"beacon_mod":
+			var mods: Dictionary = meta.get("unlocked_beacon_mods", {})
+			var id := String(reward.get("id", ""))
+			if id != "" and not bool(mods.get(id, false)):
+				mods[id] = true
+				meta["unlocked_beacon_mods"] = mods
+				changed = true
+		"element":
+			var elements: Dictionary = meta.get("researched_elements", {})
+			var id := String(reward.get("id", ""))
+			if id != "" and not bool(elements.get(id, false)):
+				elements[id] = true
+				meta["researched_elements"] = elements
+				changed = true
+		"relics":
+			var relics: Dictionary = meta.get("unlocked_relics", {})
+			for relic_id in reward.get("ids", []):
+				var id := String(relic_id)
+				if id != "" and not bool(relics.get(id, false)):
+					relics[id] = true
+					changed = true
+			meta["unlocked_relics"] = relics
+	return changed
+
+
+func _complete_achievement(id: String) -> bool:
+	var achievements: Dictionary = meta.get("achievements", {})
+	if bool(achievements.get(id, false)):
+		return false
+	var defs := _achievement_defs()
+	if not defs.has(id):
+		return false
+	achievements[id] = true
+	meta["achievements"] = achievements
+	var achievement: Dictionary = defs[id]
+	for reward in achievement.get("rewards", []):
+		_unlock_meta_reward(reward)
+	meta_notice = "Unlocked: %s" % String(achievement.get("name", id))
+	message = meta_notice
+	_validate_meta_selection()
+	_save_meta()
+	return true
+
+
+func _increment_lifetime(key: String, amount := 1) -> void:
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	lifetime[key] = int(lifetime.get(key, 0)) + amount
+	meta["lifetime"] = lifetime
+	_check_lifetime_achievements()
+	_save_meta()
+
+
+func _record_run_meta_progress(extracted: bool) -> void:
+	if run_meta_recorded:
+		return
+	run_meta_recorded = true
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	lifetime["runs_completed"] = int(lifetime.get("runs_completed", 0)) + 1
+	lifetime["total_run_time"] = int(lifetime.get("total_run_time", 0)) + floori(run_time)
+	lifetime["total_gems"] = int(lifetime.get("total_gems", 0)) + gems_collected
+	lifetime["total_kills"] = int(lifetime.get("total_kills", 0)) + run_kills
+	var research_gain := _run_relic_research_gain(extracted)
+	lifetime["relic_research"] = int(lifetime.get("relic_research", 0)) + research_gain
+	meta["lifetime"] = lifetime
+	var unlocked := _unlock_relic_research_milestones()
+	if unlocked > 0:
+		meta_notice = "Research unlocked %d relic%s." % [unlocked, "" if unlocked == 1 else "s"]
+	elif research_gain > 0:
+		meta_notice = "Relic research +%d." % research_gain
+	_check_lifetime_achievements()
+	_save_meta()
+
+
+func _run_relic_research_gain(extracted: bool) -> int:
+	var gain := 1
+	gain += mini(4, floori(run_time / 75.0))
+	gain += mini(3, floori(float(gems_collected) / 10.0))
+	gain += mini(3, floori(float(run_kills) / 6.0))
+	gain += mini(2, run_relics_found)
+	if extracted:
+		gain += 3
+	return maxi(1, gain)
+
+
+func _unlock_relic_research_milestones() -> int:
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	var research := int(lifetime.get("relic_research", 0))
+	var relics: Dictionary = meta.get("unlocked_relics", {})
+	var unlocked := 0
+	for milestone in _relic_research_milestones():
+		var id := String(milestone.get("id", ""))
+		if id == "" or bool(relics.get(id, false)):
+			continue
+		if research < int(milestone.get("cost", 999999)):
+			continue
+		relics[id] = true
+		unlocked += 1
+	if unlocked > 0:
+		meta["unlocked_relics"] = relics
+	return unlocked
+
+
+func _increment_map_clear(map_id: String) -> void:
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	var clears: Dictionary = lifetime.get("map_clears", {})
+	clears[map_id] = int(clears.get(map_id, 0)) + 1
+	lifetime["map_clears"] = clears
+	meta["lifetime"] = lifetime
+
+
+func _record_enemy_defeat(kind: int) -> void:
+	if kind == ENEMY_FYGAR_KIND:
+		_increment_lifetime("fygar_kills")
+
+
+func _active_beacon_mod_id() -> String:
+	return String(meta.get("selected_beacon_mod", BEACON_MOD_NONE))
+
+
+func _has_beacon_mod(id: String) -> bool:
+	return _active_beacon_mod_id() == id
+
+
+func _update_beacon_scanner(delta: float) -> void:
+	if beacon_armed or not _has_beacon_mod(BEACON_MOD_SIGNAL_SCANNER):
+		return
+	beacon_scan_timer -= delta
+	if beacon_scan_timer > 0.0:
+		return
+	beacon_scan_timer = CRYSTAL_SCAN_PULSE_INTERVAL
+	_add_cell_pulse(beacon_pos, BEACON_DORMANT.lightened(0.35), PULSE_FEEDBACK_TIME + 0.18, 1.15, true)
+
+
+func _beacon_scanner_text() -> String:
+	if beacon_armed or not _has_beacon_mod(BEACON_MOD_SIGNAL_SCANNER):
+		return ""
+	var delta := beacon_pos - player_pos
+	var distance: int = abs(delta.x) + abs(delta.y)
+	return "Scan %s %d" % [_beacon_direction_text(delta), distance]
+
+
+func _beacon_direction_text(delta: Vector2i) -> String:
+	var vertical := ""
+	var horizontal := ""
+	if delta.y < 0:
+		vertical = "N"
+	elif delta.y > 0:
+		vertical = "S"
+	if delta.x < 0:
+		horizontal = "W"
+	elif delta.x > 0:
+		horizontal = "E"
+	if vertical == "" and horizontal == "":
+		return "here"
+	return vertical + horizontal
+
+
+func _check_lifetime_achievements() -> void:
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	if int(lifetime.get("super_gems", 0)) >= 10:
+		_complete_achievement("super_gem_collector_10")
+	if int(lifetime.get("fygar_kills", 0)) >= 10:
+		_complete_achievement("fygar_hunter_10")
+
+
+func _selected_map_def() -> Dictionary:
+	var defs := _map_defs()
+	var id := String(meta.get("selected_map", MAP_OLD_MINE))
+	if defs.has(id):
+		return defs[id]
+	return defs[MAP_OLD_MINE]
+
+
+func _selected_loadout_def() -> Dictionary:
+	var defs := _loadout_defs()
+	var id := String(meta.get("selected_loadout", LOADOUT_NONE))
+	if defs.has(id):
+		return defs[id]
+	return defs[LOADOUT_NONE]
+
+
+func _selected_beacon_mod_def() -> Dictionary:
+	var defs := _beacon_mod_defs()
+	var id := String(meta.get("selected_beacon_mod", BEACON_MOD_NONE))
+	if defs.has(id):
+		return defs[id]
+	return defs[BEACON_MOD_NONE]
+
+
+func _go_to_meta() -> void:
+	if state == STATE_PLAYING and not run_meta_recorded and run_time >= 10.0:
+		_record_run_meta_progress(false)
+	state = STATE_META
+	paused = false
+	wipe_save_confirm = false
+	show_upgrade_inventory = false
+	_clear_mobile_input()
+	message = "Choose a dig site."
+	queue_redraw()
+
+
+func _start_selected_run() -> void:
+	_clear_mobile_input()
+	paused = false
+	_play_sfx("start")
+	_new_run()
+
+
+func _cycle_selected_map(dir: int) -> void:
+	var ids := _unlocked_ordered_ids(_map_defs(), "unlocked_maps")
+	if ids.is_empty():
+		return
+	var current := String(meta.get("selected_map", MAP_OLD_MINE))
+	var index := maxi(0, ids.find(current))
+	index = (index + dir + ids.size()) % ids.size()
+	meta["selected_map"] = ids[index]
+	meta_notice = "Map: %s" % String(_map_defs()[ids[index]]["name"])
+	_save_meta()
+	queue_redraw()
+
+
+func _cycle_selected_loadout(dir: int) -> void:
+	var ids := _unlocked_ordered_ids(_loadout_defs(), "unlocked_loadouts")
+	if ids.is_empty():
+		return
+	var current := String(meta.get("selected_loadout", LOADOUT_NONE))
+	var index := maxi(0, ids.find(current))
+	index = (index + dir + ids.size()) % ids.size()
+	meta["selected_loadout"] = ids[index]
+	meta_notice = "Loadout: %s" % String(_loadout_defs()[ids[index]]["name"])
+	_save_meta()
+	queue_redraw()
+
+
+func _cycle_selected_beacon_mod(dir: int) -> void:
+	var ids := _unlocked_ordered_ids(_beacon_mod_defs(), "unlocked_beacon_mods")
+	if ids.is_empty():
+		return
+	var current := String(meta.get("selected_beacon_mod", BEACON_MOD_NONE))
+	var index := maxi(0, ids.find(current))
+	index = (index + dir + ids.size()) % ids.size()
+	meta["selected_beacon_mod"] = ids[index]
+	meta_notice = "Beacon mod: %s" % String(_beacon_mod_defs()[ids[index]]["name"])
+	_save_meta()
+	queue_redraw()
+
+
+func _unlocked_ordered_ids(defs: Dictionary, unlock_key: String) -> Array:
+	var ids := []
+	var unlocked: Dictionary = meta.get(unlock_key, {})
+	for id in defs.keys():
+		if bool(unlocked.get(id, false)):
+			ids.append(String(id))
+	ids.sort()
+	if ids.has(LOADOUT_NONE):
+		ids.erase(LOADOUT_NONE)
+		ids.push_front(LOADOUT_NONE)
+	if ids.has(BEACON_MOD_NONE):
+		ids.erase(BEACON_MOD_NONE)
+		ids.push_front(BEACON_MOD_NONE)
+	if ids.has(MAP_OLD_MINE):
+		ids.erase(MAP_OLD_MINE)
+		ids.push_front(MAP_OLD_MINE)
+	return ids
+
+
+func _new_run() -> void:
+	_validate_meta_selection()
+	paused = false
+	current_map_id = String(meta.get("selected_map", MAP_OLD_MINE))
+	current_map_def = _selected_map_def()
+	beacon_scan_timer = CRYSTAL_SCAN_PULSE_INTERVAL
+	show_upgrade_inventory = false
+	depth_tier = 1
 	player_level = 1
 	xp = 0
 	xp_to_next = XP_BASE_TO_NEXT
@@ -584,7 +1384,6 @@ func _new_run() -> void:
 	treasure_chest_timer = TREASURE_CHEST_START_DELAY
 	score = 0
 	gems_collected = 0
-	gem_bank = 0
 	max_hp = 3
 	hp = max_hp
 	move_delay = BASE_MOVE_DELAY
@@ -632,11 +1431,11 @@ func _new_run() -> void:
 	best_combo = 0
 	boss_spawn_index = 0
 	reaper_spawned = false
-	last_floor_summary = ""
-	_start_floor()
+	last_run_summary = ""
+	_start_run_map()
 
 
-func _start_floor() -> void:
+func _start_run_map() -> void:
 	show_upgrade_inventory = false
 	state = STATE_PLAYING
 	player_pos = Vector2i(int(BOARD_W * 0.5), 1)
@@ -653,6 +1452,8 @@ func _start_floor() -> void:
 	beacon_armed = false
 	move_cooldown = 0.0
 	attack_cooldown = 0.0
+	hurt_flash = 0.0
+	player_hit_recovery = 0.0
 	lance_active = false
 	lance_attached_enemy = -1
 	lance_blocking_cell = Vector2i.ZERO
@@ -697,6 +1498,7 @@ func _start_floor() -> void:
 	temp_boulder_chute = 0
 	temp_boulder_xp_bonus = 0
 	temp_upgrades = {}
+	_apply_starting_loadout()
 	last_attack_cells.clear()
 	dig_feedback.clear()
 	dig_segments.clear()
@@ -713,17 +1515,18 @@ func _start_floor() -> void:
 	combo_timer = 0.0
 	screen_shake = 0.0
 	screen_shake_offset = Vector2.ZERO
-	floor_gems_collected = 0
-	floor_super_gems_collected = 0
-	floor_kills = 0
-	floor_boulder_kills = 0
-	floor_relics_found = 0
-	floor_damage_taken = 0
+	run_gems_collected = 0
+	run_super_gems_collected = 0
+	run_kills = 0
+	run_boulder_kills = 0
+	run_relics_found = 0
+	run_damage_taken = 0
+	run_meta_recorded = false
 	player_step_squash = 0.0
-	message = "Survive the den. Dig space, time your lance, harvest gems."
+	message = "%s. Dig space, time your lance, harvest gems." % String(current_map_def.get("name", "Survive"))
 	_build_cavern()
-	floor_gems_available = gems.size()
-	floor_super_gems_available = super_gems.size()
+	run_gems_available = gems.size()
+	run_super_gems_available = super_gems.size()
 	queue_redraw()
 
 
@@ -735,15 +1538,28 @@ func _resume_survival() -> void:
 	queue_redraw()
 
 
+func _apply_starting_loadout() -> void:
+	var loadout := _selected_loadout_def()
+	var upgrade_id := String(loadout.get("upgrade", ""))
+	if upgrade_id == "":
+		return
+	var upgrade := _upgrade_by_id(upgrade_id)
+	if upgrade.is_empty():
+		return
+	_apply_temp_upgrade(upgrade)
+
+
 func _build_cavern() -> void:
 	grid.clear()
 	rocks.clear()
 	gems.clear()
 	super_gems.clear()
+	crystal_cells.clear()
+	terrain_cells.clear()
 	treasure_chests.clear()
 	enemies.clear()
 	recent_spawn_cells.clear()
-	floor_relics.clear()
+	run_relics.clear()
 
 	for x in range(BOARD_W):
 		var column := []
@@ -758,14 +1574,17 @@ func _build_cavern() -> void:
 	beacon_pos = Vector2i(rng.randi_range(3, BOARD_W - 4), BOARD_H - 2)
 	_set_tile(beacon_pos, TILE_BEACON)
 
-	var enemy_count := 4 + floor_index
+	var enemy_count := 4 + depth_tier + int(current_map_def.get("enemy_bonus", 0))
 	var patrol_cells := _carve_enemy_patrols(enemy_count)
 
-	_place_rocks(12 + floor_index * 2)
-	_place_gems(22 + floor_index * 3 + _effective_extra_gems_bonus())
-	_place_super_gems(SUPER_GEM_BASE_COUNT + 2 + mini(_effective_super_gem_bonus(), 2) + (1 if floor_index >= 5 else 0))
-	var relic_count := 0 if floor_index == 1 else 1 + (1 if floor_index >= 7 else 0)
-	_place_floor_relics(relic_count)
+	_place_rocks(roundi(float(12 + depth_tier * 2) * float(current_map_def.get("rock_mult", 1.0))))
+	_place_gems(roundi(float(22 + depth_tier * 3 + _effective_extra_gems_bonus()) * float(current_map_def.get("gem_mult", 1.0))))
+	_place_super_gems(SUPER_GEM_BASE_COUNT + 2 + mini(_effective_super_gem_bonus(), 2) + int(current_map_def.get("super_bonus", 0)) + (1 if depth_tier >= 5 else 0))
+	if bool(current_map_def.get("crystal", false)):
+		_place_crystal_terrain()
+		_place_crystal_veins()
+	var relic_count := 0 if depth_tier == 1 else 1 + (1 if depth_tier >= 7 else 0)
+	_place_run_relics(relic_count)
 	_place_enemies(enemy_count, patrol_cells)
 	_ensure_visible_start_enemies()
 	_place_initial_treasure_chests(2)
@@ -955,7 +1774,7 @@ func _sprout_extra_gems(count: int) -> void:
 	while gems.size() < target and attempts < 800:
 		attempts += 1
 		var pos := Vector2i(rng.randi_range(1, BOARD_W - 2), rng.randi_range(UNDERGROUND_SPAWN_MIN_ROW, BOARD_H - 2))
-		if pos == player_pos or pos == beacon_pos or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
+		if pos == player_pos or pos == beacon_pos or _terrain_at(pos) != "" or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
 			continue
 		if _cell_open_mask(pos) != 0 and rng.randf() < 0.35:
 			continue
@@ -979,7 +1798,150 @@ func _place_super_gems(count: int) -> void:
 		super_gems.append(pos)
 
 
-func _place_floor_relics(count: int) -> void:
+func _place_crystal_terrain() -> void:
+	var shale_target := 24 + depth_tier * 4
+	var seal_target := 6 + depth_tier
+	_grow_crystal_terrain(TERRAIN_CRYSTAL_SHALE, shale_target, 5, 8)
+	_grow_crystal_terrain(TERRAIN_CRYSTAL_SEAL, seal_target, 3, 5)
+
+
+func _grow_crystal_terrain(kind: String, target: int, min_length: int, max_length: int) -> void:
+	var placed := 0
+	var attempts := 0
+	while placed < target and attempts < 700:
+		attempts += 1
+		var cursor := Vector2i(rng.randi_range(2, BOARD_W - 3), rng.randi_range(UNDERGROUND_SPAWN_MIN_ROW + 2, BOARD_H - 3))
+		var length := rng.randi_range(min_length, max_length)
+		var dir := _random_crystal_seam_dir()
+		for step in range(length):
+			if _can_place_crystal_terrain_at(cursor, kind):
+				terrain_cells[cursor] = kind
+				placed += 1
+				if placed >= target:
+					break
+			if rng.randf() < 0.42:
+				dir = _random_crystal_seam_dir()
+			cursor += dir
+			if not _in_bounds(cursor):
+				break
+
+
+func _random_crystal_seam_dir() -> Vector2i:
+	var roll := rng.randf()
+	if roll < 0.38:
+		return Vector2i.DOWN
+	if roll < 0.58:
+		return Vector2i.UP
+	if roll < 0.79:
+		return Vector2i.RIGHT
+	return Vector2i.LEFT
+
+
+func _can_place_crystal_terrain_at(pos: Vector2i, kind: String) -> bool:
+	if not _in_bounds(pos) or pos.y <= SURFACE_ROW:
+		return false
+	if _cell_open_mask(pos) != 0:
+		return false
+	if pos == player_pos or pos == beacon_pos or pos.distance_squared_to(player_pos) < 49:
+		return false
+	if terrain_cells.has(pos):
+		return false
+	if _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
+		return false
+	if kind == TERRAIN_CRYSTAL_SEAL:
+		if _adjacent_crystal_seal_count(pos) >= 2:
+			return false
+		if pos.x <= 1 or pos.x >= BOARD_W - 2:
+			return false
+	return true
+
+
+func _adjacent_crystal_seal_count(pos: Vector2i) -> int:
+	var count := 0
+	for dir in DIRS:
+		if _terrain_at(pos + dir) == TERRAIN_CRYSTAL_SEAL:
+			count += 1
+	return count
+
+
+func _place_crystal_veins() -> void:
+	var seeds := super_gems.duplicate()
+	seeds.shuffle()
+	var target := 18 + depth_tier * 3
+	var placed := 0
+	for seed in seeds:
+		if placed >= target:
+			break
+		var pos: Vector2i = seed
+		for step in range(rng.randi_range(3, 6)):
+			var dir: Vector2i = DIRS[rng.randi_range(0, DIRS.size() - 1)]
+			pos += dir
+			if _can_place_crystal_at(pos):
+				crystal_cells[pos] = true
+				placed += 1
+			if placed >= target:
+				break
+	var attempts := 0
+	while placed < target and attempts < 500:
+		attempts += 1
+		var pos := Vector2i(rng.randi_range(2, BOARD_W - 3), rng.randi_range(UNDERGROUND_SPAWN_MIN_ROW + 4, BOARD_H - 3))
+		if not _can_place_crystal_at(pos):
+			continue
+		crystal_cells[pos] = true
+		placed += 1
+
+
+func _can_place_crystal_at(pos: Vector2i) -> bool:
+	if not _in_bounds(pos) or pos.y <= SURFACE_ROW:
+		return false
+	if _cell_open_mask(pos) != 0:
+		return false
+	if pos == player_pos or pos == beacon_pos:
+		return false
+	if _terrain_at(pos) != "":
+		return false
+	if _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
+		return false
+	return true
+
+
+func _terrain_at(pos: Vector2i) -> String:
+	return String(terrain_cells.get(pos, ""))
+
+
+func _terrain_blocks_dig(pos: Vector2i) -> bool:
+	return _terrain_at(pos) == TERRAIN_CRYSTAL_SEAL
+
+
+func _terrain_dig_delay_mult(pos: Vector2i) -> float:
+	if _terrain_at(pos) == TERRAIN_CRYSTAL_SHALE:
+		return CRYSTAL_SHALE_DIG_DELAY_MULT
+	return 1.0
+
+
+func _is_crystal_cell(pos: Vector2i) -> bool:
+	return bool(crystal_cells.get(pos, false))
+
+
+func _open_crystal_cell(pos: Vector2i) -> void:
+	if not _is_crystal_cell(pos):
+		return
+	_add_cell_pulse(pos, SUPER_GEM, PULSE_FEEDBACK_TIME + 0.18, 0.95, true)
+	if rng.randf() > CRYSTAL_SPROUT_CHANCE:
+		return
+	var dirs := DIRS.duplicate()
+	dirs.shuffle()
+	for dir in dirs:
+		var gem_pos: Vector2i = pos + dir
+		if not _can_place_lure_gem_at(gem_pos):
+			continue
+		gems.append(gem_pos)
+		run_gems_available += 1
+		_add_cell_pulse(gem_pos, GEM, PULSE_FEEDBACK_TIME + 0.08, 0.72)
+		return
+
+
+func _place_run_relics(count: int) -> void:
 	var pool := _available_upgrade_pool()
 	pool = pool.filter(func(upgrade): return upgrade["id"] != HEAL_UPGRADE_ID)
 	if pool.is_empty():
@@ -987,17 +1949,17 @@ func _place_floor_relics(count: int) -> void:
 	pool.shuffle()
 	var target_count := mini(count, pool.size())
 	var attempts := 0
-	while floor_relics.size() < target_count and attempts < 900 and not pool.is_empty():
+	while run_relics.size() < target_count and attempts < 900 and not pool.is_empty():
 		attempts += 1
 		var pos := Vector2i(rng.randi_range(2, BOARD_W - 3), rng.randi_range(UNDERGROUND_SPAWN_MIN_ROW, BOARD_H - 3))
-		if pos == player_pos or pos == beacon_pos or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
+		if pos == player_pos or pos == beacon_pos or _terrain_at(pos) != "" or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
 			continue
 		if rng.randf() < 0.75 and _adjacent_tunnel_count(pos) == 0:
 			continue
 		var relic: Dictionary = pool.pop_back().duplicate()
 		relic["pos"] = pos
 		relic["buried"] = _cell_open_mask(pos) == 0
-		floor_relics.append(relic)
+		run_relics.append(relic)
 
 
 func _place_initial_treasure_chests(count: int) -> void:
@@ -1030,7 +1992,7 @@ func _place_deep_treasure() -> void:
 		return
 	treasure_chests.append({
 		"pos": best,
-		"reward": {"kind": TREASURE_KIND_GEMS, "amount": TREASURE_JACKPOT_MAX + 5 + floor_index},
+		"reward": {"kind": TREASURE_KIND_GEMS, "amount": TREASURE_JACKPOT_MAX + 5 + depth_tier},
 		"deep_signal": true
 	})
 
@@ -1120,25 +2082,28 @@ func _add_enemy(pos: Vector2i, forced_kind := -1, boss_variant := 0) -> void:
 		"summon_cooldown": rng.randf_range(BROOD_POD_SUMMON_COOLDOWN_MIN, BROOD_POD_SUMMON_COOLDOWN_MAX),
 		"face_dir": Vector2i.LEFT,
 		"stolen_loot": 0,
+		"bounty": false,
 		"boss_hurt_flash": 0.0,
 		"attack_windup": 0.0,
 		"attack_dir": Vector2i.ZERO
 	})
 	_remember_enemy_spawn(pos)
+	if _is_pressure_surge() and not _has_bounty_target():
+		_mark_bounty_enemy(enemies.size() - 1)
 
 
 func _choose_enemy_kind() -> int:
 	var weighted := [{"kind": ENEMY_GRUB_KIND, "weight": 100}]
-	if floor_index >= 3:
+	if depth_tier >= 3:
 		weighted.append({"kind": ENEMY_BURROWER_KIND, "weight": 36})
-	if floor_index >= FYGAR_MIN_FLOOR:
-		weighted.append({"kind": ENEMY_FYGAR_KIND, "weight": 22 + mini(floor_index * 3, 18)})
+	if depth_tier >= FYGAR_MIN_DEPTH_TIER:
+		weighted.append({"kind": ENEMY_FYGAR_KIND, "weight": 22 + mini(depth_tier * 3, 18)})
 	if run_time >= SPITTER_MIN_TIME and player_level >= SPITTER_MIN_LEVEL:
-		weighted.append({"kind": ENEMY_SPITTER_KIND, "weight": 32 + floori(run_time / 90.0) * 4})
+		weighted.append({"kind": ENEMY_SPITTER_KIND, "weight": 32 + floori(run_time / 90.0) * 4 + int(current_map_def.get("spitter_weight_bonus", 0))})
 	if run_time >= SHIELDBUG_MIN_TIME and player_level >= SHIELDBUG_MIN_LEVEL:
 		weighted.append({"kind": ENEMY_SHIELDBUG_KIND, "weight": 26 + player_level * 2})
 	if run_time >= LEECH_MIN_TIME and player_level >= LEECH_MIN_LEVEL:
-		weighted.append({"kind": ENEMY_LEECH_KIND, "weight": 24 + floori(run_time / 80.0) * 3})
+		weighted.append({"kind": ENEMY_LEECH_KIND, "weight": 24 + floori(run_time / 80.0) * 3 + int(current_map_def.get("leech_weight_bonus", 0))})
 	if run_time >= BROOD_POD_MIN_TIME and player_level >= BROOD_POD_MIN_LEVEL:
 		weighted.append({"kind": ENEMY_BROOD_POD_KIND, "weight": 12 + floori(run_time / 120.0) * 3})
 
@@ -1155,7 +2120,7 @@ func _choose_enemy_kind() -> int:
 
 
 func _enemy_max_hp_for_kind(kind: int) -> int:
-	var scaling := floori(float(floor_index) / 3.0)
+	var scaling := floori(float(depth_tier) / 3.0)
 	match kind:
 		ENEMY_SPITTER_KIND:
 			return 3 + scaling
@@ -1164,7 +2129,7 @@ func _enemy_max_hp_for_kind(kind: int) -> int:
 		ENEMY_LEECH_KIND:
 			return 3 + scaling
 		ENEMY_BROOD_POD_KIND:
-			return 8 + floori(float(floor_index) / 2.0)
+			return 8 + floori(float(depth_tier) / 2.0)
 		ENEMY_BOSS_KIND:
 			return BOSS_MAX_HP + floori(run_time / 60.0) * 3
 		ENEMY_REAPER_KIND:
@@ -1202,9 +2167,11 @@ func _should_spawn_uber(kind: int, forced_kind: int) -> bool:
 func _process(delta: float) -> void:
 	anim_time += delta
 	hurt_flash = maxf(0.0, hurt_flash - delta)
+	player_hit_recovery = maxf(0.0, player_hit_recovery - delta)
 	attack_flash = maxf(0.0, attack_flash - delta)
 	player_step_squash = maxf(0.0, player_step_squash - delta)
 	screen_shake = maxf(0.0, screen_shake - delta)
+	dig_sfx_cooldown = maxf(0.0, dig_sfx_cooldown - delta)
 	screen_shake_offset = Vector2.ZERO
 	if screen_shake > 0.0:
 		screen_shake_offset = Vector2(rng.randf_range(-screen_shake, screen_shake), rng.randf_range(-screen_shake, screen_shake)) * 12.0
@@ -1215,6 +2182,18 @@ func _process(delta: float) -> void:
 	_update_feedback(delta)
 	if attack_flash <= 0.0 and not lance_active:
 		last_attack_cells.clear()
+
+	if state == STATE_META:
+		queue_redraw()
+		return
+
+	if paused:
+		if lance_active:
+			_release_lance(false)
+		_update_visual_positions(delta)
+		_update_camera(delta)
+		queue_redraw()
+		return
 
 	if state != STATE_PLAYING:
 		show_upgrade_inventory = false
@@ -1236,7 +2215,9 @@ func _process(delta: float) -> void:
 	move_cooldown = maxf(0.0, move_cooldown - delta)
 	attack_cooldown = maxf(0.0, attack_cooldown - delta)
 	run_time += delta
-	floor_index = 1 + floori(run_time / 60.0)
+	if run_time >= 90.0:
+		_mark_tutorial_complete()
+	depth_tier = 1 + floori(run_time / 60.0)
 	_update_pressure_surge(delta)
 	_update_boss_spawning()
 
@@ -1252,6 +2233,7 @@ func _process(delta: float) -> void:
 	_update_treasure_spawning(delta)
 	_update_xp_pickups(delta)
 	_update_tunnel_regrowth(delta)
+	_update_beacon_scanner(delta)
 
 	if run_time >= RUN_GOAL_TIME and not beacon_armed:
 		_arm_extraction_beacon("The extraction beacon is armed. Reach it and %s." % _interact_prompt_text())
@@ -1281,6 +2263,28 @@ func _unhandled_input(event: InputEvent) -> void:
 		_press_restart()
 		return
 
+	if event.keycode == KEY_ESCAPE or event.keycode == KEY_P:
+		_toggle_pause()
+		return
+
+	if state == STATE_META:
+		if event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
+			_start_selected_run()
+		elif event.keycode == KEY_LEFT or event.keycode == KEY_A:
+			_cycle_selected_map(-1)
+		elif event.keycode == KEY_RIGHT or event.keycode == KEY_D:
+			_cycle_selected_map(1)
+		elif event.keycode == KEY_UP or event.keycode == KEY_W:
+			_cycle_selected_loadout(-1)
+		elif event.keycode == KEY_DOWN or event.keycode == KEY_S:
+			_cycle_selected_loadout(1)
+		elif event.keycode == KEY_TAB:
+			_cycle_selected_beacon_mod(1)
+		return
+
+	if paused:
+		return
+
 	if state == STATE_PLAYING and event.keycode == KEY_I:
 		show_upgrade_inventory = not show_upgrade_inventory
 		_clear_mobile_input()
@@ -1304,10 +2308,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_4 or event.keycode == KEY_KP_4:
 			_choose_upgrade(3)
 		elif event.keycode == KEY_0 or event.keycode == KEY_KP_0 or event.keycode == KEY_E or event.keycode == KEY_ENTER:
-			_skip_upgrade_shop()
+			_skip_upgrade_choice()
 	elif state == STATE_GAME_OVER or state == STATE_WIN:
 		if event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
-			_press_restart()
+			_go_to_meta()
 
 
 func _read_move_dir() -> Vector2i:
@@ -1356,11 +2360,42 @@ func _interact_prompt_text() -> String:
 
 
 func _restart_prompt_text() -> String:
-	return "Tap or press Enter to restart." if show_touch_controls else "Press Space or Enter to restart."
+	return "Tap or press Enter for hub. R reruns." if show_touch_controls else "Press Enter for hub. R reruns."
+
+
+func _meta_prompt_text() -> String:
+	return "Tap panels to cycle. Tap START RUN." if show_touch_controls else "Enter starts. Arrow keys choose setup."
+
+
+func _toggle_pause() -> void:
+	if state != STATE_PLAYING:
+		return
+	paused = not paused
+	wipe_save_confirm = false
+	show_upgrade_inventory = false
+	if paused:
+		_clear_mobile_input()
+		if lance_active:
+			_release_lance(false)
+		message = "Paused."
+	else:
+		message = "Back into the dirt."
+	_play_sfx("ui")
+	queue_redraw()
+
+
+func _resume_from_pause() -> void:
+	if not paused:
+		return
+	paused = false
+	wipe_save_confirm = false
+	message = "Back into the dirt."
+	_play_sfx("ui")
+	queue_redraw()
 
 
 func _press_lance() -> void:
-	if state != STATE_PLAYING:
+	if state != STATE_PLAYING or paused:
 		return
 	if _can_use_beacon():
 		_try_interact()
@@ -1373,7 +2408,14 @@ func _press_lance() -> void:
 
 func _press_restart() -> void:
 	_clear_mobile_input()
-	_new_run()
+	paused = false
+	if state == STATE_META:
+		_start_selected_run()
+	else:
+		if state == STATE_PLAYING and not run_meta_recorded and run_time >= 10.0:
+			_record_run_meta_progress(false)
+		_play_sfx("start")
+		_new_run()
 
 
 func _clear_mobile_input() -> void:
@@ -1382,7 +2424,7 @@ func _clear_mobile_input() -> void:
 
 
 func _handle_touch_event(event: InputEventScreenTouch) -> void:
-	if not show_touch_controls and state != STATE_CHOOSING:
+	if not show_touch_controls and state != STATE_CHOOSING and state != STATE_META:
 		return
 	if event.pressed:
 		_handle_pointer_press(event.index, event.position)
@@ -1414,6 +2456,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 
 
 func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
+	if state == STATE_META:
+		_handle_meta_pointer(pos)
+		return
+
+	if paused:
+		_handle_pause_pointer(pos)
+		return
+
 	if show_upgrade_inventory:
 		if _inventory_close_rect().has_point(pos):
 			show_upgrade_inventory = false
@@ -1424,18 +2474,22 @@ func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
 		_press_restart()
 		return
 
+	if state == STATE_PLAYING and _pause_button_rect().has_point(pos):
+		_toggle_pause()
+		return
+
 	if state == STATE_CHOOSING:
 		for i in range(upgrade_choices.size()):
 			if _choice_rect(i).has_point(pos):
 				_choose_upgrade(i)
 				return
 		if _choice_skip_rect().has_point(pos):
-			_skip_upgrade_shop()
+			_skip_upgrade_choice()
 			return
 		return
 
 	if state == STATE_GAME_OVER or state == STATE_WIN:
-		_press_restart()
+		_go_to_meta()
 		return
 
 	if state != STATE_PLAYING:
@@ -1624,6 +2678,8 @@ func _can_player_enter_cell(cell: Vector2i, from: Vector2i) -> bool:
 		return false
 	if _has_rock(cell):
 		return false
+	if _terrain_blocks_dig(cell):
+		return false
 	var enemy_i := _solid_enemy_index_at(cell)
 	if enemy_i != -1 and cell != from:
 		return false
@@ -1641,7 +2697,7 @@ func _can_player_enter_cell(cell: Vector2i, from: Vector2i) -> bool:
 func _player_motion_speed() -> float:
 	var delay := move_delay
 	if player_digging:
-		delay *= dig_delay_mult
+		delay *= dig_delay_mult * _terrain_dig_delay_mult(player_target_cell)
 	return 1.0 / maxf(delay, 0.001)
 
 
@@ -1651,12 +2707,16 @@ func _player_align_speed() -> float:
 
 func _try_interact() -> void:
 	if _can_use_beacon():
-		_award_floor_bonus()
+		_award_extraction_bonus()
+		_record_extraction()
+		_mark_tutorial_complete()
 		state = STATE_WIN
 		message = "The beacon hauls you out with a pack full of strange gems."
+		_play_sfx("win")
 	else:
 		var remaining_charge := maxi(0, BEACON_CHARGE_GOAL - beacon_charge)
 		message = "Beacon needs %d charge or %s." % [remaining_charge, _format_time(maxf(0.0, RUN_GOAL_TIME - run_time))]
+		_play_sfx("ui")
 
 
 func _can_use_beacon() -> bool:
@@ -1666,11 +2726,16 @@ func _can_use_beacon() -> bool:
 func _update_pressure_surge(delta: float) -> void:
 	if beacon_armed:
 		pressure_surge_timer = 0.0
+		_clear_bounty_targets()
 		return
 	if pressure_surge_timer > 0.0:
 		pressure_surge_timer = maxf(0.0, pressure_surge_timer - delta)
-		if pressure_surge_timer <= 0.0 and combo_count < 2:
-			message = "The cave exhales."
+		if pressure_surge_timer <= 0.0:
+			_clear_bounty_targets()
+			if combo_count < 2:
+				message = "The cave exhales."
+		elif not _has_bounty_target():
+			_assign_bounty_target()
 		return
 
 	pressure_surge_cooldown -= delta
@@ -1681,11 +2746,90 @@ func _update_pressure_surge(delta: float) -> void:
 	pressure_surge_cooldown = rng.randf_range(PRESSURE_SURGE_COOLDOWN_MIN, PRESSURE_SURGE_COOLDOWN_MAX) * lerpf(1.0, 0.72, run_pressure)
 	_add_cell_pulse(player_pos, PRESSURE, PULSE_FEEDBACK_TIME + 0.18, 1.3, true)
 	_shake(0.12)
+	_play_sfx("boss")
 	message = "Pressure surge: kills charge the beacon."
+	if _assign_bounty_target():
+		message = "Surge bounty marked."
 
 
 func _is_pressure_surge() -> bool:
 	return pressure_surge_timer > 0.0 and not beacon_armed
+
+
+func _has_bounty_target() -> bool:
+	for enemy in enemies:
+		if _enemy_is_bounty(enemy):
+			return true
+	return false
+
+
+func _clear_bounty_targets() -> void:
+	for enemy in enemies:
+		enemy["bounty"] = false
+
+
+func _assign_bounty_target() -> bool:
+	_clear_bounty_targets()
+	var best_i := -1
+	var best_score := -999999.0
+	for i in range(enemies.size()):
+		var enemy: Dictionary = enemies[i]
+		if not _can_enemy_be_bounty(enemy):
+			continue
+		var pos: Vector2i = enemy["pos"]
+		var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+		var score_value := sqrt(float(pos.distance_squared_to(player_pos))) * 7.0
+		score_value += float(int(enemy.get("hp", 1))) * 5.0
+		score_value += _depth_reward_ratio(pos) * 34.0
+		score_value += float(kind) * 4.0
+		if kind == ENEMY_BOSS_KIND:
+			score_value += 80.0
+		if bool(enemy.get("uber", false)):
+			score_value += 35.0
+		if score_value > best_score:
+			best_score = score_value
+			best_i = i
+	if best_i == -1:
+		return false
+	_mark_bounty_enemy(best_i)
+	return true
+
+
+func _mark_bounty_enemy(enemy_i: int) -> void:
+	if enemy_i < 0 or enemy_i >= enemies.size():
+		return
+	var enemy: Dictionary = enemies[enemy_i]
+	if not _can_enemy_be_bounty(enemy):
+		return
+	enemy["bounty"] = true
+	enemy["hit_flash"] = maxf(float(enemy.get("hit_flash", 0.0)), ENEMY_HIT_FLASH)
+	_add_cell_pulse(enemy["pos"], RUPTURE, PULSE_FEEDBACK_TIME + 0.18, 1.1, true)
+
+
+func _can_enemy_be_bounty(enemy: Dictionary) -> bool:
+	var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+	return kind != ENEMY_REAPER_KIND and kind != ENEMY_BROOD_POD_KIND
+
+
+func _enemy_is_bounty(enemy: Dictionary) -> bool:
+	return bool(enemy.get("bounty", false)) and _can_enemy_be_bounty(enemy)
+
+
+func _claim_bounty(enemy: Dictionary, pos: Vector2i) -> int:
+	if not _enemy_is_bounty(enemy):
+		return 0
+	enemy["bounty"] = false
+	var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+	var charge := PRESSURE_BOUNTY_CHARGE + floori(_depth_reward_ratio(pos) * 5.0)
+	if kind == ENEMY_BOSS_KIND:
+		charge += 8
+	if bool(enemy.get("uber", false)):
+		charge += 3
+	_add_beacon_charge(charge, "Bounty")
+	_award_enemy_score_at(pos, PRESSURE_BOUNTY_SCORE + depth_tier * 12, "Bounty")
+	_add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.22, 1.6, true)
+	_shake(0.16)
+	return PRESSURE_BOUNTY_XP_BONUS + floori(float(charge) * 0.45)
 
 
 func _arm_extraction_beacon(text: String) -> void:
@@ -1694,8 +2838,10 @@ func _arm_extraction_beacon(text: String) -> void:
 	beacon_armed = true
 	beacon_charge = BEACON_CHARGE_GOAL
 	pressure_surge_timer = 0.0
+	_clear_bounty_targets()
 	_add_cell_pulse(beacon_pos, BEACON_ARMED, PULSE_FEEDBACK_TIME + 0.24, 1.15, true)
 	_shake(0.18)
+	_play_sfx("beacon")
 	message = text
 
 
@@ -1716,34 +2862,39 @@ func _beacon_charge_ratio() -> float:
 	return clampf(float(beacon_charge) / float(BEACON_CHARGE_GOAL), 0.0, 1.0)
 
 
-func _award_floor_bonus() -> void:
-	var bonus := 80 + floor_index * 30
+func _award_extraction_bonus() -> void:
+	var bonus := 80 + depth_tier * 30
 	var parts := ["Clear +%d" % bonus]
-	if floor_damage_taken == 0:
-		var perfect := 70 + floor_index * 20
+	if run_damage_taken == 0:
+		var perfect := 70 + depth_tier * 20
 		bonus += perfect
-		gem_bank += 1
-		parts.append("Perfect +%d +1 gem" % perfect)
-	if floor_gems_available > 0 and floor_gems_collected >= floor_gems_available:
-		var sweep := 120 + floor_index * 25
+		parts.append("Perfect +%d" % perfect)
+	if run_gems_available > 0 and run_gems_collected >= run_gems_available:
+		var sweep := 120 + depth_tier * 25
 		bonus += sweep
-		gem_bank += 2
-		parts.append("Gem sweep +%d +2 gems" % sweep)
-	if floor_relics_found > 0:
-		var relic_bonus := floor_relics_found * 90
+		parts.append("Gem sweep +%d" % sweep)
+	if run_relics_found > 0:
+		var relic_bonus := run_relics_found * 90
 		bonus += relic_bonus
 		parts.append("Relics +%d" % relic_bonus)
-	if floor_boulder_kills >= 2:
-		var rock_bonus := floor_boulder_kills * 70
+	if run_boulder_kills >= 2:
+		var rock_bonus := run_boulder_kills * 70
 		bonus += rock_bonus
-		gem_bank += 1
-		parts.append("Rock plan +%d +1 gem" % rock_bonus)
+		parts.append("Rock plan +%d" % rock_bonus)
 	if best_combo >= 4:
 		var combo_bonus := best_combo * 35
 		bonus += combo_bonus
 		parts.append("Best x%d +%d" % [best_combo, combo_bonus])
 	score += bonus
-	last_floor_summary = _join_strings(parts, " | ")
+	last_run_summary = _join_strings(parts, " | ")
+
+
+func _record_extraction() -> void:
+	_record_run_meta_progress(true)
+	_increment_lifetime("extractions")
+	_increment_map_clear(current_map_id)
+	_complete_achievement("first_extraction")
+	_save_meta()
 
 
 func _start_lance() -> void:
@@ -1761,6 +2912,7 @@ func _start_lance() -> void:
 	lance_pulse_queued = false
 	lance_pump_damage = _effective_lance_damage()
 	lance_pump_count = 0
+	_play_sfx("lance")
 	if crystal_charge > 0:
 		lance_pump_damage += 1
 		crystal_charge -= 1
@@ -1872,6 +3024,7 @@ func _spawn_boss_milestone(variant: int) -> void:
 	_add_enemy(spawn_pos, ENEMY_BOSS_KIND, variant)
 	_add_cell_pulse(spawn_pos, ENEMY_BOSS, PULSE_FEEDBACK_TIME + 0.38, 1.9, true)
 	_shake(0.42)
+	_play_sfx("boss")
 	message = "%s enters the den!" % _boss_name(variant)
 
 
@@ -1888,6 +3041,7 @@ func _spawn_reaper() -> void:
 		_arm_extraction_beacon("The Reaper woke the beacon. Run for the hatch!")
 	_add_cell_pulse(spawn_pos, ENEMY_REAPER, PULSE_FEEDBACK_TIME + 0.48, 2.2, true)
 	_shake(0.55)
+	_play_sfx("boss")
 	message = "The Reaper is here. Run for the hatch!"
 
 
@@ -2096,6 +3250,8 @@ func _can_carve_enemy_spawn_den_cell(pos: Vector2i) -> bool:
 		return false
 	if _cell_open_mask(pos) != 0:
 		return false
+	if _terrain_at(pos) != "":
+		return false
 	if _has_rock(pos) or _enemy_index_at(pos) != -1 or _has_treasure_chest(pos):
 		return false
 	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_xp_pickup(pos):
@@ -2283,6 +3439,8 @@ func _can_spawn_rock_at(pos: Vector2i) -> bool:
 		return false
 	if _cell_open_mask(pos) != 0:
 		return false
+	if _terrain_at(pos) != "":
+		return false
 	if not _is_open_tile(pos + Vector2i.DOWN):
 		return false
 	if pos.distance_squared_to(player_pos) < ROCK_SPAWN_SAFE_RADIUS * ROCK_SPAWN_SAFE_RADIUS:
@@ -2407,6 +3565,8 @@ func _treasure_chest_breach_cell(connected: Array) -> Vector2i:
 func _can_place_breached_treasure_chest_at(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _cell_open_mask(pos) != 0:
 		return false
+	if _terrain_at(pos) != "":
+		return false
 	if not _can_spawn_underground_at(pos):
 		return false
 	if pos == player_pos or pos == player_target_cell or pos == player_step_from or pos == beacon_pos:
@@ -2430,10 +3590,9 @@ func _roll_treasure_reward(pos: Vector2i) -> Dictionary:
 	if rng.randf() < heal_chance:
 		return {"kind": TREASURE_KIND_HEAL, "amount": 2}
 
-	var pool := _available_upgrade_pool()
-	pool = pool.filter(func(upgrade): return upgrade["id"] != HEAL_UPGRADE_ID)
+	var pool := _available_chest_upgrade_pool()
 	if not pool.is_empty() and rng.randf() < lerpf(0.18, 0.48, depth):
-		return {"kind": TREASURE_KIND_UPGRADE, "upgrade": pool[rng.randi_range(0, pool.size() - 1)].duplicate()}
+		return {"kind": TREASURE_KIND_UPGRADE}
 
 	var depth_bonus := roundi(lerpf(0.0, 7.0, depth))
 	return {"kind": TREASURE_KIND_GEMS, "amount": rng.randi_range(TREASURE_JACKPOT_MIN, TREASURE_JACKPOT_MAX) + depth_bonus + floori(run_time / 75.0)}
@@ -2460,11 +3619,11 @@ func _sprout_treasure_lure(center: Vector2i, forced_count := -1) -> void:
 		var super_chance := lerpf(0.08, 0.28, _depth_reward_ratio(gem_pos))
 		if rng.randf() < super_chance and not _has_super_gem(gem_pos):
 			super_gems.append(gem_pos)
-			floor_super_gems_available += 1
+			run_super_gems_available += 1
 			_add_cell_pulse(gem_pos, SUPER_GEM, PULSE_FEEDBACK_TIME + 0.18, 0.95, true)
 		else:
 			gems.append(gem_pos)
-			floor_gems_available += 1
+			run_gems_available += 1
 			_add_cell_pulse(gem_pos, GEM, PULSE_FEEDBACK_TIME + 0.08, 0.72)
 
 
@@ -2526,6 +3685,7 @@ func _pump_lance_target() -> void:
 		return
 	var enemy_pos: Vector2i = enemies[lance_attached_enemy]["pos"]
 	lance_pump_count += 1
+	_play_sfx("pump")
 	var alive := _inflate_lance_target(lance_attached_enemy, lance_pump_damage)
 	_add_pressure_feedback(enemy_pos, 1.0)
 	if alive and lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and not bool(enemies[lance_attached_enemy].get("blocked_lance", false)):
@@ -2549,6 +3709,8 @@ func _award_boss_defeat_reward(enemy: Dictionary) -> void:
 	if int(enemy.get("kind", ENEMY_GRUB_KIND)) != ENEMY_BOSS_KIND:
 		return
 	lance_damage += 1
+	_increment_lifetime("boss_kills")
+	_complete_achievement("first_boss_kill")
 
 
 func _break_brood_queen_lance_lock(enemy_i: int) -> void:
@@ -2657,11 +3819,12 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
 	if enemy["hp"] <= 0:
 		var dead_pos: Vector2i = enemy["pos"]
 		var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
-		floor_kills += 1
-		_award_enemy_score_at(dead_pos, 80 + floor_index * 10, "Rupture")
+		run_kills += 1
+		_record_enemy_defeat(dead_kind)
+		_award_enemy_score_at(dead_pos, 80 + depth_tier * 10, "Rupture")
 		_award_boss_defeat_reward(enemy)
 		enemies.remove_at(enemy_i)
-		_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind))
+		_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind), enemy)
 		_add_rupture_feedback(dead_pos)
 		_trigger_elemental_death_effects(dead_pos, was_frozen, was_burning, was_thundered)
 		_shake(0.16)
@@ -2828,7 +3991,7 @@ func _enemy_can_ghost(enemy: Dictionary) -> bool:
 	if float(enemy.get("frozen", 0.0)) > 0.0 or float(enemy.get("frost_lock", 0.0)) > 0.0:
 		return false
 	var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
-	return floor_index >= PHASE_MIN_FLOOR and (kind == ENEMY_GRUB_KIND or kind == ENEMY_FYGAR_KIND)
+	return depth_tier >= PHASE_MIN_DEPTH_TIER and kind != ENEMY_BROOD_POD_KIND
 
 
 func _begin_enemy_phase(enemy: Dictionary) -> void:
@@ -2915,14 +4078,15 @@ func _update_enemy_phase_chase(enemy: Dictionary, delta: float) -> void:
 	enemy["attack_dir"] = Vector2i.ZERO
 	enemy["fire_windup"] = 0.0
 	enemy["fire_active"] = 0.0
-	_damage_player_from_phasing_enemy(enemy)
+	if _damage_player_from_phasing_enemy(enemy):
+		return
 
 	if _dict_visual(enemy).distance_to(target_visual) <= PLAYER_CENTER_EPS:
 		enemy["visual_pos"] = target_visual
 		enemy["pos"] = target
 		if target == player_pos:
-			_damage_player_from_phasing_enemy(enemy)
-			_end_enemy_phase(enemy)
+			if not _damage_player_from_phasing_enemy(enemy):
+				_end_enemy_phase(enemy)
 			return
 		if _cell_has_tunnel_opening(target):
 			_eat_gem_at(target)
@@ -2937,19 +4101,36 @@ func _update_enemy_phase_chase(enemy: Dictionary, delta: float) -> void:
 			enemy["phase_steps"] = int(enemy.get("phase_steps", 0)) + 1
 
 
-func _damage_player_from_phasing_enemy(enemy: Dictionary) -> void:
+func _damage_player_from_phasing_enemy(enemy: Dictionary) -> bool:
 	if state != STATE_PLAYING:
-		return
+		return false
 	if not bool(enemy.get("phasing", false)):
-		return
+		return false
 	var enemy_visual := _dict_visual(enemy)
 	if enemy_visual.distance_to(player_visual_pos) > 0.48 and _cell_from_visual(enemy_visual) != player_pos:
-		return
+		return false
 	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND:
 		_game_over("The Reaper claimed you.")
 		_shake(0.7)
+		return true
 	else:
-		_hurt_player(1)
+		if _hurt_player(1):
+			_repel_phasing_enemy_after_player_hit(enemy)
+			return true
+	return false
+
+
+func _repel_phasing_enemy_after_player_hit(enemy: Dictionary) -> void:
+	enemy["phase_cooldown"] = rng.randf_range(PHASE_COOLDOWN_MIN, PHASE_COOLDOWN_MAX)
+	enemy["stun"] = maxf(float(enemy.get("stun", 0.0)), 0.25)
+	var escape_target := _enemy_phase_escape_target(enemy)
+	if escape_target == enemy["pos"]:
+		_end_enemy_phase(enemy)
+		return
+	enemy["phase_target"] = escape_target
+	enemy["phase_steps"] = int(enemy.get("phase_steps", 0)) + 1
+	enemy["timer"] = 0.0
+	enemy["visual_speed"] = _enemy_move_speed(enemy)
 
 
 func _update_enemy_fire(enemy: Dictionary, delta: float) -> bool:
@@ -2965,7 +4146,10 @@ func _update_enemy_fire(enemy: Dictionary, delta: float) -> bool:
 	if float(enemy.get("fire_active", 0.0)) > 0.0:
 		enemy["fire_active"] = maxf(0.0, float(enemy["fire_active"]) - delta)
 		if _player_in_fire_lane(enemy):
-			_hurt_player(1)
+			if _hurt_player(1):
+				enemy["fire_active"] = 0.0
+				enemy["fire_cooldown"] = rng.randf_range(FYGAR_FIRE_COOLDOWN_MIN, FYGAR_FIRE_COOLDOWN_MAX)
+				return true
 		if float(enemy["fire_active"]) <= 0.0:
 			enemy["fire_cooldown"] = rng.randf_range(FYGAR_FIRE_COOLDOWN_MIN, FYGAR_FIRE_COOLDOWN_MAX)
 		return true
@@ -2985,7 +4169,8 @@ func _update_enemy_melee(enemy: Dictionary, delta: float) -> bool:
 	var pos: Vector2i = enemy["pos"]
 	var dir: Vector2i = enemy.get("attack_dir", Vector2i.ZERO)
 	if dir != Vector2i.ZERO and player_pos == pos + dir and _open_line_between_cells(pos, player_pos):
-		_hurt_player(1)
+		if _hurt_player(1):
+			enemy["timer"] = maxf(float(enemy.get("timer", 0.0)), _enemy_step_delay(enemy))
 	enemy["attack_dir"] = Vector2i.ZERO
 	return true
 
@@ -3064,7 +4249,10 @@ func _update_enemy_spit(enemy: Dictionary, delta: float) -> bool:
 	if float(enemy.get("spit_active", 0.0)) > 0.0:
 		enemy["spit_active"] = maxf(0.0, float(enemy["spit_active"]) - delta)
 		if _player_in_spit_lane(enemy):
-			_hurt_player(1)
+			if _hurt_player(1):
+				enemy["spit_active"] = 0.0
+				enemy["spit_cooldown"] = rng.randf_range(SPITTER_COOLDOWN_MIN, SPITTER_COOLDOWN_MAX)
+				return true
 		if float(enemy["spit_active"]) <= 0.0:
 			enemy["spit_cooldown"] = rng.randf_range(SPITTER_COOLDOWN_MIN, SPITTER_COOLDOWN_MAX)
 		return true
@@ -3437,7 +4625,7 @@ func _step_burrower(enemy: Dictionary) -> void:
 
 	for dir in dirs:
 		var target: Vector2i = pos + dir
-		if not _in_bounds(target) or _has_rock(target):
+		if not _in_bounds(target) or _has_rock(target) or _terrain_blocks_dig(target):
 			continue
 		if target == player_pos:
 			_begin_enemy_melee(enemy, dir)
@@ -3502,7 +4690,7 @@ func _step_boss(enemy: Dictionary) -> void:
 	)
 	for dir in dirs:
 		var target: Vector2i = pos + dir
-		if not _in_bounds(target) or _has_rock(target) or target == player_target_cell or _solid_enemy_index_at(target) != -1:
+		if not _in_bounds(target) or _has_rock(target) or _terrain_blocks_dig(target) or target == player_target_cell or _solid_enemy_index_at(target) != -1:
 			continue
 		if target == player_pos:
 			_begin_enemy_melee(enemy, dir)
@@ -3533,7 +4721,7 @@ func _step_reaper(enemy: Dictionary) -> void:
 	)
 	for dir in dirs:
 		var target: Vector2i = pos + dir
-		if not _in_bounds(target) or _has_rock(target) or target == player_target_cell:
+		if not _in_bounds(target) or _has_rock(target) or _terrain_blocks_dig(target) or target == player_target_cell:
 			continue
 		if target == player_pos:
 			_game_over("The Reaper claimed you.")
@@ -3627,6 +4815,8 @@ func _end_enemy_phase(enemy: Dictionary) -> void:
 
 
 func _move_enemy_to(enemy: Dictionary, target: Vector2i, digs := false) -> void:
+	if digs and _terrain_blocks_dig(target):
+		return
 	var from_pos: Vector2i = enemy["pos"]
 	var from_visual := _dict_visual(enemy)
 	var target_visual := _visual_from_pos(target)
@@ -3669,8 +4859,8 @@ func _enemy_move_speed_for_kind(kind: int) -> float:
 		ratio = ENEMY_BOSS_SPEED_RATIO
 	elif kind == ENEMY_REAPER_KIND:
 		ratio = REAPER_SPEED_RATIO
-	var floor_bonus := 0.0
-	return _player_dig_speed() * (ratio + floor_bonus)
+	var speed_bonus := 0.0
+	return _player_dig_speed() * (ratio + speed_bonus)
 
 
 func _player_tunnel_speed() -> float:
@@ -3779,7 +4969,7 @@ func _crush_at(pos: Vector2i, fall_distance: int) -> void:
 				enemies[i]["hp"] -= boss_damage
 				_boss_hit_feedback(enemies[i], dead_pos, boss_damage)
 				_add_boulder_crush_feedback(dead_pos, fall_distance, 1, boss_damage)
-				_award_enemy_score_at(dead_pos, 120 + floor_index * 16, "Queen crush")
+				_award_enemy_score_at(dead_pos, 120 + depth_tier * 16, "Queen crush")
 				_shake(0.34)
 				if enemies[i]["hp"] > 0:
 					message = "Boulder cracked the Queen!"
@@ -3787,13 +4977,17 @@ func _crush_at(pos: Vector2i, fall_distance: int) -> void:
 			var xp_award := _boulder_crush_xp(dead_kind, fall_distance, crushes)
 			if dead_kind == ENEMY_BOSS_KIND:
 				xp_award += 12
+			var crushed_enemy: Dictionary = enemies[i]
 			_add_rupture_feedback(dead_pos)
-			_award_boss_defeat_reward(enemies[i])
+			_award_boss_defeat_reward(crushed_enemy)
 			enemies.remove_at(i)
-			floor_kills += 1
-			floor_boulder_kills += 1
-			var actual_xp := _drop_xp(dead_pos, xp_award)
-			_award_enemy_score_at(dead_pos, 170 + floor_index * 12, "Boulder crush")
+			run_kills += 1
+			run_boulder_kills += 1
+			_record_enemy_defeat(dead_kind)
+			_increment_lifetime("boulder_kills")
+			_complete_achievement("first_boulder_kill")
+			var actual_xp := _drop_xp(dead_pos, xp_award, crushed_enemy)
+			_award_enemy_score_at(dead_pos, 170 + depth_tier * 12, "Boulder crush")
 			_shake(0.22)
 			crushes += 1
 			crush_xp += actual_xp
@@ -3844,24 +5038,35 @@ func _rock_crush_line_reaches_cell(rock_pos: Vector2i, target: Vector2i, open_de
 	return true
 
 
-func _hurt_player(amount: int) -> void:
-	if hurt_flash > 0.0 or state != STATE_PLAYING:
-		return
+func _hurt_player(amount: int) -> bool:
+	if player_hit_recovery > 0.0 or state != STATE_PLAYING:
+		return false
 	hp -= amount
-	floor_damage_taken += amount
-	hurt_flash = 0.75
+	run_damage_taken += amount
+	hurt_flash = PLAYER_HURT_FLASH_TIME
+	player_hit_recovery = PLAYER_HIT_RECOVERY_TIME
+	player_move_dir = Vector2i.ZERO
+	player_target_cell = player_pos
+	player_step_from = player_pos
+	player_target_digging = false
+	player_digging = false
 	combo_count = 0
 	combo_timer = 0.0
 	_shake(0.38)
 	_add_cell_pulse(player_pos, WARN, PULSE_FEEDBACK_TIME + 0.18, 1.35, true)
+	_play_sfx("hurt")
 	message = "Ouch."
 	if hp <= 0:
 		_game_over("The den got you.")
+	return true
 
 
 func _game_over(reason: String) -> void:
+	paused = false
+	_record_run_meta_progress(false)
 	state = STATE_GAME_OVER
 	message = reason
+	_play_sfx("fail")
 
 
 func _award_score(amount: int, combo: bool, label: String) -> int:
@@ -3907,15 +5112,21 @@ func _dirt_layer_index_for_row(row: int) -> int:
 
 
 func _shake(amount: float) -> void:
+	if not _screen_shake_enabled():
+		return
 	screen_shake = maxf(screen_shake, amount)
 
 
-func _drop_xp(pos: Vector2i, amount: int) -> int:
+func _drop_xp(pos: Vector2i, amount: int, source_enemy := {}) -> int:
 	var actual_amount := _depth_xp_amount(pos, amount)
+	var bounty_xp := 0
+	if not source_enemy.is_empty():
+		bounty_xp = _claim_bounty(source_enemy, pos)
+		actual_amount += bounty_xp
 	var charge := maxi(1, roundi(float(actual_amount) * 0.35))
 	if _is_pressure_surge():
 		charge += PRESSURE_SURGE_CHARGE_BONUS
-	_add_beacon_charge(charge, "Kill")
+	_add_beacon_charge(charge, "" if bounty_xp > 0 else "Kill")
 	for i in range(actual_amount):
 		var jitter := Vector2(rng.randf_range(-0.18, 0.18), rng.randf_range(-0.18, 0.18))
 		xp_pickups.append({
@@ -3961,6 +5172,7 @@ func _gain_xp(amount: int) -> void:
 		xp -= xp_to_next
 		player_level += 1
 		xp_to_next = XP_BASE_TO_NEXT + (player_level - 1) * XP_GROWTH
+		_play_sfx("level")
 		_offer_upgrades()
 		return
 	if combo_count < 2:
@@ -3972,10 +5184,10 @@ func _collect_gem_at(pos: Vector2i) -> void:
 		if gems[i] == pos:
 			gems.remove_at(i)
 			gems_collected += 1
-			gem_bank += 1
-			floor_gems_collected += 1
+			run_gems_collected += 1
 			_award_score(20, true, "Gem")
 			_gain_xp(GEM_XP_VALUE + _effective_gem_xp_bonus())
+			_play_sfx("gem")
 			var charged_beacon := _add_beacon_charge(BEACON_GEM_CHARGE, "Gem")
 			if combo_count < 2 and not charged_beacon:
 				message = "Gem pocket."
@@ -3987,10 +5199,11 @@ func _collect_super_gem_at(pos: Vector2i) -> void:
 		if super_gems[i] == pos:
 			super_gems.remove_at(i)
 			gems_collected += 3
-			gem_bank += 3
-			floor_super_gems_collected += 1
-			_award_score(160 + floor_index * 25, true, "Super gem")
+			run_super_gems_collected += 1
+			_increment_lifetime("super_gems")
+			_award_score(160 + depth_tier * 25, true, "Super gem")
 			_gain_xp(SUPER_GEM_XP_VALUE + _effective_gem_xp_bonus() * 3)
+			_play_sfx("super")
 			if _active_lance_element() != LANCE_ELEMENT_BASE:
 				crystal_charge = maxi(crystal_charge, 1)
 			_add_cell_pulse(pos, SUPER_GEM, PULSE_FEEDBACK_TIME + 0.22, 1.45, true)
@@ -4001,15 +5214,17 @@ func _collect_super_gem_at(pos: Vector2i) -> void:
 
 
 func _collect_relic_at(pos: Vector2i) -> void:
-	for i in range(floor_relics.size() - 1, -1, -1):
-		if floor_relics[i]["pos"] == pos:
-			var relic: Dictionary = floor_relics[i]
-			floor_relics.remove_at(i)
-			floor_relics_found += 1
-			_apply_upgrade(relic, "floor")
-			_award_score(60 + floor_index * 10, true, "Relic")
+	for i in range(run_relics.size() - 1, -1, -1):
+		if run_relics[i]["pos"] == pos:
+			var relic: Dictionary = run_relics[i]
+			run_relics.remove_at(i)
+			run_relics_found += 1
+			_apply_upgrade(relic, "field")
+			_show_upgrade_pickup_toast(relic)
+			_award_score(60 + depth_tier * 10, true, "Relic")
 			_add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.12, 1.15, true)
 			_shake(0.12)
+			_play_sfx("relic")
 			_add_beacon_charge(BEACON_RELIC_CHARGE, "Relic")
 			return
 
@@ -4026,34 +5241,35 @@ func _collect_treasure_chest_at(pos: Vector2i) -> void:
 			TREASURE_KIND_HEAL:
 				if hp < max_hp:
 					hp = mini(max_hp, hp + int(reward.get("amount", 2)))
-					_award_score(70 + floor_index * 12, true, "Chest heal")
+					_award_score(70 + depth_tier * 12, true, "Chest heal")
 					if not _add_beacon_charge(2, "Chest"):
 						message = "Chest heal."
 				else:
 					if not _award_treasure_gems(pos, 4):
 						message = "Chest overflow: gems."
 			TREASURE_KIND_UPGRADE:
-				var upgrade: Dictionary = reward.get("upgrade", {})
-				if not upgrade.is_empty() and _upgrade_is_available(String(upgrade.get("id", ""))):
+				var upgrade := _resolve_treasure_upgrade(reward)
+				if not upgrade.is_empty():
 					_apply_temp_upgrade(upgrade)
-					_award_score(140 + floor_index * 20, true, "Chest relic")
+					_show_upgrade_pickup_toast(upgrade)
+					_award_score(140 + depth_tier * 20, true, "Chest relic")
 					if not _add_beacon_charge(BEACON_RELIC_CHARGE, "Chest relic"):
 						message = "Chest relic: %s." % _upgrade_name(String(upgrade["id"]))
 				else:
-					if not _award_treasure_gems(pos, 5 + floor_index):
+					if not _award_treasure_gems(pos, 5 + depth_tier):
 						message = "Chest cache: gems."
 			_:
 				_award_treasure_gems(pos, int(reward.get("amount", TREASURE_JACKPOT_MIN)))
 		_add_cell_pulse(pos, TREASURE_CHEST_LOCK, PULSE_FEEDBACK_TIME + 0.28, 1.55, true)
 		_shake(0.18)
+		_play_sfx("relic")
 		return
 
 
 func _award_treasure_gems(pos: Vector2i, amount: int) -> bool:
 	var gem_count := maxi(1, amount)
-	gem_bank += gem_count
 	gems_collected += gem_count
-	_award_score(55 + gem_count * 18 + floor_index * 8, true, "Treasure")
+	_award_score(55 + gem_count * 18 + depth_tier * 8, true, "Treasure")
 	_gain_xp(gem_count * (GEM_XP_VALUE + _effective_gem_xp_bonus()))
 	var treasure_charge := maxi(1, ceili(float(gem_count) / float(BEACON_TREASURE_CHARGE_DIVISOR)))
 	var charged_beacon := _add_beacon_charge(treasure_charge, "Treasure")
@@ -4061,6 +5277,27 @@ func _award_treasure_gems(pos: Vector2i, amount: int) -> bool:
 	if state == STATE_PLAYING and not charged_beacon:
 		message = "Treasure chest: +%d gems!" % gem_count
 	return charged_beacon
+
+
+func _resolve_treasure_upgrade(reward: Dictionary) -> Dictionary:
+	var stored: Dictionary = reward.get("upgrade", {})
+	if not stored.is_empty() and _upgrade_is_available(String(stored.get("id", ""))):
+		return stored
+	var pool := _available_chest_upgrade_pool()
+	if pool.is_empty():
+		return {}
+	return pool[rng.randi_range(0, pool.size() - 1)].duplicate()
+
+
+func _show_upgrade_pickup_toast(upgrade: Dictionary) -> void:
+	if upgrade.is_empty():
+		return
+	upgrade_pickup_toast = {
+		"name": String(upgrade.get("name", _upgrade_name(String(upgrade.get("id", ""))))),
+		"desc": String(upgrade.get("desc", "")),
+		"time": 4.2,
+		"duration": 4.2
+	}
 
 
 func _eat_gem_at(pos: Vector2i) -> void:
@@ -4113,7 +5350,7 @@ func _upgrade_pool() -> Array:
 			{"id": "field_dressing", "name": "Field Dressing", "desc": "+1 max heart and heal."},
 			{"id": "gem_xp", "name": "Gem Appetite", "desc": "Gems give even more XP."},
 			{"id": "prospector", "name": "Prospector", "desc": "More super gems appear, with nearby hints."},
-			{"id": "gem_vein", "name": "Gem Vein", "desc": "More gems appear now and on new floors."},
+			{"id": "gem_vein", "name": "Gem Vein", "desc": "More gems appear now."},
 			{"id": "magnet", "name": "Amber Magnet", "desc": "XP pickups pull from farther away."},
 			{"id": "rock_whistle", "name": "Rock Whistle", "desc": "Enemies favor open lanes beneath boulders."},
 			{"id": "gravity_snare", "name": "Gravity Snare", "desc": "Falling boulders tug nearby enemies into line."},
@@ -4188,36 +5425,30 @@ func _choose_upgrade(index: int) -> void:
 	if index < 0 or index >= upgrade_choices.size():
 		return
 	var choice: Dictionary = upgrade_choices[index]
-	_apply_upgrade(choice, "shop")
+	_apply_upgrade(choice, "level")
+	_play_sfx("relic")
 	_resume_survival()
 
 
-func _skip_upgrade_shop() -> void:
+func _skip_upgrade_choice() -> void:
 	if state != STATE_CHOOSING:
 		return
+	_play_sfx("ui")
 	_resume_survival()
-
-
-func _upgrade_cost(id: String) -> int:
-	if id == HEAL_UPGRADE_ID:
-		return 0
-	var base := 7 + floor_index
-	match id:
-		"damage", "ice_shatter", "fire_burst", "thunder_chain", "thunder_overload", "status_tip", "fire_coals", "thunder_wire", "steam_core", "storm_cell", "glacier_rod", "gravity_snare", "chute_drill":
-			return base + 3
-		"stun", "gem_xp", "magnet":
-			return base - 1
-		_:
-			return base
 
 
 func _available_upgrade_pool() -> Array:
 	var available := []
 	for upgrade in _upgrade_pool():
 		var id: String = upgrade["id"]
-		if _upgrade_is_available(id):
+		if _relic_is_discovered(id) and _upgrade_is_available(id):
 			available.append(upgrade)
 	return available
+
+
+func _available_chest_upgrade_pool() -> Array:
+	var pool := _available_upgrade_pool()
+	return pool.filter(func(upgrade): return upgrade["id"] != HEAL_UPGRADE_ID)
 
 
 func _upgrade_is_available(id: String) -> bool:
@@ -4231,15 +5462,17 @@ func _upgrade_is_available(id: String) -> bool:
 	if _is_hybrid_upgrade(id):
 		return _hybrid_upgrade_is_available(id)
 	if element != "":
+		if not _element_is_researched(element):
+			return false
 		if lance_element != LANCE_ELEMENT_BASE and lance_element != element:
 			return false
 		if lance_element == LANCE_ELEMENT_BASE:
 			return id.ends_with("_tip") and player_level >= ELEMENT_TIP_MIN_LEVEL and run_time >= ELEMENT_TIP_MIN_TIME
 	match id:
 		"barbed_head", "pierce", "tunnel_focus":
-			return floor_index >= 2 or _active_lance_element() != LANCE_ELEMENT_BASE
+			return depth_tier >= 2 or _active_lance_element() != LANCE_ELEMENT_BASE
 		"prospector", "gem_vein", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger":
-			return floor_index >= 2
+			return depth_tier >= 2
 		"field_dressing":
 			return max_hp < 5
 		_:
@@ -4247,7 +5480,7 @@ func _upgrade_is_available(id: String) -> bool:
 
 
 func _apply_upgrade(choice: Dictionary, source: String) -> void:
-	if source == "floor":
+	if source == "field":
 		_apply_temp_upgrade(choice)
 		return
 	if choice["id"] == HEAL_UPGRADE_ID:
@@ -4513,10 +5746,10 @@ func _register_family_upgrade(id: String, source: String) -> void:
 				bonus_text = "Endgame cave: deeper chute."
 	if bonus_text != "":
 		message = bonus_text
-	elif source == "floor":
+	elif source == "field":
 		message = "Found %s." % _upgrade_name(id)
 	else:
-		message = "Bought %s." % _upgrade_name(id)
+		message = "Chose %s." % _upgrade_name(id)
 
 
 func _upgrade_family(id: String) -> String:
@@ -4581,6 +5814,9 @@ func _hybrid_upgrade_is_available(id: String) -> bool:
 	if active == LANCE_ELEMENT_BASE:
 		return false
 	var elements := _hybrid_upgrade_elements(id)
+	for element in elements:
+		if not _element_is_researched(String(element)):
+			return false
 	return elements.has(active)
 
 
@@ -4597,6 +5833,9 @@ func _commit_upgrade_element(id: String, temporary: bool) -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), BG)
+	if state == STATE_META:
+		_draw_meta_hub()
+		return
 	_draw_board()
 	_draw_actors()
 	_draw_damage_feedback()
@@ -4660,6 +5899,11 @@ func _update_feedback(delta: float) -> void:
 		if zap_feedback[i]["time"] <= 0.0:
 			zap_feedback.remove_at(i)
 
+	if not upgrade_pickup_toast.is_empty():
+		upgrade_pickup_toast["time"] = float(upgrade_pickup_toast.get("time", 0.0)) - delta
+		if float(upgrade_pickup_toast["time"]) <= 0.0:
+			upgrade_pickup_toast.clear()
+
 
 func _update_tunnel_regrowth(delta: float) -> void:
 	for pos in tunnel_age.keys():
@@ -4707,6 +5951,10 @@ func _update_tunnel_regrowth(delta: float) -> void:
 func _can_regrow_cell(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _tile(pos) != TILE_TUNNEL:
 		return false
+	if _is_crystal_cell(pos):
+		return false
+	if _terrain_at(pos) != "":
+		return false
 	if pos.y <= SURFACE_ROW:
 		return false
 	if pos == player_pos or pos == player_target_cell or pos == player_step_from or pos == beacon_pos:
@@ -4734,6 +5982,7 @@ func _draw_board() -> void:
 	if soil_texture != null:
 		draw_texture_rect_region(soil_texture, _board_view_rect(), _board_view_source_rect())
 	_draw_surface_layer()
+	_draw_crystal_hints()
 
 	_draw_dig_feedback()
 
@@ -4777,7 +6026,7 @@ func _draw_board() -> void:
 		_draw_pixel_diamond(super_center, 5, SUPER_GEM)
 		draw_rect(Rect2(_snap_px(super_center) - Vector2(2, 8), Vector2(4, 3)), Color("#ffffffdd"))
 
-	for relic in floor_relics:
+	for relic in run_relics:
 		var relic_pos: Vector2i = relic["pos"]
 		if not _cell_intersects_board_view(relic_pos):
 			continue
@@ -4837,6 +6086,21 @@ func _draw_buried_deep_treasure_hint(pos: Vector2i) -> void:
 	glow.a = 0.26 + pulse * 0.18
 	_draw_pixel_ring(center, 8.0 + pulse * 3.0, glow, 2)
 	_draw_pixel_diamond(center, 2, glow)
+
+
+func _draw_crystal_hints() -> void:
+	for key in crystal_cells.keys():
+		var pos: Vector2i = key
+		if not _cell_intersects_board_view(pos):
+			continue
+		if _cell_open_mask(pos) == 0 and _adjacent_tunnel_count(pos) == 0:
+			continue
+		var center := _cell_center(pos)
+		var glow := SUPER_GEM.lerp(ICE, 0.35)
+		glow.a = 0.18 + sin(anim_time * 4.6 + float(pos.x + pos.y)) * 0.08
+		if _cell_open_mask(pos) != 0:
+			glow.a += 0.12
+		_draw_pixel_diamond(center, 2, glow)
 
 
 func _draw_deep_signal() -> void:
@@ -4919,17 +6183,23 @@ func _draw_surface_layer() -> void:
 	if camera_y_px > 0.0:
 		return
 	var origin := _board_origin() + Vector2(0, SURFACE_ROW * CELL)
-	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, CELL)), SURFACE_SOIL)
-	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, 7)), SURFACE_GRASS_DARK)
-	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, 5)), SURFACE_GRASS)
-	draw_rect(Rect2(origin + Vector2(0, CELL - 3), Vector2(BOARD_PX_W, 3)), Color("#442719"))
+	var crystal_map := bool(current_map_def.get("crystal", false))
+	var surface_soil := CRYSTAL_SURFACE_SOIL if crystal_map else SURFACE_SOIL
+	var grass := CRYSTAL_GRASS if crystal_map else SURFACE_GRASS
+	var grass_dark := CRYSTAL_GRASS_DARK if crystal_map else SURFACE_GRASS_DARK
+	var crust := CRYSTAL_SURFACE_CRUST if crystal_map else Color("#442719")
+	var fleck := CRYSTAL_DIRT_LAYER_HIGHLIGHTS[0].lerp(surface_soil, 0.45) if crystal_map else DIRT_LAYER_HIGHLIGHTS[0].lerp(surface_soil, 0.45)
+	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, CELL)), surface_soil)
+	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, 7)), grass_dark)
+	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, 5)), grass)
+	draw_rect(Rect2(origin + Vector2(0, CELL - 3), Vector2(BOARD_PX_W, 3)), crust)
 	for x in range(BOARD_W):
 		var cell_origin := origin + Vector2(x * CELL, 0)
-		if ((x * 7 + floor_index) % 4) == 0:
-			draw_rect(Rect2(cell_origin + Vector2(5, 2), Vector2(3, 7)), SURFACE_GRASS)
-			draw_rect(Rect2(cell_origin + Vector2(8, 4), Vector2(3, 5)), SURFACE_GRASS_DARK)
-		if ((x * 5 + floor_index) % 6) == 0:
-			draw_rect(Rect2(cell_origin + Vector2(18, 9), Vector2(5, 3)), DIRT_LAYER_HIGHLIGHTS[0].lerp(SURFACE_SOIL, 0.45))
+		if ((x * 7 + depth_tier) % 4) == 0:
+			draw_rect(Rect2(cell_origin + Vector2(5, 2), Vector2(3, 7)), grass)
+			draw_rect(Rect2(cell_origin + Vector2(8, 4), Vector2(3, 5)), grass_dark)
+		if ((x * 5 + depth_tier) % 6) == 0:
+			draw_rect(Rect2(cell_origin + Vector2(18, 9), Vector2(5, 3)), fleck)
 
 
 func _draw_actors() -> void:
@@ -5005,6 +6275,8 @@ func _draw_actors() -> void:
 			color = color.lerp(PRESSURE, 0.45)
 		if bool(enemy.get("uber", false)):
 			color = color.lerp(Color.WHITE, 0.28 + sin(anim_time * 8.0) * 0.08)
+		if _enemy_is_bounty(enemy):
+			color = color.lerp(RUPTURE, 0.34 + sin(anim_time * 9.0) * 0.08)
 		if enemy["phasing"]:
 			center += Vector2(0.0, sin(anim_time * 7.5) * 1.5)
 			color = color.lerp(DIRT, 0.32)
@@ -5024,6 +6296,11 @@ func _draw_actors() -> void:
 			var glow := PRESSURE
 			glow.a = 0.14 + pressure_ratio * 0.24
 			draw_rect(Rect2(_snap_px(center) - Vector2(body_radius, body_radius), Vector2(body_radius * 2.0, body_radius * 2.0)), glow)
+		if _enemy_is_bounty(enemy):
+			var bounty_glow := RUPTURE
+			bounty_glow.a = 0.55 + sin(anim_time * 10.0) * 0.14
+			_draw_pixel_ring(center, body_radius + 8.0, bounty_glow, 3)
+			_draw_pixel_diamond(center + Vector2(0, -body_radius - 15.0), 3, bounty_glow)
 		_draw_enemy_sprite(center, color, int(enemy["kind"]), inflated, hit_phase)
 		for ring in range(mini(3, missing_hp)):
 			var ring_color := PRESSURE.lerp(RUPTURE, float(ring) / 3.0)
@@ -5311,7 +6588,7 @@ func _draw_player(pc: Vector2) -> void:
 func _draw_damage_feedback() -> void:
 	if hurt_flash <= 0.0:
 		return
-	var progress := 1.0 - hurt_flash / 0.75
+	var progress := 1.0 - hurt_flash / PLAYER_HURT_FLASH_TIME
 	var overlay := Color("#ff3355")
 	overlay.a = 0.16 * (1.0 - progress)
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), overlay)
@@ -5339,11 +6616,254 @@ func _draw_ui() -> void:
 	if state == STATE_CHOOSING:
 		_draw_choice_modal()
 	elif state == STATE_GAME_OVER:
-		_draw_center_modal("Run ended", message, _restart_prompt_text())
+		_draw_center_modal("Run ended", message, _restart_prompt_text(), _run_result_detail(false))
 	elif state == STATE_WIN:
-		_draw_center_modal("Extraction complete", "Score %d with %d gems." % [score, gems_collected], _restart_prompt_text())
+		_draw_center_modal("Extraction complete", "Score %d with %d gems." % [score, gems_collected], _restart_prompt_text(), _run_result_detail(true))
 	elif show_upgrade_inventory:
 		_draw_upgrade_inventory_panel()
+	elif paused:
+		_draw_pause_overlay()
+	elif not upgrade_pickup_toast.is_empty():
+		_draw_upgrade_pickup_toast()
+	else:
+		_draw_tutorial_hint()
+
+
+func _draw_pause_overlay() -> void:
+	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color("#05060abb"))
+	var rect := _pause_panel_rect()
+	_draw_pixel_panel(rect, Color("#111820ee"), Color("#d8c27a"))
+	_text(rect.position + Vector2(36, 54), "Paused", 32, UI)
+	_text(rect.position + Vector2(38, 78), "Score %d | Gems %d | Level %d" % [score, gems_collected, player_level], 14, MUTED)
+	_draw_touch_button(_pause_hub_rect(), "HUB", MUTED, false)
+	_draw_touch_button(_pause_resume_rect(), "RESUME", BEACON_ARMED, true)
+	_draw_setting_row(_pause_audio_rect(), "Audio", _audio_enabled())
+	_draw_setting_row(_pause_shake_rect(), "Screen shake", _screen_shake_enabled())
+	_draw_setting_row(_pause_tutorial_rect(), "First-run hints", _tutorial_enabled())
+	_draw_wipe_save_row(_pause_wipe_rect())
+	var prompt := "Esc / P resumes." if not show_touch_controls else "Tap RESUME to continue."
+	_text(rect.position + Vector2(38, rect.size.y - 22), prompt, 13, MUTED)
+
+
+func _draw_setting_row(rect: Rect2, label: String, enabled: bool) -> void:
+	var color := BEACON_ARMED if enabled else MUTED
+	var value := "ON" if enabled else "OFF"
+	_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
+	_text(rect.position + Vector2(16, 25), label, 17, UI)
+	_text(rect.position + Vector2(rect.size.x - 58, 25), value, 16, color)
+	var box := Rect2(rect.position + Vector2(rect.size.x - 92, 9), Vector2(20, 20))
+	draw_rect(box, Color("#090910"))
+	draw_rect(box.grow(-3), color.darkened(0.42) if enabled else Color("#242132"))
+	if enabled:
+		draw_rect(Rect2(box.position + Vector2(5, 9), Vector2(4, 6)), UI)
+		draw_rect(Rect2(box.position + Vector2(9, 13), Vector2(8, 4)), UI)
+
+
+func _draw_wipe_save_row(rect: Rect2) -> void:
+	var color := RUPTURE if wipe_save_confirm else WARN
+	var value := "CONFIRM" if wipe_save_confirm else "WIPE"
+	_draw_pixel_panel(rect, Color("#1b1218"), color.darkened(0.18))
+	_text(rect.position + Vector2(16, 23), "Wipe save", 17, UI)
+	_text(rect.position + Vector2(16, 38), "Reset unlocks, stats, settings.", 11, MUTED)
+	_text(rect.position + Vector2(rect.size.x - 92, 25), value, 15, color)
+
+
+func _draw_upgrade_pickup_toast() -> void:
+	var view := _board_view_rect()
+	var width := minf(view.size.x - 32.0, 560.0)
+	var rect := Rect2(view.position + Vector2(16, view.size.y - 76), Vector2(width, 60))
+	var duration := maxf(0.01, float(upgrade_pickup_toast.get("duration", 4.2)))
+	var time_left := clampf(float(upgrade_pickup_toast.get("time", 0.0)), 0.0, duration)
+	var ratio := time_left / duration
+	var edge := RUPTURE.lerp(Color("#f7df86"), 0.38)
+	edge.a = 0.78 + 0.16 * sin(anim_time * 8.0)
+	_draw_pixel_panel(rect, Color("#111820e6"), edge)
+	_text(rect.position + Vector2(14, 21), "RELIC", 12, RUPTURE.lerp(Color("#f7df86"), 0.35))
+	_text(rect.position + Vector2(72, 25), _trim_text(String(upgrade_pickup_toast.get("name", "Upgrade")), 28), 18, Color("#f7df86"))
+	_text(rect.position + Vector2(72, 46), _trim_text(String(upgrade_pickup_toast.get("desc", "")), 52), 12, MUTED)
+	_draw_pixel_bar(rect.position + Vector2(14, rect.size.y - 8), Vector2(rect.size.x - 28, 5), ratio, edge, Color("#2a202b"))
+
+
+func _draw_tutorial_hint() -> void:
+	var hint := _tutorial_hint_text()
+	if hint == "":
+		return
+	var view := _board_view_rect()
+	var width := minf(view.size.x - 32.0, 560.0)
+	var rect := Rect2(view.position + Vector2(16, view.size.y - 64), Vector2(width, 48))
+	_draw_pixel_panel(rect, Color("#111820dd"), PRESSURE.darkened(0.2))
+	_text(rect.position + Vector2(14, 21), "TIP", 12, PRESSURE)
+	_text(rect.position + Vector2(58, 30), _trim_text(hint, 58), 14, UI)
+
+
+func _tutorial_hint_text() -> String:
+	if not _tutorial_enabled() or _tutorial_complete() or state != STATE_PLAYING:
+		return ""
+	if beacon_armed:
+		return "Beacon armed. Dig back to the hatch and %s to extract." % _interact_prompt_text()
+	if player_level > 1 and run_time < 35.0:
+		return "Level up pauses the cave. Pick one relic, then keep moving."
+	if run_time < 8.0:
+		return "Dig into dirt with the move keys. Blue gems feed XP and beacon charge."
+	if run_time < 18.0:
+		return "Face an enemy and use the lance. Tap again to pump a pinned target."
+	if run_time < 36.0:
+		return "Falling boulders crush enemies for big XP, but they can trap you too."
+	if _is_pressure_surge():
+		return "Pressure surge: marked kills give bonus beacon charge."
+	if beacon_charge >= BEACON_CHARGE_GOAL / 2:
+		return "The beacon is waking up. Keep charging it or survive until the timer ends."
+	return "Open tunnels age shut behind you, so plan a path back up."
+
+
+func _draw_meta_hub() -> void:
+	var rect := _meta_panel_rect()
+	_draw_pixel_panel(rect, Color("#111820ee"), Color("#d8c27a"))
+	var pos := rect.position
+	_text(pos + Vector2(28, 52), "DIGGY", 36, UI)
+	_text(pos + Vector2(30, 78), "CAVERNS OF CHANCE", 14, MUTED)
+	_text(pos + Vector2(rect.size.x - 188, 54), "META PROGRESS", 15, UI_PANEL_HILITE)
+
+	_draw_meta_selector(_meta_map_rect(), "DIG SITE", _map_choice_text(), _map_choice_desc(), "Left / Right")
+	_draw_meta_selector(_meta_loadout_rect(), "LOADOUT", _loadout_choice_text(), _loadout_choice_desc(), "Up / Down")
+	_draw_meta_selector(_meta_beacon_mod_rect(), "BEACON MOD", _beacon_mod_choice_text(), _beacon_mod_choice_desc(), "Tab")
+	_draw_meta_progress_panel(_meta_progress_rect())
+	_draw_touch_button(_meta_start_rect(), "START RUN", BEACON_ARMED, false)
+
+	if meta_notice != "":
+		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(meta_notice, 54), 14, WARN)
+	else:
+		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(_meta_prompt_text(), 54), 14, MUTED)
+
+
+func _draw_meta_selector(rect: Rect2, label: String, value: String, desc: String, hint: String) -> void:
+	_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
+	_text(rect.position + Vector2(18, 24), label, 13, UI_PANEL_HILITE)
+	_text(rect.position + Vector2(18, 52), _trim_text(value, 28), 22, Color("#f7df86"))
+	_text(rect.position + Vector2(18, 76), _trim_text(desc, 46), 13, MUTED)
+	_text(rect.position + Vector2(rect.size.x - 94, 24), hint, 11, MUTED)
+
+
+func _draw_meta_progress_panel(rect: Rect2) -> void:
+	_draw_pixel_panel(rect, Color("#12131c"), UI_PANEL_EDGE)
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	var achievements: Dictionary = meta.get("achievements", {})
+	var relics: Dictionary = meta.get("unlocked_relics", {})
+	var maps: Dictionary = meta.get("unlocked_maps", {})
+	var elements: Dictionary = meta.get("researched_elements", {})
+	var research := int(lifetime.get("relic_research", 0))
+	_text(rect.position + Vector2(18, 26), "UNLOCKS", 14, UI_PANEL_HILITE)
+	_text(rect.position + Vector2(18, 54), "Relics %d" % _true_count(relics), 15, UI)
+	_text(rect.position + Vector2(18, 78), "Research %d" % research, 15, UI)
+	_text(rect.position + Vector2(18, 102), _next_relic_research_text(), 15, UI)
+	_text(rect.position + Vector2(176, 54), "Extract %d" % int(lifetime.get("extractions", 0)), 15, UI)
+	_text(rect.position + Vector2(176, 78), "Runs %d" % int(lifetime.get("runs_completed", 0)), 15, UI)
+	_text(rect.position + Vector2(176, 102), "Map %d Elem %d Achv %d" % [_true_count(maps), _true_count(elements), _true_count(achievements)], 13, UI)
+
+
+func _true_count(values: Dictionary) -> int:
+	var count := 0
+	for key in values.keys():
+		if bool(values[key]):
+			count += 1
+	return count
+
+
+func _next_relic_research_text() -> String:
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	var research := int(lifetime.get("relic_research", 0))
+	var relics: Dictionary = meta.get("unlocked_relics", {})
+	for milestone in _relic_research_milestones():
+		var id := String(milestone.get("id", ""))
+		if id == "" or bool(relics.get(id, false)):
+			continue
+		var remaining := maxi(0, int(milestone.get("cost", 0)) - research)
+		return "Next relic +%d" % remaining
+	return "All relics found"
+
+
+func _map_choice_text() -> String:
+	return String(_selected_map_def().get("name", "Old Mine"))
+
+
+func _map_choice_desc() -> String:
+	return String(_selected_map_def().get("desc", ""))
+
+
+func _loadout_choice_text() -> String:
+	return String(_selected_loadout_def().get("name", "None"))
+
+
+func _loadout_choice_desc() -> String:
+	return String(_selected_loadout_def().get("desc", ""))
+
+
+func _beacon_mod_choice_text() -> String:
+	return String(_selected_beacon_mod_def().get("name", "None"))
+
+
+func _beacon_mod_choice_desc() -> String:
+	return String(_selected_beacon_mod_def().get("desc", ""))
+
+
+func _handle_meta_pointer(pos: Vector2) -> void:
+	if _meta_start_rect().has_point(pos):
+		_start_selected_run()
+	elif _meta_map_rect().has_point(pos):
+		_cycle_selected_map(1)
+	elif _meta_loadout_rect().has_point(pos):
+		_cycle_selected_loadout(1)
+	elif _meta_beacon_mod_rect().has_point(pos):
+		_cycle_selected_beacon_mod(1)
+
+
+func _handle_pause_pointer(pos: Vector2) -> void:
+	if _pause_wipe_rect().has_point(pos):
+		_press_wipe_save()
+		return
+	wipe_save_confirm = false
+	if _pause_resume_rect().has_point(pos):
+		_resume_from_pause()
+	elif _pause_audio_rect().has_point(pos):
+		_toggle_setting("audio")
+	elif _pause_shake_rect().has_point(pos):
+		_toggle_setting("screen_shake")
+	elif _pause_tutorial_rect().has_point(pos):
+		_toggle_setting("tutorial")
+	elif _pause_hub_rect().has_point(pos):
+		_go_to_meta()
+
+
+func _meta_panel_rect() -> Rect2:
+	var viewport := get_viewport_rect().size
+	var width := clampf(viewport.x - 48.0, 560.0, 760.0)
+	var height := clampf(viewport.y - 48.0, 540.0, 560.0)
+	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
+
+
+func _meta_map_rect() -> Rect2:
+	var rect := _meta_panel_rect()
+	return Rect2(rect.position + Vector2(28, 106), Vector2(rect.size.x - 56, 92))
+
+
+func _meta_loadout_rect() -> Rect2:
+	var rect := _meta_panel_rect()
+	return Rect2(rect.position + Vector2(28, 212), Vector2(rect.size.x - 56, 92))
+
+
+func _meta_beacon_mod_rect() -> Rect2:
+	var rect := _meta_panel_rect()
+	return Rect2(rect.position + Vector2(28, 318), Vector2(rect.size.x - 56, 92))
+
+
+func _meta_progress_rect() -> Rect2:
+	var rect := _meta_panel_rect()
+	return Rect2(rect.position + Vector2(28, 424), Vector2(rect.size.x - 260, 116))
+
+
+func _meta_start_rect() -> Rect2:
+	var rect := _meta_panel_rect()
+	return Rect2(rect.position + Vector2(rect.size.x - 206, 456), Vector2(168, 54))
 
 
 func _draw_portrait_hud() -> void:
@@ -5353,6 +6873,7 @@ func _draw_portrait_hud() -> void:
 	_text(Vector2(left + 14, 42), "DIGGY", 28, UI)
 	_text(Vector2(left + 14, 68), "CAVERNS OF CHANCE", 13, MUTED)
 	if show_touch_controls:
+		_draw_pause_button()
 		_draw_restart_button()
 
 	_text(Vector2(left + 170, 36), "RUN", 13, UI_PANEL_HILITE)
@@ -5413,6 +6934,7 @@ func _draw_desktop_ui() -> void:
 	if detail != "":
 		_text(Vector2(700, 260), _trim_status_text(detail), 13, MUTED)
 	_text(Vector2(700, 288), "UPGRADES", 15, UI_PANEL_HILITE)
+	_draw_touch_button(_pause_button_rect(), "PAUSE", MUTED, paused)
 	_draw_upgrade_summary(Vector2(700, 314), 196.0, 1)
 	_draw_touch_button(_inventory_button_rect(), "UPGRADES", PRESSURE, show_upgrade_inventory)
 	if message != "":
@@ -5504,6 +7026,53 @@ func _inventory_close_rect() -> Rect2:
 	return INVENTORY_CLOSE_RECT
 
 
+func _pause_button_rect() -> Rect2:
+	if show_touch_controls:
+		return _mobile_pause_rect()
+	return DESKTOP_PAUSE_BUTTON_RECT
+
+
+func _mobile_pause_rect() -> Rect2:
+	return Rect2(Vector2(_portrait_layout_left() + MOBILE_PAUSE_RECT.position.x - BOARD_ORIGIN.x, MOBILE_PAUSE_RECT.position.y), MOBILE_PAUSE_RECT.size)
+
+
+func _pause_panel_rect() -> Rect2:
+	var viewport := get_viewport_rect().size
+	var width := minf(viewport.x - 48.0, 500.0)
+	var height := 382.0
+	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
+
+
+func _pause_resume_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 88), Vector2(rect.size.x - 72, 44))
+
+
+func _pause_audio_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 146), Vector2(rect.size.x - 72, 38))
+
+
+func _pause_shake_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 190), Vector2(rect.size.x - 72, 38))
+
+
+func _pause_tutorial_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 234), Vector2(rect.size.x - 72, 38))
+
+
+func _pause_wipe_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 278), Vector2(rect.size.x - 72, 48))
+
+
+func _pause_hub_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(rect.size.x - 156, 34), Vector2(112, 34))
+
+
 func _portrait_layout_left() -> float:
 	return floorf(maxf(12.0, (get_viewport_rect().size.x - float(MOBILE_LAYOUT_W)) * 0.5 + 12.0))
 
@@ -5577,6 +7146,13 @@ func _draw_restart_button() -> void:
 	_text(rect.position + Vector2(13, 23), "R", 15, MUTED)
 
 
+func _draw_pause_button() -> void:
+	var rect := _pause_button_rect()
+	draw_rect(rect, Color("#090910"))
+	draw_rect(rect.grow(-3), Color("#242132"))
+	_text(rect.position + Vector2(11, 23), "II", 15, UI if paused else MUTED)
+
+
 func _draw_small_stat_chip(pos: Vector2, label: String, value: String, color: Color) -> void:
 	_draw_pixel_panel(Rect2(pos, Vector2(112, 30)), Color("#12131c"), UI_PANEL_EDGE)
 	_text(pos + Vector2(7, 18), label, 11, MUTED)
@@ -5587,8 +7163,8 @@ func _draw_choice_modal() -> void:
 	_draw_pixel_panel(Rect2(Vector2(28, 154), Vector2(584, 470)), Color("#111820ee"), Color("#d8c27a"))
 	_text(Vector2(54, 198), "Level %d relic" % player_level, 30, UI)
 	_text(Vector2(56, 228), "XP gathered: %d / %d" % [xp, xp_to_next], 16, MUTED)
-	if last_floor_summary != "":
-		_text(Vector2(56, 252), last_floor_summary, 13, Color("#f7df86"))
+	if last_run_summary != "":
+		_text(Vector2(56, 252), last_run_summary, 13, Color("#f7df86"))
 	for i in range(upgrade_choices.size()):
 		var choice: Dictionary = upgrade_choices[i]
 		var rect := _choice_rect(i)
@@ -5606,16 +7182,34 @@ func _choice_skip_rect() -> Rect2:
 	return Rect2(Vector2(214, 558), Vector2(212, 42))
 
 
+func _run_result_detail(include_unlocks: bool) -> String:
+	var parts := []
+	if last_run_summary != "":
+		parts.append(last_run_summary)
+	else:
+		parts.append("Best combo x%d" % best_combo)
+		parts.append("Kills %d" % run_kills)
+	if meta_notice != "" and (include_unlocks or meta_notice.begins_with("Research") or meta_notice.begins_with("Relic research")):
+		parts.append(meta_notice)
+	return _trim_text(_join_strings(parts, " | "), 72)
+
+
 func _status_detail_string() -> String:
 	var parts := []
 	if beacon_armed:
 		parts.append("Beacon armed")
 	else:
 		parts.append("Beacon %d/%d" % [beacon_charge, BEACON_CHARGE_GOAL])
+		var scanner_text := _beacon_scanner_text()
+		if scanner_text != "":
+			parts.append(scanner_text)
 		if _is_pressure_surge():
 			parts.append("Surge %s" % _format_time(pressure_surge_timer))
 		else:
 			parts.append("Surge in %s" % _format_time(pressure_surge_cooldown))
+	var bounty_text := _bounty_status_text()
+	if bounty_text != "":
+		parts.append(bounty_text)
 	parts.append("Enemies %d/%d" % [enemies.size(), _spawn_cap()])
 	if crystal_charge > 0:
 		parts.append("Charge %d" % crystal_charge)
@@ -5628,17 +7222,34 @@ func _status_detail_string() -> String:
 	return _join_strings(parts, " | ")
 
 
+func _bounty_status_text() -> String:
+	for enemy in enemies:
+		if not _enemy_is_bounty(enemy):
+			continue
+		var enemy_pos: Vector2i = enemy["pos"]
+		var distance := roundi(sqrt(float(enemy_pos.distance_squared_to(player_pos))))
+		return "Bounty %d away" % distance
+	return ""
+
+
 func _trim_status_text(value: String) -> String:
 	if value.length() <= 35:
 		return value
 	return value.substr(0, 33) + ".."
 
 
-func _draw_center_modal(title: String, line: String, prompt: String) -> void:
-	_draw_pixel_panel(Rect2(Vector2(44, 238), Vector2(552, 250)), Color("#111820ee"), Color("#d8c27a"))
-	_text(Vector2(82, 302), title, 32, UI)
-	_text(Vector2(84, 352), line, 18, WARN)
-	_text(Vector2(84, 400), prompt, 16, MUTED)
+func _draw_center_modal(title: String, line: String, prompt: String, detail := "") -> void:
+	var viewport := get_viewport_rect().size
+	var width := minf(viewport.x - 56.0, 552.0)
+	var height := 284.0 if detail != "" else 250.0
+	var rect := Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
+	_draw_pixel_panel(rect, Color("#111820ee"), Color("#d8c27a"))
+	var left := rect.position.x + 38.0
+	_text(Vector2(left, rect.position.y + 64.0), title, 32, UI)
+	_text(Vector2(left + 2.0, rect.position.y + 114.0), _trim_text(line, 50), 18, WARN)
+	if detail != "":
+		_text(Vector2(left + 2.0, rect.position.y + 150.0), _trim_text(detail, 56), 14, Color("#f7df86"))
+	_text(Vector2(left + 2.0, rect.position.y + rect.size.y - 58.0), prompt, 16, MUTED)
 
 
 func _draw_pixel_panel(rect: Rect2, fill: Color, edge: Color) -> void:
@@ -6010,10 +7621,17 @@ func _draw_tunnel_tiles() -> void:
 			if int(dig_masks.get(pos, full_mask)) != full_mask:
 				continue
 			var cell_rect := Rect2(_cell_center(pos) - Vector2(CELL, CELL) * 0.5, Vector2(CELL, CELL))
-			draw_rect(cell_rect, TUNNEL)
-			draw_rect(cell_rect.grow(-2), Color("#0f1018"))
-			if ((x * 5 + y * 3 + floor_index) % 4) == 0:
+			var floor_color := TUNNEL
+			var inner_color := Color("#0f1018")
+			if _terrain_at(pos) == TERRAIN_CRYSTAL_SHALE:
+				floor_color = TUNNEL.lerp(CRYSTAL_SHALE, 0.22)
+				inner_color = Color("#0f1018").lerp(CRYSTAL_SEAL_DARK, 0.26)
+			draw_rect(cell_rect, floor_color)
+			draw_rect(cell_rect.grow(-2), inner_color)
+			if ((x * 5 + y * 3 + depth_tier) % 4) == 0:
 				draw_rect(Rect2(cell_rect.position + Vector2(4, 4), Vector2(3, 3)), TUNNEL_EDGE)
+			if _terrain_at(pos) == TERRAIN_CRYSTAL_SHALE and ((x * 7 + y * 5 + depth_tier) % 5) == 0:
+				draw_rect(Rect2(cell_rect.position + Vector2(19, 17), Vector2(4, 2)), CRYSTAL_SHALE_HIGHLIGHT.lerp(TUNNEL, 0.35))
 
 
 func _draw_rock_sprite(center: Vector2) -> void:
@@ -6611,9 +8229,10 @@ func _fire_scorch_enemy(enemy_i: int, hit_pos: Vector2i) -> bool:
 	var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
 	_award_boss_defeat_reward(enemy)
 	enemies.remove_at(enemy_i)
-	floor_kills += 1
-	_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind))
-	_award_enemy_score_at(dead_pos, 70 + floor_index * 8, "Scorch")
+	run_kills += 1
+	_record_enemy_defeat(dead_kind)
+	_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind), enemy)
+	_award_enemy_score_at(dead_pos, 70 + depth_tier * 8, "Scorch")
 	_add_rupture_feedback(dead_pos)
 	_trigger_elemental_death_effects(dead_pos, false, true, false)
 	_shake(0.12)
@@ -6695,9 +8314,10 @@ func _tick_burning_enemy(enemy_i: int) -> bool:
 	var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
 	_award_boss_defeat_reward(enemy)
 	enemies.remove_at(enemy_i)
-	floor_kills += 1
-	_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind))
-	_award_enemy_score_at(dead_pos, 70 + floor_index * 8, "Burn")
+	run_kills += 1
+	_record_enemy_defeat(dead_kind)
+	_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind), enemy)
+	_award_enemy_score_at(dead_pos, 70 + depth_tier * 8, "Burn")
 	_add_rupture_feedback(dead_pos)
 	_trigger_elemental_death_effects(dead_pos, false, true, false)
 	_shake(0.12)
@@ -6779,11 +8399,12 @@ func _damage_enemy(enemy_i: int, amount: int, kill_text: String, hit_text: Strin
 	if enemy["hp"] <= 0:
 		var dead_pos: Vector2i = enemy["pos"]
 		var dead_kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
-		floor_kills += 1
-		_award_enemy_score_at(dead_pos, 80 + floor_index * 10, "Rupture")
+		run_kills += 1
+		_record_enemy_defeat(dead_kind)
+		_award_enemy_score_at(dead_pos, 80 + depth_tier * 10, "Rupture")
 		_award_boss_defeat_reward(enemy)
 		enemies.remove_at(enemy_i)
-		_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind))
+		_drop_xp(dead_pos, _enemy_xp_drop(enemy, dead_kind), enemy)
 		_add_rupture_feedback(dead_pos)
 		_trigger_elemental_death_effects(dead_pos, was_frozen, was_burning, was_thundered)
 		_shake(0.16)
@@ -6836,11 +8457,13 @@ func _burst_nearby_enemies(center: Vector2i, damage: int, radius: int, text: Str
 			var dead_pos: Vector2i = enemies[i]["pos"]
 			var dead_kind := int(enemies[i].get("kind", ENEMY_GRUB_KIND))
 			var xp_drop := _enemy_xp_drop(enemies[i], dead_kind)
-			_award_boss_defeat_reward(enemies[i])
+			var burst_enemy: Dictionary = enemies[i]
+			_award_boss_defeat_reward(burst_enemy)
 			enemies.remove_at(i)
-			floor_kills += 1
-			_drop_xp(dead_pos, xp_drop)
-			_award_enemy_score_at(dead_pos, 70 + floor_index * 8, "Burst")
+			run_kills += 1
+			_record_enemy_defeat(dead_kind)
+			_drop_xp(dead_pos, xp_drop, burst_enemy)
+			_award_enemy_score_at(dead_pos, 70 + depth_tier * 8, "Burst")
 			_add_rupture_feedback(dead_pos)
 			_shake(0.14)
 			message = text
@@ -6988,6 +8611,8 @@ func _cell_open_mask(pos: Vector2i) -> int:
 func _cell_is_passable(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _has_rock(pos):
 		return false
+	if _terrain_blocks_dig(pos) and _tile(pos) == TILE_DIRT:
+		return false
 	return _body_open_at_cell(pos)
 
 
@@ -6997,6 +8622,8 @@ func _cell_is_fully_open(pos: Vector2i) -> bool:
 
 func _cell_has_tunnel_opening(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _has_rock(pos):
+		return false
+	if _terrain_blocks_dig(pos) and _tile(pos) == TILE_DIRT:
 		return false
 	return _cell_open_mask(pos) != 0
 
@@ -7028,6 +8655,8 @@ func _body_open_at_board_px(center_px: Vector2, footprint: float) -> bool:
 	for cell_x in range(min_cell_x, max_cell_x + 1):
 		for cell_y in range(min_cell_y, max_cell_y + 1):
 			var cell := Vector2i(cell_x, cell_y)
+			if _terrain_blocks_dig(cell) and _tile(cell) == TILE_DIRT:
+				return false
 			var cell_origin := Vector2(cell.x * CELL, cell.y * CELL)
 			var sub_size := float(CELL) / float(DIG_SUBDIV)
 			var mask := _cell_open_mask(cell)
@@ -7070,6 +8699,8 @@ func _centerline_open_at_cell(pos: Vector2i) -> bool:
 
 func _carve_cell(pos: Vector2i, connect_neighbors := true, reveal := true) -> void:
 	if not _in_bounds(pos):
+		return
+	if _terrain_blocks_dig(pos):
 		return
 	if not tunnel_edges.has(pos):
 		tunnel_edges[pos] = 0
@@ -7161,6 +8792,8 @@ func _dig_player_body_at(visual_pos: Vector2) -> void:
 	for cell_x in range(min_cell_x, max_cell_x + 1):
 		for cell_y in range(min_cell_y, max_cell_y + 1):
 			var cell := Vector2i(cell_x, cell_y)
+			if _terrain_blocks_dig(cell):
+				continue
 			var cell_mask := int(dig_masks.get(cell, DIG_FULL_MASK))
 			if _tile(cell) != TILE_DIRT and cell_mask == DIG_FULL_MASK:
 				continue
@@ -7197,13 +8830,21 @@ func _promote_dug_cell(cell: Vector2i) -> void:
 	dig_scored_cells[cell] = true
 	_add_dig_feedback(cell)
 	_award_score(2, false, "Dig")
+	if _terrain_at(cell) == TERRAIN_CRYSTAL_SHALE:
+		_add_cell_pulse(cell, CRYSTAL_SHALE_HIGHLIGHT, PULSE_FEEDBACK_TIME + 0.06, 0.7)
+	if dig_sfx_cooldown <= 0.0:
+		dig_sfx_cooldown = 0.11
+		_play_sfx("dig")
 	_collect_super_gem_at(cell)
 
 
 func _set_tunnel_tile(pos: Vector2i) -> void:
 	if not _in_bounds(pos) or _tile(pos) == TILE_BEACON:
 		return
+	var opening_crystal := _tile(pos) == TILE_DIRT and _is_crystal_cell(pos)
 	grid[pos.x][pos.y] = TILE_TUNNEL
+	if opening_crystal:
+		_open_crystal_cell(pos)
 
 
 func _bit_count(value: int) -> int:
@@ -7238,17 +8879,36 @@ func _rebuild_soil_mask_from_grid() -> void:
 
 func _soil_color_at(x: int, y: int) -> Color:
 	var cell_row := floori(float(y) / float(CELL))
+	var crystal_map := bool(current_map_def.get("crystal", false))
 	if cell_row <= SURFACE_ROW:
-		return SURFACE_SOIL
+		return CRYSTAL_SURFACE_SOIL if crystal_map else SURFACE_SOIL
 	var layer := _dirt_layer_index_for_row(cell_row)
 	var block_x := floori(float(x) / 4.0)
 	var block_y := floori(float(y) / 4.0)
-	var grain := (block_x * 17 + block_y * 31 + floor_index * 43) % 11
+	var grain := (block_x * 17 + block_y * 31 + depth_tier * 43) % 11
+	var colors: Array = CRYSTAL_DIRT_LAYER_COLORS if crystal_map else DIRT_LAYER_COLORS
+	var highlights: Array = CRYSTAL_DIRT_LAYER_HIGHLIGHTS if crystal_map else DIRT_LAYER_HIGHLIGHTS
+	var shadows: Array = CRYSTAL_DIRT_LAYER_SHADOWS if crystal_map else DIRT_LAYER_SHADOWS
+	var color: Color = colors[layer]
 	if grain <= 1:
-		return DIRT_LAYER_HIGHLIGHTS[layer].lerp(DIRT_LAYER_COLORS[layer], 0.35)
-	if grain >= 8:
-		return DIRT_LAYER_COLORS[layer].lerp(DIRT_LAYER_SHADOWS[layer], 0.58)
-	return DIRT_LAYER_COLORS[layer]
+		color = highlights[layer].lerp(colors[layer], 0.35)
+	elif grain >= 8:
+		color = colors[layer].lerp(shadows[layer], 0.58)
+	var cell := Vector2i(clampi(floori(float(x) / float(CELL)), 0, BOARD_W - 1), clampi(cell_row, 0, BOARD_H - 1))
+	var terrain := _terrain_at(cell)
+	if terrain == TERRAIN_CRYSTAL_SHALE:
+		color = color.lerp(CRYSTAL_SHALE, 0.55)
+		if (block_x * 3 + block_y + depth_tier) % 6 == 0:
+			color = color.lerp(CRYSTAL_SHALE_HIGHLIGHT, 0.36)
+	elif terrain == TERRAIN_CRYSTAL_SEAL:
+		color = CRYSTAL_SEAL_DARK.lerp(CRYSTAL_SEAL, 0.58)
+		if (block_x + block_y * 2 + depth_tier) % 4 == 0:
+			color = color.lerp(ICE, 0.32)
+	elif _is_crystal_cell(cell):
+		color = color.lerp(SUPER_GEM, 0.22)
+		if (block_x + block_y + depth_tier) % 5 == 0:
+			color = color.lerp(ICE, 0.22)
+	return color
 
 
 func _restore_soil_cell_px(cell: Vector2i) -> void:
@@ -7285,9 +8945,9 @@ func _clear_soil_rect_px(center: Vector2, size: Vector2) -> void:
 		return
 	var half := size * 0.5
 	var min_x := clampi(floori(center.x - half.x), 0, BOARD_PX_W - 1)
-	var max_x := clampi(ceili(center.x + half.x), 0, BOARD_PX_W - 1)
+	var max_x := clampi(ceili(center.x + half.x) - 1, 0, BOARD_PX_W - 1)
 	var min_y := clampi(floori(center.y - half.y), 0, BOARD_PX_H - 1)
-	var max_y := clampi(ceili(center.y + half.y), 0, BOARD_PX_H - 1)
+	var max_y := clampi(ceili(center.y + half.y) - 1, 0, BOARD_PX_H - 1)
 	for y in range(min_y, max_y + 1):
 		for x in range(min_x, max_x + 1):
 			soil_image.set_pixel(x, y, Color.TRANSPARENT)
@@ -7458,7 +9118,7 @@ func _deep_signal_chest() -> Dictionary:
 
 
 func _has_relic(pos: Vector2i) -> bool:
-	for relic in floor_relics:
+	for relic in run_relics:
 		if relic["pos"] == pos:
 			return true
 	return false

@@ -46,6 +46,9 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/templates
           mv /tmp/templates/templates/* "${HOME}/.local/share/godot/export_templates/${EXPORT_TEMPLATE_DIR}/"
 
+      - name: Validate project loads
+        run: godot --headless --path . --quit
+
       - name: Export Web build
         run: |
           set -euo pipefail
