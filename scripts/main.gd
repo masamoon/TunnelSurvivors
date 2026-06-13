@@ -69,9 +69,11 @@ const META_SAVE_VERSION := 1
 const META_SAVE_PATH := "user://diggy_meta.json"
 const MAP_OLD_MINE := "old_mine"
 const MAP_CRYSTAL_VEINS := "crystal_veins"
+const MAP_OBSIDIAN_RIFT := "obsidian_rift"
 const LOADOUT_NONE := "none"
 const BEACON_MOD_NONE := "none"
 const BEACON_MOD_SIGNAL_SCANNER := "signal_scanner"
+const BEACON_MOD_TREASURE_COMPASS := "treasure_compass"
 const CRYSTAL_SPROUT_CHANCE := 0.35
 const CRYSTAL_SCAN_PULSE_INTERVAL := 2.2
 const CRYSTAL_SHALE_DIG_DELAY_MULT := 1.65
@@ -223,6 +225,8 @@ const BOULDER_CRUSH_FEEDBACK_TIME := 0.85
 const BOULDER_FANFARE_MAX_TIER := 5
 const BOULDER_FANFARE_SAMPLE_RATE := 22050
 const SFX_SAMPLE_RATE := 22050
+const MUSIC_SAMPLE_RATE := 22050
+const AUDIO_VOLUME_STEPS := 4
 const ATTACK_RECOVERY_DELAY := 0.32
 const ATTACK_FLASH_TIME := 0.32
 const LANCE_HIT_DELAY := 0.10
@@ -372,12 +376,17 @@ var sfx_players: Array[AudioStreamPlayer] = []
 var sfx_next := 0
 var sfx_cache := {}
 var dig_sfx_cooldown := 0.0
+var music_player: AudioStreamPlayer
+var ambience_player: AudioStreamPlayer
 var mobile_touch_dirs := {}
 var mobile_move_dir := Vector2i.ZERO
 var show_touch_controls := true
 var show_upgrade_inventory := false
+var show_guide := false
+var guide_page := 0
 var paused := false
 var wipe_save_confirm := false
+var selected_meta_upgrade_index := 0
 
 var meta := {}
 var meta_notice := ""
@@ -543,7 +552,9 @@ func _ready() -> void:
 
 func _setup_audio() -> void:
 	_setup_crush_audio()
+	_setup_music_audio()
 	if not sfx_players.is_empty():
+		_update_audio_mix()
 		return
 	for i in range(8):
 		var player := AudioStreamPlayer.new()
@@ -551,6 +562,20 @@ func _setup_audio() -> void:
 		player.volume_db = -10.0
 		add_child(player)
 		sfx_players.append(player)
+	_update_audio_mix()
+
+
+func _setup_music_audio() -> void:
+	if music_player != null:
+		return
+	music_player = AudioStreamPlayer.new()
+	music_player.bus = "Master"
+	music_player.stream = _build_music_loop_stream()
+	add_child(music_player)
+	ambience_player = AudioStreamPlayer.new()
+	ambience_player.bus = "Master"
+	ambience_player.stream = _build_ambience_loop_stream()
+	add_child(ambience_player)
 
 
 func _notification(what: int) -> void:
@@ -580,17 +605,18 @@ func _setup_crush_audio() -> void:
 
 
 func _play_crush_fanfare(tier: int) -> void:
-	if crush_sfx_players.is_empty() or not _audio_enabled():
+	if crush_sfx_players.is_empty() or not _audio_enabled() or _sfx_volume_step() <= 0:
 		return
 	var player := crush_sfx_players[crush_sfx_next]
 	crush_sfx_next = (crush_sfx_next + 1) % crush_sfx_players.size()
 	player.stop()
 	player.stream = _build_crush_fanfare_stream(clampi(tier, 1, BOULDER_FANFARE_MAX_TIER))
+	player.volume_db = _volume_db_from_step(_sfx_volume_step(), -7.0)
 	player.play()
 
 
 func _play_sfx(id: String) -> void:
-	if sfx_players.is_empty() or not _audio_enabled():
+	if sfx_players.is_empty() or not _audio_enabled() or _sfx_volume_step() <= 0:
 		return
 	if not sfx_cache.has(id):
 		sfx_cache[id] = _build_sfx_stream(id)
@@ -598,6 +624,7 @@ func _play_sfx(id: String) -> void:
 	sfx_next = (sfx_next + 1) % sfx_players.size()
 	player.stop()
 	player.stream = sfx_cache[id]
+	player.volume_db = _volume_db_from_step(_sfx_volume_step(), -10.0)
 	player.play()
 
 
@@ -758,6 +785,54 @@ func _build_crush_fanfare_stream(tier: int) -> AudioStreamWAV:
 	return stream
 
 
+func _build_music_loop_stream() -> AudioStreamWAV:
+	var data := PackedByteArray()
+	var total_samples := MUSIC_SAMPLE_RATE * 6
+	var bass_notes := [73.42, 82.41, 98.0, 110.0]
+	var lead_notes := [293.66, 329.63, 392.0, 493.88, 440.0, 392.0]
+	for s in range(total_samples):
+		var t := float(s) / float(MUSIC_SAMPLE_RATE)
+		var beat := floori(t * 2.0)
+		var bass_freq: float = bass_notes[beat % bass_notes.size()]
+		var lead_freq: float = lead_notes[floori(t * 4.0) % lead_notes.size()]
+		var pulse := 0.62 + 0.38 * sin(t * TAU * 2.0)
+		var bass := sin(t * TAU * bass_freq) * 0.11
+		var lead := (1.0 if fmod(t * lead_freq, 1.0) < 0.5 else -1.0) * 0.035 * pulse
+		var shimmer := sin(t * TAU * (lead_freq * 2.0)) * 0.018 * (0.5 + pulse * 0.5)
+		var sample := (bass + lead + shimmer) * 0.72
+		_append_s16_sample(data, clampi(roundi(sample * 32767.0), -32768, 32767))
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = MUSIC_SAMPLE_RATE
+	stream.stereo = false
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = total_samples
+	stream.data = data
+	return stream
+
+
+func _build_ambience_loop_stream() -> AudioStreamWAV:
+	var data := PackedByteArray()
+	var total_samples := MUSIC_SAMPLE_RATE * 4
+	for s in range(total_samples):
+		var t := float(s) / float(MUSIC_SAMPLE_RATE)
+		var rumble := sin(t * TAU * 38.0) * 0.055
+		var wind := (float((s * 17 + 41) % 113) / 56.5 - 1.0) * 0.025
+		var cave := sin(t * TAU * 91.0 + sin(t * 0.9)) * 0.018
+		var sample := rumble + wind + cave
+		_append_s16_sample(data, clampi(roundi(sample * 32767.0), -32768, 32767))
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = MUSIC_SAMPLE_RATE
+	stream.stereo = false
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_begin = 0
+	stream.loop_end = total_samples
+	stream.data = data
+	return stream
+
+
 func _append_s16_sample(data: PackedByteArray, sample: int) -> void:
 	var packed := sample
 	if packed < 0:
@@ -781,9 +856,13 @@ func _default_meta() -> Dictionary:
 		"selected_loadout": LOADOUT_NONE,
 		"unlocked_beacon_mods": {BEACON_MOD_NONE: true},
 		"selected_beacon_mod": BEACON_MOD_NONE,
+		"meta_upgrades": {},
 		"achievements": {},
 		"settings": {
 			"audio": true,
+			"music": true,
+			"sfx_volume": 3,
+			"music_volume": 2,
 			"screen_shake": true,
 			"tutorial": true
 		},
@@ -796,6 +875,7 @@ func _default_meta() -> Dictionary:
 			"total_gems": 0,
 			"total_kills": 0,
 			"relic_research": 0,
+			"runes": 0,
 			"extractions": 0,
 			"boss_kills": 0,
 			"boulder_kills": 0,
@@ -875,6 +955,54 @@ func _audio_enabled() -> bool:
 	return _setting_enabled("audio", true)
 
 
+func _music_enabled() -> bool:
+	return _setting_enabled("music", true)
+
+
+func _sfx_volume_step() -> int:
+	var settings := _settings()
+	return clampi(int(settings.get("sfx_volume", 3)), 0, AUDIO_VOLUME_STEPS)
+
+
+func _music_volume_step() -> int:
+	var settings := _settings()
+	return clampi(int(settings.get("music_volume", 2)), 0, AUDIO_VOLUME_STEPS)
+
+
+func _volume_db_from_step(step: int, base_db: float) -> float:
+	if step <= 0:
+		return -80.0
+	return base_db + float(step - 3) * 4.0
+
+
+func _update_audio_mix() -> void:
+	for player in sfx_players:
+		player.volume_db = _volume_db_from_step(_sfx_volume_step(), -10.0)
+	for player in crush_sfx_players:
+		player.volume_db = _volume_db_from_step(_sfx_volume_step(), -7.0)
+	if music_player != null:
+		music_player.volume_db = _volume_db_from_step(_music_volume_step(), -18.0)
+	if ambience_player != null:
+		ambience_player.volume_db = _volume_db_from_step(_music_volume_step(), -23.0)
+	_update_music_audio()
+
+
+func _update_music_audio() -> void:
+	var should_play := _audio_enabled() and _music_enabled() and _music_volume_step() > 0
+	if music_player != null:
+		if should_play:
+			if not music_player.playing:
+				music_player.play()
+		else:
+			music_player.stop()
+	if ambience_player != null:
+		if should_play and state == STATE_PLAYING:
+			if not ambience_player.playing:
+				ambience_player.play()
+		else:
+			ambience_player.stop()
+
+
 func _screen_shake_enabled() -> bool:
 	return _setting_enabled("screen_shake", true)
 
@@ -889,6 +1017,40 @@ func _toggle_setting(id: String) -> void:
 	settings[id] = not bool(settings.get(id, true))
 	meta["settings"] = settings
 	_save_meta()
+	_update_audio_mix()
+	_play_sfx("ui")
+	queue_redraw()
+
+
+func _cycle_volume_setting(id: String) -> void:
+	wipe_save_confirm = false
+	var settings := _settings()
+	var current := clampi(int(settings.get(id, 3)), 0, AUDIO_VOLUME_STEPS)
+	settings[id] = (current + 1) % (AUDIO_VOLUME_STEPS + 1)
+	meta["settings"] = settings
+	_save_meta()
+	_update_audio_mix()
+	_play_sfx("ui")
+	queue_redraw()
+
+
+func _toggle_guide() -> void:
+	show_guide = not show_guide
+	if show_guide:
+		wipe_save_confirm = false
+		show_upgrade_inventory = false
+		_clear_mobile_input()
+		if lance_active:
+			_release_lance(false)
+	_play_sfx("ui")
+	queue_redraw()
+
+
+func _cycle_guide_page(dir: int) -> void:
+	var pages := _guide_pages()
+	if pages.is_empty():
+		return
+	guide_page = (guide_page + dir + pages.size()) % pages.size()
 	_play_sfx("ui")
 	queue_redraw()
 
@@ -968,6 +1130,20 @@ func _map_defs() -> Dictionary:
 			"crystal": true,
 			"spitter_weight_bonus": 16,
 			"leech_weight_bonus": 18
+		},
+		MAP_OBSIDIAN_RIFT: {
+			"id": MAP_OBSIDIAN_RIFT,
+			"name": "Obsidian Rift",
+			"desc": "Hot lanes, more rocks, faster pressure, richer chest relics.",
+			"rock_mult": 1.28,
+			"gem_mult": 0.92,
+			"super_bonus": 1,
+			"crystal": false,
+			"enemy_bonus": 2,
+			"spitter_weight_bonus": 28,
+			"leech_weight_bonus": 8,
+			"treasure_upgrade_bonus": 0.18,
+			"pressure_mult": 0.82
 		}
 	}
 
@@ -977,15 +1153,50 @@ func _loadout_defs() -> Dictionary:
 		LOADOUT_NONE: {"id": LOADOUT_NONE, "name": "None", "desc": "Start with no relic.", "upgrade": ""},
 		"long_shaft": {"id": "long_shaft", "name": "Long Shaft", "desc": "Start with +1 lance range.", "upgrade": "range"},
 		"amber_magnet": {"id": "amber_magnet", "name": "Amber Magnet", "desc": "Start with XP pull.", "upgrade": "magnet"},
-		"rock_whistle": {"id": "rock_whistle", "name": "Rock Whistle", "desc": "Start with boulder lures.", "upgrade": "rock_whistle"}
+		"rock_whistle": {"id": "rock_whistle", "name": "Rock Whistle", "desc": "Start with boulder lures.", "upgrade": "rock_whistle"},
+		"field_kit": {"id": "field_kit", "name": "Field Kit", "desc": "Start with +1 max heart and heal.", "upgrade": "field_dressing"}
 	}
 
 
 func _beacon_mod_defs() -> Dictionary:
 	return {
 		BEACON_MOD_NONE: {"id": BEACON_MOD_NONE, "name": "None", "desc": "Beacon behaves normally."},
-		BEACON_MOD_SIGNAL_SCANNER: {"id": BEACON_MOD_SIGNAL_SCANNER, "name": "Signal Scanner", "desc": "Shows beacon direction before it arms."}
+		BEACON_MOD_SIGNAL_SCANNER: {"id": BEACON_MOD_SIGNAL_SCANNER, "name": "Signal Scanner", "desc": "Shows beacon direction before it arms."},
+		BEACON_MOD_TREASURE_COMPASS: {"id": BEACON_MOD_TREASURE_COMPASS, "name": "Treasure Compass", "desc": "Shows nearest chest distance."}
 	}
+
+
+func _meta_upgrade_defs() -> Array:
+	return [
+		{
+			"id": "deep_pockets",
+			"name": "Deep Pockets",
+			"desc": "Start each run with +8 beacon charge per rank.",
+			"max": 3,
+			"costs": [2, 4, 6]
+		},
+		{
+			"id": "sturdy_frame",
+			"name": "Sturdy Frame",
+			"desc": "Start each run with +1 max heart per rank.",
+			"max": 2,
+			"costs": [3, 6]
+		},
+		{
+			"id": "field_notes",
+			"name": "Field Notes",
+			"desc": "Earn +1 relic research per rank after every run.",
+			"max": 3,
+			"costs": [2, 4, 6]
+		},
+		{
+			"id": "cache_sense",
+			"name": "Cache Sense",
+			"desc": "Upgrade chests are +5% more likely per rank.",
+			"max": 3,
+			"costs": [2, 4, 6]
+		}
+	]
 
 
 func _achievement_defs() -> Dictionary:
@@ -1011,7 +1222,12 @@ func _achievement_defs() -> Dictionary:
 		"first_boss_kill": {
 			"name": "Deep Boss Down",
 			"desc": "Defeat a boss.",
-			"rewards": [{"kind": "relics", "ids": ["pierce", "quick_reel", "tunnel_focus"]}]
+			"rewards": [
+				{"kind": "map", "id": MAP_OBSIDIAN_RIFT},
+				{"kind": "beacon_mod", "id": BEACON_MOD_TREASURE_COMPASS},
+				{"kind": "loadout", "id": "field_kit"},
+				{"kind": "relics", "ids": ["pierce", "quick_reel", "tunnel_focus"]}
+			]
 		},
 		"super_gem_collector_10": {
 			"name": "Storm Research",
@@ -1036,6 +1252,7 @@ func _relic_research_milestones() -> Array:
 		{"id": "quick_reel", "cost": 33},
 		{"id": "pierce", "cost": 42},
 		{"id": "tunnel_focus", "cost": 52},
+		{"id": "field_dressing", "cost": 57},
 		{"id": "gravity_snare", "cost": 63},
 		{"id": "chute_drill", "cost": 75},
 		{"id": "rock_ledger", "cost": 88}
@@ -1159,13 +1376,15 @@ func _record_run_meta_progress(extracted: bool) -> void:
 	lifetime["total_gems"] = int(lifetime.get("total_gems", 0)) + gems_collected
 	lifetime["total_kills"] = int(lifetime.get("total_kills", 0)) + run_kills
 	var research_gain := _run_relic_research_gain(extracted)
+	var rune_gain := _run_rune_gain(extracted)
 	lifetime["relic_research"] = int(lifetime.get("relic_research", 0)) + research_gain
+	lifetime["runes"] = int(lifetime.get("runes", 0)) + rune_gain
 	meta["lifetime"] = lifetime
 	var unlocked := _unlock_relic_research_milestones()
 	if unlocked > 0:
-		meta_notice = "Research unlocked %d relic%s." % [unlocked, "" if unlocked == 1 else "s"]
+		meta_notice = "Research unlocked %d relic%s. Runes +%d." % [unlocked, "" if unlocked == 1 else "s", rune_gain]
 	elif research_gain > 0:
-		meta_notice = "Relic research +%d." % research_gain
+		meta_notice = "Research +%d. Runes +%d." % [research_gain, rune_gain]
 	_check_lifetime_achievements()
 	_save_meta()
 
@@ -1178,7 +1397,21 @@ func _run_relic_research_gain(extracted: bool) -> int:
 	gain += mini(2, run_relics_found)
 	if extracted:
 		gain += 3
+	gain += _meta_upgrade_level("field_notes")
 	return maxi(1, gain)
+
+
+func _run_rune_gain(extracted: bool) -> int:
+	var gain := 1
+	gain += mini(2, floori(run_time / 120.0))
+	gain += mini(2, run_relics_found)
+	if run_kills >= 16:
+		gain += 1
+	if extracted:
+		gain += 2
+	if run_time < 30.0 and not extracted:
+		gain = 0
+	return gain
 
 
 func _unlock_relic_research_milestones() -> int:
@@ -1286,6 +1519,80 @@ func _selected_beacon_mod_def() -> Dictionary:
 	return defs[BEACON_MOD_NONE]
 
 
+func _meta_upgrade_level(id: String) -> int:
+	var upgrades: Dictionary = meta.get("meta_upgrades", {})
+	return maxi(0, int(upgrades.get(id, 0)))
+
+
+func _meta_upgrade_def(id: String) -> Dictionary:
+	for upgrade in _meta_upgrade_defs():
+		var def: Dictionary = upgrade
+		if String(def.get("id", "")) == id:
+			return def
+	return {}
+
+
+func _selected_meta_upgrade_def() -> Dictionary:
+	var defs := _meta_upgrade_defs()
+	if defs.is_empty():
+		return {}
+	selected_meta_upgrade_index = clampi(selected_meta_upgrade_index, 0, defs.size() - 1)
+	return defs[selected_meta_upgrade_index]
+
+
+func _meta_upgrade_cost(id: String) -> int:
+	var def := _meta_upgrade_def(id)
+	if def.is_empty():
+		return 0
+	var level := _meta_upgrade_level(id)
+	var costs: Array = def.get("costs", [])
+	if level >= costs.size():
+		return 0
+	return int(costs[level])
+
+
+func _cycle_meta_upgrade(dir: int) -> void:
+	var defs := _meta_upgrade_defs()
+	if defs.is_empty():
+		return
+	selected_meta_upgrade_index = (selected_meta_upgrade_index + dir + defs.size()) % defs.size()
+	var def: Dictionary = defs[selected_meta_upgrade_index]
+	meta_notice = "Meta: %s" % String(def.get("name", "Upgrade"))
+	_play_sfx("ui")
+	queue_redraw()
+
+
+func _buy_selected_meta_upgrade() -> void:
+	var def := _selected_meta_upgrade_def()
+	if def.is_empty():
+		return
+	var id := String(def.get("id", ""))
+	var level := _meta_upgrade_level(id)
+	var max_level := int(def.get("max", 1))
+	if level >= max_level:
+		meta_notice = "%s is maxed." % String(def.get("name", "Upgrade"))
+		_play_sfx("ui")
+		queue_redraw()
+		return
+	var cost := _meta_upgrade_cost(id)
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	var runes := int(lifetime.get("runes", 0))
+	if runes < cost:
+		meta_notice = "Need %d rune%s." % [cost - runes, "" if cost - runes == 1 else "s"]
+		_play_sfx("ui")
+		queue_redraw()
+		return
+	lifetime["runes"] = runes - cost
+	meta["lifetime"] = lifetime
+	var upgrades: Dictionary = meta.get("meta_upgrades", {})
+	upgrades[id] = level + 1
+	meta["meta_upgrades"] = upgrades
+	meta_notice = "Upgraded %s to %d." % [String(def.get("name", "Upgrade")), level + 1]
+	_save_meta()
+	_play_sfx("level")
+	queue_redraw()
+
+
 func _go_to_meta() -> void:
 	if state == STATE_PLAYING and not run_meta_recorded and run_time >= 10.0:
 		_record_run_meta_progress(false)
@@ -1384,7 +1691,7 @@ func _new_run() -> void:
 	treasure_chest_timer = TREASURE_CHEST_START_DELAY
 	score = 0
 	gems_collected = 0
-	max_hp = 3
+	max_hp = 3 + _meta_upgrade_level("sturdy_frame")
 	hp = max_hp
 	move_delay = BASE_MOVE_DELAY
 	dig_delay_mult = BASE_DIG_DELAY_MULT
@@ -1527,6 +1834,7 @@ func _start_run_map() -> void:
 	_build_cavern()
 	run_gems_available = gems.size()
 	run_super_gems_available = super_gems.size()
+	beacon_charge = mini(BEACON_CHARGE_GOAL, _meta_upgrade_level("deep_pockets") * 8)
 	queue_redraw()
 
 
@@ -2166,6 +2474,7 @@ func _should_spawn_uber(kind: int, forced_kind: int) -> bool:
 
 func _process(delta: float) -> void:
 	anim_time += delta
+	_update_music_audio()
 	hurt_flash = maxf(0.0, hurt_flash - delta)
 	player_hit_recovery = maxf(0.0, player_hit_recovery - delta)
 	attack_flash = maxf(0.0, attack_flash - delta)
@@ -2264,12 +2573,33 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event.keycode == KEY_ESCAPE or event.keycode == KEY_P:
+		if show_guide:
+			show_guide = false
+			queue_redraw()
+			return
 		_toggle_pause()
+		return
+
+	if event.keycode == KEY_H:
+		_toggle_guide()
+		return
+
+	if show_guide:
+		if event.keycode == KEY_LEFT or event.keycode == KEY_A:
+			_cycle_guide_page(-1)
+		elif event.keycode == KEY_RIGHT or event.keycode == KEY_D or event.keycode == KEY_TAB:
+			_cycle_guide_page(1)
 		return
 
 	if state == STATE_META:
 		if event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
 			_start_selected_run()
+		elif event.keycode == KEY_B:
+			_buy_selected_meta_upgrade()
+		elif event.keycode == KEY_Q:
+			_cycle_meta_upgrade(-1)
+		elif event.keycode == KEY_E:
+			_cycle_meta_upgrade(1)
 		elif event.keycode == KEY_LEFT or event.keycode == KEY_A:
 			_cycle_selected_map(-1)
 		elif event.keycode == KEY_RIGHT or event.keycode == KEY_D:
@@ -2364,7 +2694,7 @@ func _restart_prompt_text() -> String:
 
 
 func _meta_prompt_text() -> String:
-	return "Tap panels to cycle. Tap START RUN." if show_touch_controls else "Enter starts. Arrow keys choose setup."
+	return "Tap panels to cycle. Tap START RUN." if show_touch_controls else "Enter starts. Arrows choose setup. Q/E meta, B buys."
 
 
 func _toggle_pause() -> void:
@@ -2456,6 +2786,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 
 
 func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
+	if show_guide:
+		_handle_guide_pointer(pos)
+		return
+
 	if state == STATE_META:
 		_handle_meta_pointer(pos)
 		return
@@ -2743,7 +3077,7 @@ func _update_pressure_surge(delta: float) -> void:
 		return
 	pressure_surge_timer = PRESSURE_SURGE_DURATION
 	var run_pressure := clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0)
-	pressure_surge_cooldown = rng.randf_range(PRESSURE_SURGE_COOLDOWN_MIN, PRESSURE_SURGE_COOLDOWN_MAX) * lerpf(1.0, 0.72, run_pressure)
+	pressure_surge_cooldown = rng.randf_range(PRESSURE_SURGE_COOLDOWN_MIN, PRESSURE_SURGE_COOLDOWN_MAX) * lerpf(1.0, 0.72, run_pressure) * float(current_map_def.get("pressure_mult", 1.0))
 	_add_cell_pulse(player_pos, PRESSURE, PULSE_FEEDBACK_TIME + 0.18, 1.3, true)
 	_shake(0.12)
 	_play_sfx("boss")
@@ -3591,7 +3925,8 @@ func _roll_treasure_reward(pos: Vector2i) -> Dictionary:
 		return {"kind": TREASURE_KIND_HEAL, "amount": 2}
 
 	var pool := _available_chest_upgrade_pool()
-	if not pool.is_empty() and rng.randf() < lerpf(0.18, 0.48, depth):
+	var upgrade_chance := clampf(lerpf(0.18, 0.48, depth) + float(current_map_def.get("treasure_upgrade_bonus", 0.0)) + float(_meta_upgrade_level("cache_sense")) * 0.05, 0.0, 0.82)
+	if not pool.is_empty() and rng.randf() < upgrade_chance:
 		return {"kind": TREASURE_KIND_UPGRADE}
 
 	var depth_bonus := roundi(lerpf(0.0, 7.0, depth))
@@ -5293,6 +5628,7 @@ func _show_upgrade_pickup_toast(upgrade: Dictionary) -> void:
 	if upgrade.is_empty():
 		return
 	upgrade_pickup_toast = {
+		"id": String(upgrade.get("id", "")),
 		"name": String(upgrade.get("name", _upgrade_name(String(upgrade.get("id", ""))))),
 		"desc": String(upgrade.get("desc", "")),
 		"time": 4.2,
@@ -5835,6 +6171,8 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), BG)
 	if state == STATE_META:
 		_draw_meta_hub()
+		if show_guide:
+			_draw_guide_overlay()
 		return
 	_draw_board()
 	_draw_actors()
@@ -6036,8 +6374,7 @@ func _draw_board() -> void:
 		var relic_center := _cell_center(relic_pos)
 		var relic_color := RUPTURE
 		relic_color.a = 0.95 if relic_open else 0.42
-		_draw_pixel_diamond(relic_center, 4, relic_color)
-		draw_rect(Rect2(_snap_px(relic_center) - Vector2(3, 3), Vector2(6, 6)), Color("#fff2bf"))
+		_draw_relic_icon(relic_center, relic, relic_color.a)
 
 	for pickup in xp_pickups:
 		var pickup_visual: Vector2 = pickup.get("visual_pos", _visual_from_pos(pickup["pos"]))
@@ -6148,8 +6485,7 @@ func _draw_treasure_reward_icon(center: Vector2, reward: Dictionary) -> void:
 		TREASURE_KIND_HEAL:
 			_draw_mini_heart(center, WARN)
 		TREASURE_KIND_UPGRADE:
-			_draw_pixel_diamond(center, 3, RUPTURE)
-			draw_rect(Rect2(_snap_px(center) - Vector2(2, 2), Vector2(4, 4)), Color("#fff2bf"))
+			_draw_relic_icon(center, reward.get("upgrade", {}), 0.95)
 		_:
 			_draw_pixel_diamond(center, 3, GEM)
 			draw_rect(Rect2(_snap_px(center) + Vector2(-1, -6), Vector2(2, 2)), Color("#ffffffcc"))
@@ -6168,13 +6504,60 @@ func _draw_mini_heart(center: Vector2, color: Color) -> void:
 	_draw_pixel_sprite(origin + Vector2(5, 4), rows, palette, 2)
 
 
+func _draw_relic_icon(center: Vector2, upgrade: Dictionary, alpha := 1.0) -> void:
+	var id := String(upgrade.get("id", ""))
+	var color := _upgrade_color(id)
+	color.a = alpha
+	var bright := color.lerp(Color("#fff2bf"), 0.45)
+	bright.a = alpha
+	_draw_pixel_diamond(center, 4, color)
+	var p := _snap_px(center)
+	match _upgrade_family(id):
+		"ice":
+			draw_rect(Rect2(p + Vector2(-1, -7), Vector2(2, 14)), bright)
+			draw_rect(Rect2(p + Vector2(-6, -2), Vector2(12, 3)), bright)
+		"fire":
+			draw_rect(Rect2(p + Vector2(-3, -5), Vector2(6, 10)), bright)
+			draw_rect(Rect2(p + Vector2(1, -8), Vector2(4, 7)), color.lightened(0.2))
+		"thunder":
+			draw_rect(Rect2(p + Vector2(-2, -7), Vector2(5, 8)), bright)
+			draw_rect(Rect2(p + Vector2(-5, 0), Vector2(7, 4)), bright)
+			draw_rect(Rect2(p + Vector2(0, 3), Vector2(4, 6)), bright)
+		"gem":
+			_draw_pixel_diamond(center, 2, bright, 2)
+		"cave":
+			draw_rect(Rect2(p + Vector2(-5, 1), Vector2(10, 4)), bright)
+			draw_rect(Rect2(p + Vector2(-2, -5), Vector2(4, 10)), bright)
+		_:
+			draw_rect(Rect2(p - Vector2(3, 3), Vector2(6, 6)), bright)
+
+
+func _upgrade_color(id: String) -> Color:
+	match _upgrade_family(id):
+		"ice":
+			return ICE
+		"fire":
+			return FIRE
+		"thunder":
+			return THUNDER
+		"gem":
+			return GEM.lerp(SUPER_GEM, 0.35)
+		"cave":
+			return ROCK.lerp(RUPTURE, 0.35)
+		"hybrid":
+			return SUPER_GEM.lerp(THUNDER, 0.35)
+		_:
+			return RUPTURE
+
+
 func _treasure_reward_color(reward: Dictionary) -> Color:
 	var kind := String(reward.get("kind", TREASURE_KIND_GEMS))
 	match kind:
 		TREASURE_KIND_HEAL:
 			return WARN
 		TREASURE_KIND_UPGRADE:
-			return RUPTURE
+			var upgrade: Dictionary = reward.get("upgrade", {})
+			return _upgrade_color(String(upgrade.get("id", "")))
 		_:
 			return GEM
 
@@ -6627,6 +7010,8 @@ func _draw_ui() -> void:
 		_draw_upgrade_pickup_toast()
 	else:
 		_draw_tutorial_hint()
+	if show_guide:
+		_draw_guide_overlay()
 
 
 func _draw_pause_overlay() -> void:
@@ -6636,8 +7021,12 @@ func _draw_pause_overlay() -> void:
 	_text(rect.position + Vector2(36, 54), "Paused", 32, UI)
 	_text(rect.position + Vector2(38, 78), "Score %d | Gems %d | Level %d" % [score, gems_collected, player_level], 14, MUTED)
 	_draw_touch_button(_pause_hub_rect(), "HUB", MUTED, false)
+	_draw_touch_button(_pause_guide_rect(), "GUIDE", PRESSURE, false)
 	_draw_touch_button(_pause_resume_rect(), "RESUME", BEACON_ARMED, true)
 	_draw_setting_row(_pause_audio_rect(), "Audio", _audio_enabled())
+	_draw_setting_row(_pause_music_rect(), "Music", _music_enabled())
+	_draw_volume_row(_pause_sfx_volume_rect(), "SFX volume", _sfx_volume_step())
+	_draw_volume_row(_pause_music_volume_rect(), "Music volume", _music_volume_step())
 	_draw_setting_row(_pause_shake_rect(), "Screen shake", _screen_shake_enabled())
 	_draw_setting_row(_pause_tutorial_rect(), "First-run hints", _tutorial_enabled())
 	_draw_wipe_save_row(_pause_wipe_rect())
@@ -6659,6 +7048,18 @@ func _draw_setting_row(rect: Rect2, label: String, enabled: bool) -> void:
 		draw_rect(Rect2(box.position + Vector2(9, 13), Vector2(8, 4)), UI)
 
 
+func _draw_volume_row(rect: Rect2, label: String, step: int) -> void:
+	var value := "OFF" if step <= 0 else "%d/%d" % [step, AUDIO_VOLUME_STEPS]
+	var color := MUTED if step <= 0 else BEACON_ARMED
+	_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
+	_text(rect.position + Vector2(16, 25), label, 17, UI)
+	_text(rect.position + Vector2(rect.size.x - 72, 25), value, 16, color)
+	var bar_pos := rect.position + Vector2(rect.size.x - 150, 14)
+	for i in range(AUDIO_VOLUME_STEPS):
+		var fill := color if i < step else Color("#242132")
+		draw_rect(Rect2(bar_pos + Vector2(float(i) * 18.0, 0), Vector2(12, 16)), fill)
+
+
 func _draw_wipe_save_row(rect: Rect2) -> void:
 	var color := RUPTURE if wipe_save_confirm else WARN
 	var value := "CONFIRM" if wipe_save_confirm else "WIPE"
@@ -6666,6 +7067,88 @@ func _draw_wipe_save_row(rect: Rect2) -> void:
 	_text(rect.position + Vector2(16, 23), "Wipe save", 17, UI)
 	_text(rect.position + Vector2(16, 38), "Reset unlocks, stats, settings.", 11, MUTED)
 	_text(rect.position + Vector2(rect.size.x - 92, 25), value, 15, color)
+
+
+func _guide_pages() -> Array:
+	return [
+		{
+			"title": "Run Basics",
+			"lines": [
+				"Dig into dirt to carve routes, collect gems, and reach deep prizes.",
+				"Gems, relics, chests, and pressure bounties charge the extraction beacon.",
+				"When the beacon arms, return to it and interact before the den overwhelms you."
+			]
+		},
+		{
+			"title": "Combat",
+			"lines": [
+				"Face an enemy and fire the lance. Pump pinned targets to rupture them.",
+				"Boulders are dangerous tools: lure enemies under falling rocks for big XP.",
+				"Pressure surges mark bounty targets that give extra beacon charge."
+			]
+		},
+		{
+			"title": "Relics",
+			"lines": [
+				"Level-ups offer owned relics. Map relics and upgrade chests grant run-only relics.",
+				"Ice, Fire, and Thunder unlock through research feats and open element branches.",
+				"Picking related relic families grants set bonuses during the run."
+			]
+		},
+		{
+			"title": "Meta Progress",
+			"lines": [
+				"Every real run earns relic research and runes from survival, kills, relics, and extraction.",
+				"Research adds more relics into future level-up, map, and chest rotations.",
+				"Spend runes in the hub for permanent starts, research boosts, and better chest odds."
+			]
+		},
+		{
+			"title": "Sites And Gear",
+			"lines": [
+				"Crystal Veins has hard shale, sealed crystal seams, and richer super gems.",
+				"Obsidian Rift adds more rocks, faster pressure, and better upgrade chest odds.",
+				"Beacon mods trade comfort for information: scanner finds the hatch, compass finds chests."
+			]
+		}
+	]
+
+
+func _draw_guide_overlay() -> void:
+	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color("#05060ac0"))
+	var pages := _guide_pages()
+	if pages.is_empty():
+		return
+	guide_page = clampi(guide_page, 0, pages.size() - 1)
+	var page: Dictionary = pages[guide_page]
+	var rect := _guide_panel_rect()
+	_draw_pixel_panel(rect, Color("#111820f2"), PRESSURE.darkened(0.1))
+	_text_fit(rect.position + Vector2(34, 48), String(page["title"]), 30, UI, rect.size.x - 170.0, 20)
+	_text(rect.position + Vector2(rect.size.x - 112, 44), "%d / %d" % [guide_page + 1, pages.size()], 14, MUTED)
+	var lines: Array = page["lines"]
+	for i in range(lines.size()):
+		_draw_guide_line(rect.position + Vector2(42, 96 + i * 72), String(lines[i]), i, rect.size.x - 92.0)
+	_draw_touch_button(_guide_prev_rect(), "<", MUTED, false)
+	_draw_touch_button(_guide_next_rect(), ">", PRESSURE, false)
+	_draw_touch_button(_guide_close_rect(), "CLOSE", WARN, false)
+	_text_fit(rect.position + Vector2(36, rect.size.y - 24), "H toggles guide. Left / Right changes page.", 13, MUTED, rect.size.x - 190.0, 10)
+
+
+func _draw_guide_line(pos: Vector2, text: String, index: int, max_width: float) -> void:
+	var color: Color = [PRESSURE, RUPTURE, BEACON_ARMED, SUPER_GEM, WARN][index % 5]
+	draw_rect(Rect2(pos + Vector2(0, -16), Vector2(8, 48)), color.darkened(0.2))
+	_draw_wrapped_text(pos + Vector2(22, 0), text, 15, UI, max_width - 22.0, 2, 19.0)
+
+
+func _handle_guide_pointer(pos: Vector2) -> void:
+	if _guide_close_rect().has_point(pos):
+		show_guide = false
+		_play_sfx("ui")
+		queue_redraw()
+	elif _guide_prev_rect().has_point(pos):
+		_cycle_guide_page(-1)
+	elif _guide_next_rect().has_point(pos) or _guide_panel_rect().has_point(pos):
+		_cycle_guide_page(1)
 
 
 func _draw_upgrade_pickup_toast() -> void:
@@ -6678,6 +7161,7 @@ func _draw_upgrade_pickup_toast() -> void:
 	var edge := RUPTURE.lerp(Color("#f7df86"), 0.38)
 	edge.a = 0.78 + 0.16 * sin(anim_time * 8.0)
 	_draw_pixel_panel(rect, Color("#111820e6"), edge)
+	_draw_relic_icon(rect.position + Vector2(46, 31), upgrade_pickup_toast, 0.95)
 	_text(rect.position + Vector2(14, 21), "RELIC", 12, RUPTURE.lerp(Color("#f7df86"), 0.35))
 	_text(rect.position + Vector2(72, 25), _trim_text(String(upgrade_pickup_toast.get("name", "Upgrade")), 28), 18, Color("#f7df86"))
 	_text(rect.position + Vector2(72, 46), _trim_text(String(upgrade_pickup_toast.get("desc", "")), 52), 12, MUTED)
@@ -6718,16 +7202,18 @@ func _tutorial_hint_text() -> String:
 
 func _draw_meta_hub() -> void:
 	var rect := _meta_panel_rect()
+	_draw_meta_backdrop(rect)
 	_draw_pixel_panel(rect, Color("#111820ee"), Color("#d8c27a"))
 	var pos := rect.position
 	_text(pos + Vector2(28, 52), "DIGGY", 36, UI)
+	_draw_title_sparks(pos + Vector2(148, 37))
 	_text(pos + Vector2(30, 78), "CAVERNS OF CHANCE", 14, MUTED)
-	_text(pos + Vector2(rect.size.x - 188, 54), "META PROGRESS", 15, UI_PANEL_HILITE)
 
 	_draw_meta_selector(_meta_map_rect(), "DIG SITE", _map_choice_text(), _map_choice_desc(), "Left / Right")
 	_draw_meta_selector(_meta_loadout_rect(), "LOADOUT", _loadout_choice_text(), _loadout_choice_desc(), "Up / Down")
 	_draw_meta_selector(_meta_beacon_mod_rect(), "BEACON MOD", _beacon_mod_choice_text(), _beacon_mod_choice_desc(), "Tab")
 	_draw_meta_progress_panel(_meta_progress_rect())
+	_draw_touch_button(_meta_guide_rect(), "GUIDE", PRESSURE, false)
 	_draw_touch_button(_meta_start_rect(), "START RUN", BEACON_ARMED, false)
 
 	if meta_notice != "":
@@ -6736,12 +7222,30 @@ func _draw_meta_hub() -> void:
 		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(_meta_prompt_text(), 54), 14, MUTED)
 
 
+func _draw_meta_backdrop(rect: Rect2) -> void:
+	var viewport := get_viewport_rect().size
+	for i in range(10):
+		var x := fmod(anim_time * (8.0 + float(i)) + float(i * 97), viewport.x + 80.0) - 40.0
+		var y := rect.position.y + 30.0 + float((i * 43) % int(maxf(1.0, rect.size.y - 80.0)))
+		var color := PRESSURE.lerp(RUPTURE, float(i % 5) / 5.0)
+		color.a = 0.08
+		draw_rect(Rect2(_snap_px(Vector2(x, y)), Vector2(38 + i * 2, 2)), color)
+
+
+func _draw_title_sparks(origin: Vector2) -> void:
+	for i in range(5):
+		var offset := Vector2(float(i * 18), sin(anim_time * 3.0 + float(i)) * 4.0)
+		var color: Color = [GEM, RUPTURE, BEACON_ARMED, SUPER_GEM, PRESSURE][i]
+		color.a = 0.65
+		_draw_pixel_diamond(origin + offset, 2, color)
+
+
 func _draw_meta_selector(rect: Rect2, label: String, value: String, desc: String, hint: String) -> void:
 	_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
-	_text(rect.position + Vector2(18, 24), label, 13, UI_PANEL_HILITE)
-	_text(rect.position + Vector2(18, 52), _trim_text(value, 28), 22, Color("#f7df86"))
-	_text(rect.position + Vector2(18, 76), _trim_text(desc, 46), 13, MUTED)
-	_text(rect.position + Vector2(rect.size.x - 94, 24), hint, 11, MUTED)
+	_text(rect.position + Vector2(18, 22), label, 12, UI_PANEL_HILITE)
+	_text_fit(rect.position + Vector2(18, 47), value, 20, Color("#f7df86"), rect.size.x - 130.0, 14)
+	_text_fit(rect.position + Vector2(18, 68), desc, 12, MUTED, rect.size.x - 36.0, 9)
+	_text_fit(rect.position + Vector2(rect.size.x - 94, 22), hint, 11, MUTED, 78.0, 9)
 
 
 func _draw_meta_progress_panel(rect: Rect2) -> void:
@@ -6752,13 +7256,20 @@ func _draw_meta_progress_panel(rect: Rect2) -> void:
 	var maps: Dictionary = meta.get("unlocked_maps", {})
 	var elements: Dictionary = meta.get("researched_elements", {})
 	var research := int(lifetime.get("relic_research", 0))
-	_text(rect.position + Vector2(18, 26), "UNLOCKS", 14, UI_PANEL_HILITE)
-	_text(rect.position + Vector2(18, 54), "Relics %d" % _true_count(relics), 15, UI)
-	_text(rect.position + Vector2(18, 78), "Research %d" % research, 15, UI)
-	_text(rect.position + Vector2(18, 102), _next_relic_research_text(), 15, UI)
-	_text(rect.position + Vector2(176, 54), "Extract %d" % int(lifetime.get("extractions", 0)), 15, UI)
-	_text(rect.position + Vector2(176, 78), "Runs %d" % int(lifetime.get("runs_completed", 0)), 15, UI)
-	_text(rect.position + Vector2(176, 102), "Map %d Elem %d Achv %d" % [_true_count(maps), _true_count(elements), _true_count(achievements)], 13, UI)
+	var runes := int(lifetime.get("runes", 0))
+	var selected := _selected_meta_upgrade_def()
+	var upgrade_id := String(selected.get("id", ""))
+	var level := _meta_upgrade_level(upgrade_id)
+	var max_level := int(selected.get("max", 1))
+	var cost := _meta_upgrade_cost(upgrade_id)
+	var top_line := "RUNES %d   Research %d   Relics %d   %s" % [runes, research, _true_count(relics), _next_relic_research_text()]
+	_text_fit(rect.position + Vector2(18, 24), top_line, 14, UI, rect.size.x - 36.0, 10)
+	_text(rect.position + Vector2(18, 50), "META UPGRADE", 12, UI_PANEL_HILITE)
+	_text_fit(rect.position + Vector2(18, 76), String(selected.get("name", "Upgrade")), 20, Color("#f7df86"), rect.size.x - 128.0, 14)
+	_text_fit(rect.position + Vector2(rect.size.x - 152, 76), "Rank %d/%d" % [level, max_level], 13, UI, 62.0, 10)
+	_draw_wrapped_text(rect.position + Vector2(18, 100), String(selected.get("desc", "")), 13, MUTED, rect.size.x - 36.0, 2, 16.0)
+	_text_fit(rect.position + Vector2(18, 132), "%s | Runs %d | Map %d Elem %d Achv %d" % ["MAX" if level >= max_level else "Cost %d" % cost, int(lifetime.get("runs_completed", 0)), _true_count(maps), _true_count(elements), _true_count(achievements)], 12, MUTED, rect.size.x - 36.0, 9)
+	_draw_touch_button(_meta_buy_rect(), "BUY", BEACON_ARMED if runes >= cost and level < max_level else MUTED, false)
 
 
 func _true_count(values: Dictionary) -> int:
@@ -6809,12 +7320,18 @@ func _beacon_mod_choice_desc() -> String:
 func _handle_meta_pointer(pos: Vector2) -> void:
 	if _meta_start_rect().has_point(pos):
 		_start_selected_run()
+	elif _meta_guide_rect().has_point(pos):
+		_toggle_guide()
+	elif _meta_buy_rect().has_point(pos):
+		_buy_selected_meta_upgrade()
 	elif _meta_map_rect().has_point(pos):
 		_cycle_selected_map(1)
 	elif _meta_loadout_rect().has_point(pos):
 		_cycle_selected_loadout(1)
 	elif _meta_beacon_mod_rect().has_point(pos):
 		_cycle_selected_beacon_mod(1)
+	elif _meta_progress_rect().has_point(pos):
+		_cycle_meta_upgrade(1)
 
 
 func _handle_pause_pointer(pos: Vector2) -> void:
@@ -6824,8 +7341,16 @@ func _handle_pause_pointer(pos: Vector2) -> void:
 	wipe_save_confirm = false
 	if _pause_resume_rect().has_point(pos):
 		_resume_from_pause()
+	elif _pause_guide_rect().has_point(pos):
+		_toggle_guide()
 	elif _pause_audio_rect().has_point(pos):
 		_toggle_setting("audio")
+	elif _pause_music_rect().has_point(pos):
+		_toggle_setting("music")
+	elif _pause_sfx_volume_rect().has_point(pos):
+		_cycle_volume_setting("sfx_volume")
+	elif _pause_music_volume_rect().has_point(pos):
+		_cycle_volume_setting("music_volume")
 	elif _pause_shake_rect().has_point(pos):
 		_toggle_setting("screen_shake")
 	elif _pause_tutorial_rect().has_point(pos):
@@ -6843,27 +7368,37 @@ func _meta_panel_rect() -> Rect2:
 
 func _meta_map_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 106), Vector2(rect.size.x - 56, 92))
+	return Rect2(rect.position + Vector2(28, 100), Vector2(rect.size.x - 56, 78))
 
 
 func _meta_loadout_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 212), Vector2(rect.size.x - 56, 92))
+	return Rect2(rect.position + Vector2(28, 188), Vector2(rect.size.x - 56, 78))
 
 
 func _meta_beacon_mod_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 318), Vector2(rect.size.x - 56, 92))
+	return Rect2(rect.position + Vector2(28, 276), Vector2(rect.size.x - 56, 78))
 
 
 func _meta_progress_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 424), Vector2(rect.size.x - 260, 116))
+	return Rect2(rect.position + Vector2(28, 368), Vector2(rect.size.x - 56, 148))
 
 
 func _meta_start_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(rect.size.x - 206, 456), Vector2(168, 54))
+	return Rect2(rect.position + Vector2(rect.size.x - 196, 42), Vector2(168, 34))
+
+
+func _meta_guide_rect() -> Rect2:
+	var rect := _meta_panel_rect()
+	return Rect2(rect.position + Vector2(rect.size.x - 196, 80), Vector2(168, 24))
+
+
+func _meta_buy_rect() -> Rect2:
+	var rect := _meta_progress_rect()
+	return Rect2(rect.position + Vector2(rect.size.x - 86, 50), Vector2(68, 34))
 
 
 func _draw_portrait_hud() -> void:
@@ -7039,7 +7574,7 @@ func _mobile_pause_rect() -> Rect2:
 func _pause_panel_rect() -> Rect2:
 	var viewport := get_viewport_rect().size
 	var width := minf(viewport.x - 48.0, 500.0)
-	var height := 382.0
+	var height := minf(viewport.y - 48.0, 482.0)
 	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
 
 
@@ -7055,22 +7590,64 @@ func _pause_audio_rect() -> Rect2:
 
 func _pause_shake_rect() -> Rect2:
 	var rect := _pause_panel_rect()
-	return Rect2(rect.position + Vector2(36, 190), Vector2(rect.size.x - 72, 38))
+	return Rect2(rect.position + Vector2(36, 322), Vector2(rect.size.x - 72, 38))
 
 
 func _pause_tutorial_rect() -> Rect2:
 	var rect := _pause_panel_rect()
-	return Rect2(rect.position + Vector2(36, 234), Vector2(rect.size.x - 72, 38))
+	return Rect2(rect.position + Vector2(36, 366), Vector2(rect.size.x - 72, 38))
 
 
 func _pause_wipe_rect() -> Rect2:
 	var rect := _pause_panel_rect()
-	return Rect2(rect.position + Vector2(36, 278), Vector2(rect.size.x - 72, 48))
+	return Rect2(rect.position + Vector2(36, 410), Vector2(rect.size.x - 72, 48))
 
 
 func _pause_hub_rect() -> Rect2:
 	var rect := _pause_panel_rect()
 	return Rect2(rect.position + Vector2(rect.size.x - 156, 34), Vector2(112, 34))
+
+
+func _pause_guide_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(rect.size.x - 276, 34), Vector2(112, 34))
+
+
+func _pause_music_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 190), Vector2(rect.size.x - 72, 38))
+
+
+func _pause_sfx_volume_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 234), Vector2(rect.size.x - 72, 38))
+
+
+func _pause_music_volume_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 278), Vector2(rect.size.x - 72, 38))
+
+
+func _guide_panel_rect() -> Rect2:
+	var viewport := get_viewport_rect().size
+	var width := minf(viewport.x - 48.0, 660.0)
+	var height := minf(viewport.y - 48.0, 430.0)
+	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
+
+
+func _guide_prev_rect() -> Rect2:
+	var rect := _guide_panel_rect()
+	return Rect2(rect.position + Vector2(34, rect.size.y - 72), Vector2(72, 38))
+
+
+func _guide_next_rect() -> Rect2:
+	var rect := _guide_panel_rect()
+	return Rect2(rect.position + Vector2(116, rect.size.y - 72), Vector2(72, 38))
+
+
+func _guide_close_rect() -> Rect2:
+	var rect := _guide_panel_rect()
+	return Rect2(rect.position + Vector2(rect.size.x - 142, rect.size.y - 72), Vector2(104, 38))
 
 
 func _portrait_layout_left() -> float:
@@ -7210,6 +7787,9 @@ func _status_detail_string() -> String:
 	var bounty_text := _bounty_status_text()
 	if bounty_text != "":
 		parts.append(bounty_text)
+	var treasure_text := _treasure_compass_text()
+	if treasure_text != "":
+		parts.append(treasure_text)
 	parts.append("Enemies %d/%d" % [enemies.size(), _spawn_cap()])
 	if crystal_charge > 0:
 		parts.append("Charge %d" % crystal_charge)
@@ -7230,6 +7810,19 @@ func _bounty_status_text() -> String:
 		var distance := roundi(sqrt(float(enemy_pos.distance_squared_to(player_pos))))
 		return "Bounty %d away" % distance
 	return ""
+
+
+func _treasure_compass_text() -> String:
+	if not _has_beacon_mod(BEACON_MOD_TREASURE_COMPASS):
+		return ""
+	var best_distance := 999999
+	for chest in treasure_chests:
+		var chest_pos: Vector2i = chest["pos"]
+		var distance: int = abs(chest_pos.x - player_pos.x) + abs(chest_pos.y - player_pos.y)
+		best_distance = mini(best_distance, distance)
+	if best_distance >= 999999:
+		return ""
+	return "Chest %d" % best_distance
 
 
 func _trim_status_text(value: String) -> String:
@@ -7795,6 +8388,56 @@ func _text(pos: Vector2, value: String, size: int, color: Color) -> void:
 	var pixel_pos := _snap_px(pos)
 	draw_string(font, pixel_pos + Vector2(2, 2), value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color("#05060acc"))
 	draw_string(font, pixel_pos, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
+
+
+func _text_width(value: String, size: int) -> float:
+	return font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+
+
+func _ellipsize_to_width(value: String, size: int, max_width: float) -> String:
+	if max_width <= 8.0:
+		return ""
+	if _text_width(value, size) <= max_width:
+		return value
+	var text := value
+	while text.length() > 0 and _text_width(text + "..", size) > max_width:
+		text = text.substr(0, text.length() - 1)
+	return text + ".." if text.length() > 0 else ".."
+
+
+func _text_fit(pos: Vector2, value: String, size: int, color: Color, max_width: float, min_size := 10) -> void:
+	var final_size := size
+	while final_size > min_size and _text_width(value, final_size) > max_width:
+		final_size -= 1
+	_text(pos, _ellipsize_to_width(value, final_size, max_width), final_size, color)
+
+
+func _wrap_text(value: String, size: int, max_width: float, max_lines: int) -> Array[String]:
+	var words := value.split(" ", false)
+	var lines: Array[String] = []
+	var current := ""
+	for word in words:
+		var candidate := String(word) if current == "" else current + " " + String(word)
+		if current == "" or _text_width(candidate, size) <= max_width:
+			current = candidate
+		else:
+			lines.append(_ellipsize_to_width(current, size, max_width))
+			current = String(word)
+	if current != "":
+		lines.append(_ellipsize_to_width(current, size, max_width))
+	if lines.size() > max_lines:
+		var trimmed: Array[String] = []
+		for i in range(max_lines):
+			trimmed.append(lines[i])
+		trimmed[max_lines - 1] = _ellipsize_to_width(trimmed[max_lines - 1] + "..", size, max_width)
+		return trimmed
+	return lines
+
+
+func _draw_wrapped_text(pos: Vector2, value: String, size: int, color: Color, max_width: float, max_lines: int, line_height := 18.0) -> void:
+	var lines := _wrap_text(value, size, max_width, max_lines)
+	for i in range(lines.size()):
+		_text(pos + Vector2(0, float(i) * line_height), lines[i], size, color)
 
 
 func _draw_hearts(pos: Vector2) -> void:

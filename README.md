@@ -8,6 +8,7 @@ Diggy is a compact arcade mining survival game built in Godot 4. Dig through the
 - Lance / pump: `Space`
 - Interact with armed beacon: `E` or `Enter`
 - Upgrade inventory: `I`
+- Guide / codex: `H`
 - Pause / settings: `Esc` or `P`
 - Hub / rerun after a run: `Enter` for hub, `R` to rerun
 
@@ -15,7 +16,15 @@ On touch devices, use the on-screen directional pad, `LANCE` button, and pause b
 
 ## Progression
 
-Completed runs earn relic research from survival time, gems, kills, relic finds, and extraction. Research milestones add more relics to future upgrade rotations, while achievements can still unlock maps, loadouts, elements, and special relics early.
+Completed runs earn relic research and runes from survival time, gems, kills, relic finds, and extraction. Research milestones add more relics to future upgrade rotations, while runes buy permanent hub upgrades that improve starts, research gain, and chest relic odds. Achievements can still unlock maps, loadouts, elements, and special relics early.
+
+The pause settings include master audio, music, SFX volume, music volume, screen shake, first-run hints, and a double-confirm wipe-save button.
+
+Boss kills unlock the harder Obsidian Rift site, the Field Kit loadout, and the Treasure Compass beacon mod.
+
+## Checks
+
+Run `python3 tools/balance_check.py` to validate upgrade, research, and unlock table references.
 
 ## Release Build
 
