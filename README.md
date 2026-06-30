@@ -1,18 +1,22 @@
 # Diggy: Caverns of Chance
 
-Diggy is a compact arcade mining survival game built in Godot 4. Dig through the cavern, collect gems and relics, survive pressure surges, then reach the extraction beacon before the den catches you.
+Diggy is a compact arcade mining extraction game built in Godot 4. Dig through the cavern, collect gems and relics, find cave keys, decide which locked vaults are worth the risk, then reach the extraction beacon before the den catches you.
 
 ## Controls
 
 - Move: `WASD` or arrow keys
 - Lance / pump: `Space`
-- Interact with armed beacon: `E` or `Enter`
+- Interact with armed beacon / vault gate: `E` or `Enter`
 - Upgrade inventory: `I`
 - Guide / codex: `H`
 - Pause / settings: `Esc` or `P`
 - Hub / rerun after a run: `Enter` for hub, `R` to rerun
 
-On touch devices, use the on-screen directional pad, `LANCE` button, and pause button. Hub panels can be tapped to cycle unlocked setup options.
+On touch devices, use the on-screen directional pad, `LANCE` button, and pause button. The action button changes to `KEY` near a locked vault gate and `BEACON` at an armed beacon. Hub panels can be tapped to cycle unlocked setup options.
+
+## Keys and Vaults
+
+Runs now include cave keys and optional locked side rooms. Vault gates preview their reward type and danger: cache, tool, relic, and crusher vaults each ask whether the loot, route risk, trap setup, or boulder combo opportunity is worth delaying extraction. Keys are never required to extract, so spending time on vaults is a greed decision rather than a soft-lock.
 
 ## Progression
 

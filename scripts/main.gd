@@ -45,6 +45,7 @@ const TUNNEL_DIR_UP := 8
 const TILE_DIRT := 0
 const TILE_TUNNEL := 1
 const TILE_BEACON := 2
+const TILE_VAULT_GATE := 3
 
 const TERRAIN_CRYSTAL_SHALE := "crystal_shale"
 const TERRAIN_CRYSTAL_SEAL := "crystal_seal"
@@ -149,6 +150,15 @@ const TREASURE_JACKPOT_MAX := 11
 const TREASURE_KIND_GEMS := "gems"
 const TREASURE_KIND_UPGRADE := "upgrade"
 const TREASURE_KIND_HEAL := "heal"
+const KEY_PICKUP_COUNT := 3
+const VAULT_ROOM_COUNT := 4
+const VAULT_KIND_CACHE := "cache"
+const VAULT_KIND_TOOL := "tool"
+const VAULT_KIND_RELIC := "relic"
+const VAULT_KIND_CRUSHER := "crusher"
+const VAULT_DANGER_TIME := "time"
+const VAULT_DANGER_TRAP := "trap"
+const VAULT_DANGER_ALERT := "alert"
 
 const DIRS := [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]
 const ROCK_LOOSE_DELAY := 1.12
@@ -334,6 +344,9 @@ const RUPTURE := Color("#ffd45a")
 const TREASURE_CHEST := Color("#c98b3a")
 const TREASURE_CHEST_DARK := Color("#6f3d1f")
 const TREASURE_CHEST_LOCK := Color("#ffe082")
+const CAVE_KEY := Color("#f6d365")
+const VAULT_GATE := Color("#8f6ed5")
+const VAULT_GATE_DARK := Color("#231733")
 const BEACON_DORMANT := Color("#746a83")
 const BEACON_ARMED := Color("#baff4d")
 const UI := Color("#f2e7c9")
@@ -356,6 +369,8 @@ var rocks := []
 var gems := []
 var super_gems := []
 var treasure_chests := []
+var key_pickups := []
+var vault_rooms := []
 var xp_pickups := []
 var enemies := []
 var recent_spawn_cells: Array[Vector2i] = []
@@ -546,6 +561,11 @@ var run_super_gems_collected := 0
 var run_kills := 0
 var run_boulder_kills := 0
 var run_relics_found := 0
+var keys_held := 0
+var keys_found := 0
+var keys_spent := 0
+var vaults_opened := 0
+var vault_combo_kills := 0
 var run_damage_taken := 0
 var run_meta_recorded := false
 
@@ -1427,6 +1447,8 @@ func _run_relic_research_gain(extracted: bool) -> int:
 	gain += mini(3, floori(float(gems_collected) / 10.0))
 	gain += mini(3, floori(float(run_kills) / 6.0))
 	gain += mini(2, run_relics_found)
+	gain += mini(2, vaults_opened)
+	gain += mini(1, vault_combo_kills)
 	if extracted:
 		gain += 3
 	gain += _meta_upgrade_level("field_notes")
@@ -1437,6 +1459,9 @@ func _run_rune_gain(extracted: bool) -> int:
 	var gain := 1
 	gain += mini(2, floori(run_time / 120.0))
 	gain += mini(2, run_relics_found)
+	gain += mini(2, vaults_opened)
+	if vault_combo_kills > 0:
+		gain += 1
 	if run_kills >= 16:
 		gain += 1
 	if extracted:
@@ -1883,6 +1908,11 @@ func _start_run_map() -> void:
 	run_kills = 0
 	run_boulder_kills = 0
 	run_relics_found = 0
+	keys_held = 0
+	keys_found = 0
+	keys_spent = 0
+	vaults_opened = 0
+	vault_combo_kills = 0
 	run_damage_taken = 0
 	run_meta_recorded = false
 	player_step_squash = 0.0
@@ -1921,6 +1951,8 @@ func _build_cavern() -> void:
 	crystal_cells.clear()
 	terrain_cells.clear()
 	treasure_chests.clear()
+	key_pickups.clear()
+	vault_rooms.clear()
 	enemies.clear()
 	recent_spawn_cells.clear()
 	run_relics.clear()
@@ -1953,6 +1985,8 @@ func _build_cavern() -> void:
 	_ensure_visible_start_enemies()
 	_place_initial_treasure_chests(2)
 	_place_deep_treasure()
+	_place_vault_rooms()
+	_place_key_pickups()
 	_rebuild_soil_mask_from_grid()
 
 
@@ -2359,6 +2393,285 @@ func _place_deep_treasure() -> void:
 		"reward": {"kind": TREASURE_KIND_GEMS, "amount": TREASURE_JACKPOT_MAX + 5 + depth_tier},
 		"deep_signal": true
 	})
+
+
+func _place_vault_rooms() -> void:
+	var kinds := [VAULT_KIND_CACHE, VAULT_KIND_TOOL, VAULT_KIND_RELIC, VAULT_KIND_CRUSHER]
+	for kind in kinds:
+		if vault_rooms.size() >= VAULT_ROOM_COUNT:
+			return
+		_try_place_vault_room(kind)
+
+
+func _try_place_vault_room(kind: String) -> bool:
+	var connected := _connected_tunnel_cells(player_pos)
+	connected.shuffle()
+	var best := {}
+	var best_score := -999999.0
+	for approach_cell in connected:
+		var approach: Vector2i = approach_cell
+		if approach.distance_squared_to(player_pos) < 36:
+			continue
+		var dirs := _vault_direction_options(kind)
+		for dir in dirs:
+			var gate := approach + dir
+			var room_cells := _vault_room_cells(gate, dir, kind)
+			if not _can_place_vault_at(approach, gate, dir, room_cells, kind):
+				continue
+			var score_value := _vault_site_score(approach, gate, room_cells, kind)
+			if score_value > best_score:
+				best_score = score_value
+				best = {
+					"approach": approach,
+					"gate": gate,
+					"dir": dir,
+					"cells": room_cells,
+					"kind": kind
+				}
+	if best.is_empty():
+		return false
+	_commit_vault_room(best)
+	return true
+
+
+func _vault_direction_options(kind: String) -> Array:
+	if kind == VAULT_KIND_CRUSHER:
+		return [Vector2i.DOWN]
+	var dirs := DIRS.duplicate()
+	dirs.shuffle()
+	return dirs
+
+
+func _vault_room_cells(gate: Vector2i, dir: Vector2i, kind: String) -> Array:
+	var side := Vector2i(-dir.y, dir.x)
+	var base := gate + dir
+	match kind:
+		VAULT_KIND_CACHE:
+			return [base, base + side, base - side, base + dir]
+		VAULT_KIND_TOOL:
+			return [base, base + dir, base + dir + side, base + dir - side]
+		VAULT_KIND_RELIC:
+			return [base, base + dir, base + dir * 2, base + dir * 2 + side, base + dir * 2 - side]
+		VAULT_KIND_CRUSHER:
+			return [base, base + Vector2i.DOWN, base + Vector2i.DOWN * 2, base + Vector2i.DOWN * 3, base + Vector2i.RIGHT]
+	return [base, base + dir]
+
+
+func _can_place_vault_at(approach: Vector2i, gate: Vector2i, dir: Vector2i, room_cells: Array, kind: String) -> bool:
+	if kind == VAULT_KIND_CRUSHER and dir != Vector2i.DOWN:
+		return false
+	if not _in_bounds(approach) or not _is_open_tile(approach):
+		return false
+	if not _in_bounds(gate) or _tile(gate) != TILE_DIRT or not _can_spawn_underground_at(gate):
+		return false
+	if _terrain_at(gate) != "" or gate == beacon_pos or _has_any_pickup_or_actor(gate):
+		return false
+	if _adjacent_tunnel_count(gate) != 1:
+		return false
+	var unique := {}
+	for cell_value in room_cells:
+		var cell: Vector2i = cell_value
+		if unique.has(cell):
+			return false
+		unique[cell] = true
+		if not _in_bounds(cell) or not _can_spawn_underground_at(cell):
+			return false
+		if _tile(cell) != TILE_DIRT or _terrain_at(cell) != "":
+			return false
+		if cell == player_pos or cell == player_target_cell or cell == beacon_pos:
+			return false
+		if _has_any_pickup_or_actor(cell) or _vault_contains_cell(cell):
+			return false
+		if _adjacent_tunnel_count(cell) > 0:
+			return false
+	return true
+
+
+func _has_any_pickup_or_actor(pos: Vector2i) -> bool:
+	return _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_key_pickup(pos) or _enemy_index_at(pos) != -1 or _has_xp_pickup(pos)
+
+
+func _vault_site_score(approach: Vector2i, gate: Vector2i, room_cells: Array, kind: String) -> float:
+	var score_value := sqrt(float(approach.distance_squared_to(player_pos))) * 9.0
+	score_value += _depth_reward_ratio(gate) * 92.0
+	score_value += rng.randf_range(0.0, 34.0)
+	for cell_value in room_cells:
+		var cell: Vector2i = cell_value
+		score_value += _depth_reward_ratio(cell) * 12.0
+	if kind == VAULT_KIND_CRUSHER:
+		score_value += 28.0
+	return score_value
+
+
+func _commit_vault_room(vault: Dictionary) -> void:
+	var gate: Vector2i = vault["gate"]
+	var room_cells: Array = vault["cells"]
+	for cell_value in room_cells:
+		_carve_cell(cell_value, true, false)
+	_set_tile(gate, TILE_VAULT_GATE)
+	dig_masks[gate] = DIG_FULL_MASK
+	tunnel_age.erase(gate)
+	var kind := String(vault["kind"])
+	var reward_cell := _vault_reward_cell(room_cells)
+	var danger := _vault_danger_for_kind(kind)
+	var danger_pips := _vault_danger_pips(kind)
+	var reward_label := _vault_reward_label(kind)
+	var stored := {
+		"kind": kind,
+		"gate": gate,
+		"approach": vault["approach"],
+		"dir": vault["dir"],
+		"cells": room_cells,
+		"reward_cell": reward_cell,
+		"danger": danger,
+		"danger_pips": danger_pips,
+		"reward_label": reward_label,
+		"opened": false
+	}
+	vault_rooms.append(stored)
+	_seed_vault_contents(stored)
+
+
+func _vault_reward_cell(room_cells: Array) -> Vector2i:
+	var best := Vector2i.ZERO
+	var best_y := -999999
+	for cell_value in room_cells:
+		var cell: Vector2i = cell_value
+		if cell.y > best_y:
+			best_y = cell.y
+			best = cell
+	return best
+
+
+func _vault_danger_for_kind(kind: String) -> String:
+	match kind:
+		VAULT_KIND_CACHE:
+			return VAULT_DANGER_TIME
+		VAULT_KIND_TOOL:
+			return VAULT_DANGER_TRAP
+		VAULT_KIND_RELIC:
+			return VAULT_DANGER_ALERT
+		VAULT_KIND_CRUSHER:
+			return VAULT_DANGER_TRAP
+	return VAULT_DANGER_TIME
+
+
+func _vault_danger_pips(kind: String) -> int:
+	match kind:
+		VAULT_KIND_CACHE:
+			return 1
+		VAULT_KIND_TOOL:
+			return 2
+		VAULT_KIND_RELIC:
+			return 3
+		VAULT_KIND_CRUSHER:
+			return 3
+	return 1
+
+
+func _vault_reward_label(kind: String) -> String:
+	match kind:
+		VAULT_KIND_CACHE:
+			return "CACHE"
+		VAULT_KIND_TOOL:
+			return "TOOL"
+		VAULT_KIND_RELIC:
+			return "RELIC"
+		VAULT_KIND_CRUSHER:
+			return "CRUSH"
+	return "VAULT"
+
+
+func _seed_vault_contents(vault: Dictionary) -> void:
+	var kind := String(vault["kind"])
+	var reward_cell: Vector2i = vault["reward_cell"]
+	match kind:
+		VAULT_KIND_CACHE:
+			treasure_chests.append({"pos": reward_cell, "reward": {"kind": TREASURE_KIND_GEMS, "amount": TREASURE_JACKPOT_MAX + depth_tier + 3}, "vault": true})
+			_sprout_treasure_lure(reward_cell, 3)
+		VAULT_KIND_TOOL:
+			treasure_chests.append({"pos": reward_cell, "reward": {"kind": TREASURE_KIND_UPGRADE}, "vault": true})
+			_try_place_vault_falling_rock(reward_cell)
+		VAULT_KIND_RELIC:
+			_place_vault_relic(reward_cell)
+		VAULT_KIND_CRUSHER:
+			_seed_crusher_vault(vault)
+
+
+func _place_vault_relic(pos: Vector2i) -> void:
+	var pool := _available_chest_upgrade_pool()
+	if pool.is_empty():
+		treasure_chests.append({"pos": pos, "reward": {"kind": TREASURE_KIND_GEMS, "amount": TREASURE_JACKPOT_MAX + 6}, "vault": true})
+		return
+	var relic: Dictionary = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
+	relic["pos"] = pos
+	relic["buried"] = false
+	relic["vault"] = true
+	run_relics.append(relic)
+
+
+func _seed_crusher_vault(vault: Dictionary) -> void:
+	var room_cells: Array = vault["cells"]
+	if room_cells.is_empty():
+		return
+	var rock_pos: Vector2i = room_cells[0]
+	if _can_place_vault_rock_at(rock_pos):
+		_add_rock(rock_pos)
+	for i in range(1, mini(3, room_cells.size())):
+		var enemy_pos: Vector2i = room_cells[i]
+		if _enemy_index_at(enemy_pos) == -1 and not _has_rock(enemy_pos):
+			_add_enemy(enemy_pos, ENEMY_GRUB_KIND)
+	var reward_cell: Vector2i = vault["reward_cell"]
+	if not _has_treasure_chest(reward_cell) and not _has_rock(reward_cell):
+		treasure_chests.append({"pos": reward_cell, "reward": {"kind": TREASURE_KIND_GEMS, "amount": TREASURE_JACKPOT_MAX + 2}, "vault": true})
+
+
+func _try_place_vault_falling_rock(target_cell: Vector2i) -> bool:
+	var rock_pos := target_cell + Vector2i.UP
+	if _can_place_vault_rock_at(rock_pos) and _is_open_tile(target_cell):
+		_add_rock(rock_pos)
+		return true
+	return false
+
+
+func _can_place_vault_rock_at(pos: Vector2i) -> bool:
+	if not _in_bounds(pos) or not _can_spawn_underground_at(pos):
+		return false
+	if _has_rock(pos) or _has_treasure_chest(pos) or _has_relic(pos) or _enemy_index_at(pos) != -1:
+		return false
+	return _cell_open_mask(pos) != 0
+
+
+func _place_key_pickups() -> void:
+	var connected := _connected_tunnel_cells(player_pos)
+	var scored := []
+	for cell_value in connected:
+		var pos: Vector2i = cell_value
+		if not _can_place_key_pickup_at(pos):
+			continue
+		var score_value := sqrt(float(pos.distance_squared_to(player_pos))) * 7.0 + _depth_reward_ratio(pos) * 80.0 + rng.randf_range(0.0, 30.0)
+		scored.append({"pos": pos, "score": score_value})
+	scored.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a["score"]) > float(b["score"])
+	)
+	for entry in scored:
+		if key_pickups.size() >= KEY_PICKUP_COUNT:
+			return
+		var pos: Vector2i = entry["pos"]
+		if _can_place_key_pickup_at(pos):
+			key_pickups.append(pos)
+
+
+func _can_place_key_pickup_at(pos: Vector2i) -> bool:
+	if not _in_bounds(pos) or not _is_open_tile(pos):
+		return false
+	if pos == player_pos or pos == player_target_cell or pos == player_step_from or pos == beacon_pos:
+		return false
+	if pos.distance_squared_to(player_pos) < 25:
+		return false
+	if _has_any_pickup_or_actor(pos) or _vault_contains_cell(pos):
+		return false
+	return true
 
 
 func _place_enemies(count: int, spawn_cells := []) -> void:
@@ -2799,6 +3112,9 @@ func _press_lance() -> void:
 	if _can_use_beacon():
 		_try_interact()
 		return
+	if _nearby_vault_gate() != Vector2i.ZERO:
+		_try_interact()
+		return
 	if lance_active:
 		lance_pulse_queued = true
 	else:
@@ -3003,6 +3319,7 @@ func _update_player_motion(delta: float, input_dir: Vector2i) -> void:
 		player_target_digging = false
 		_collect_gem_at(player_pos)
 		_collect_super_gem_at(player_pos)
+		_collect_key_at(player_pos)
 		_collect_relic_at(player_pos)
 		_collect_treasure_chest_at(player_pos)
 
@@ -3074,12 +3391,15 @@ func _sync_player_cell_from_visual() -> void:
 	player_pos = visual_cell
 	_collect_gem_at(player_pos)
 	_collect_super_gem_at(player_pos)
+	_collect_key_at(player_pos)
 	_collect_relic_at(player_pos)
 	_collect_treasure_chest_at(player_pos)
 
 
 func _can_player_enter_cell(cell: Vector2i, from: Vector2i) -> bool:
 	if not _in_bounds(cell):
+		return false
+	if _tile(cell) == TILE_VAULT_GATE:
 		return false
 	if _has_rock(cell):
 		return false
@@ -3120,14 +3440,112 @@ func _try_interact() -> void:
 		_clear_mobile_input()
 		message = "The beacon hauls you out with a pack full of strange gems."
 		_play_sfx("win")
+	elif _can_use_vault_gate():
+		_open_nearby_vault_gate()
 	else:
 		var remaining_charge := maxi(0, BEACON_CHARGE_GOAL - beacon_charge)
-		message = "Beacon needs %d charge or %s." % [remaining_charge, _format_time(maxf(0.0, RUN_GOAL_TIME - run_time))]
+		var gate := _nearby_vault_gate()
+		if gate != Vector2i.ZERO and keys_held <= 0:
+			message = "Vault needs a cave key."
+		else:
+			message = "Beacon needs %d charge or %s." % [remaining_charge, _format_time(maxf(0.0, RUN_GOAL_TIME - run_time))]
 		_play_sfx("ui")
 
 
 func _can_use_beacon() -> bool:
 	return player_pos == beacon_pos and beacon_armed
+
+
+func _can_use_vault_gate() -> bool:
+	return keys_held > 0 and _nearby_vault_gate() != Vector2i.ZERO
+
+
+func _nearby_vault_gate() -> Vector2i:
+	for dir in DIRS:
+		var pos := player_pos + dir
+		if _in_bounds(pos) and _tile(pos) == TILE_VAULT_GATE:
+			return pos
+	if _in_bounds(player_pos) and _tile(player_pos) == TILE_VAULT_GATE:
+		return player_pos
+	return Vector2i.ZERO
+
+
+func _open_nearby_vault_gate() -> bool:
+	var gate := _nearby_vault_gate()
+	if gate == Vector2i.ZERO:
+		return false
+	if keys_held <= 0:
+		message = "Vault needs a cave key."
+		_play_sfx("ui")
+		return false
+	for i in range(vault_rooms.size()):
+		var vault: Dictionary = vault_rooms[i]
+		if vault["gate"] != gate:
+			continue
+		keys_held -= 1
+		keys_spent += 1
+		vaults_opened += 1
+		vault["opened"] = true
+		vault_rooms[i] = vault
+		_set_tile(gate, TILE_TUNNEL)
+		dig_masks[gate] = DIG_FULL_MASK
+		tunnel_age[gate] = 0.0
+		_connect_tunnel_cells(gate, vault["approach"])
+		for cell_value in vault.get("cells", []):
+			var cell: Vector2i = cell_value
+			if cell.distance_squared_to(gate) == 1:
+				_connect_tunnel_cells(gate, cell)
+		var danger_message := _trigger_vault_danger(vault)
+		_add_cell_pulse(gate, VAULT_GATE, PULSE_FEEDBACK_TIME + 0.22, 1.25, true)
+		_shake(0.16)
+		_play_sfx("relic")
+		message = "%s vault opened. %s" % [String(vault.get("reward_label", "Vault")), danger_message]
+		return true
+	return false
+
+
+func _trigger_vault_danger(vault: Dictionary) -> String:
+	var danger := String(vault.get("danger", VAULT_DANGER_TIME))
+	match danger:
+		VAULT_DANGER_TIME:
+			pressure_surge_cooldown = minf(pressure_surge_cooldown, 5.0)
+			spawn_timer = minf(spawn_timer, 1.2)
+			return "Pressure rises."
+		VAULT_DANGER_TRAP:
+			_wake_vault_traps(vault)
+			return "Mind the stonework."
+		VAULT_DANGER_ALERT:
+			_spawn_vault_alert(vault)
+			return "Something heard it."
+	return "Greed wakes the cave."
+
+
+func _wake_vault_traps(vault: Dictionary) -> void:
+	for cell_value in vault.get("cells", []):
+		var cell: Vector2i = cell_value
+		if _has_rock(cell):
+			_add_cell_pulse(cell, ROCK, PULSE_FEEDBACK_TIME + 0.18, 1.0, true)
+		var above := cell + Vector2i.UP
+		if _in_bounds(above) and _has_rock(above):
+			_add_cell_pulse(above, ROCK, PULSE_FEEDBACK_TIME + 0.18, 1.0, true)
+	_shake(0.12)
+
+
+func _spawn_vault_alert(vault: Dictionary) -> void:
+	var spawned := 0
+	var cells: Array = vault.get("cells", [])
+	cells.shuffle()
+	for cell_value in cells:
+		if spawned >= 2:
+			break
+		var cell: Vector2i = cell_value
+		if _enemy_index_at(cell) != -1 or _has_rock(cell) or _has_treasure_chest(cell) or _has_relic(cell):
+			continue
+		_add_enemy(cell, ENEMY_GRUB_KIND if spawned == 0 else ENEMY_SPITTER_KIND)
+		_add_cell_pulse(cell, ENEMY_GRUB if spawned == 0 else ENEMY_SPITTER, PULSE_FEEDBACK_TIME + 0.2, 0.95, true)
+		spawned += 1
+	if spawned <= 0:
+		_spawn_survival_enemy()
 
 
 func _update_pressure_surge(delta: float) -> void:
@@ -3289,6 +3707,14 @@ func _award_extraction_bonus() -> void:
 		var rock_bonus := run_boulder_kills * 70
 		bonus += rock_bonus
 		parts.append("Rock plan +%d" % rock_bonus)
+	if vaults_opened > 0:
+		var vault_bonus := vaults_opened * 90 + keys_spent * 35
+		bonus += vault_bonus
+		parts.append("Vaults +%d" % vault_bonus)
+	if vault_combo_kills > 0:
+		var vault_combo_bonus := vault_combo_kills * 95
+		bonus += vault_combo_bonus
+		parts.append("Vault crush +%d" % vault_combo_bonus)
 	if best_combo >= 4:
 		var combo_bonus := best_combo * 35
 		bonus += combo_bonus
@@ -3886,7 +4312,7 @@ func _can_spawn_rock_at(pos: Vector2i) -> bool:
 		return false
 	if _has_rock(pos) or _has_rock(pos + Vector2i.DOWN):
 		return false
-	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _enemy_index_at(pos) != -1 or _enemy_index_at(pos + Vector2i.DOWN) != -1:
+	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_key_pickup(pos) or _tile(pos) == TILE_VAULT_GATE or _tile(pos + Vector2i.DOWN) == TILE_VAULT_GATE or _enemy_index_at(pos) != -1 or _enemy_index_at(pos + Vector2i.DOWN) != -1:
 		return false
 	return true
 
@@ -3904,7 +4330,7 @@ func _can_spawn_buried_rock_at(pos: Vector2i) -> bool:
 		return false
 	if _has_rock(pos) or _has_rock(pos + Vector2i.DOWN) or _has_rock(pos + Vector2i.UP):
 		return false
-	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _enemy_index_at(pos) != -1:
+	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_key_pickup(pos) or _tile(pos) == TILE_VAULT_GATE or _enemy_index_at(pos) != -1:
 		return false
 	return true
 
@@ -4017,7 +4443,7 @@ func _can_place_treasure_chest_at(pos: Vector2i) -> bool:
 		return false
 	if _has_rock(pos) or _enemy_index_at(pos) != -1:
 		return false
-	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_xp_pickup(pos):
+	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_key_pickup(pos) or _has_xp_pickup(pos):
 		return false
 	if _has_loose_boulder_threat(pos):
 		return false
@@ -4078,7 +4504,7 @@ func _can_place_breached_treasure_chest_at(pos: Vector2i) -> bool:
 		return false
 	if _has_rock(pos) or _enemy_index_at(pos) != -1:
 		return false
-	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_xp_pickup(pos):
+	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_key_pickup(pos) or _has_xp_pickup(pos):
 		return false
 	if _has_loose_boulder_threat(pos, true):
 		return false
@@ -4138,7 +4564,7 @@ func _can_place_lure_gem_at(pos: Vector2i) -> bool:
 		return false
 	if _has_rock(pos) or _enemy_index_at(pos) != -1:
 		return false
-	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_xp_pickup(pos):
+	if _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_key_pickup(pos) or _has_xp_pickup(pos):
 		return false
 	return true
 
@@ -4343,6 +4769,8 @@ func _update_enemies(delta: float) -> void:
 		if i >= enemies.size():
 			continue
 		var enemy: Dictionary = enemies[i]
+		if _closed_vault_contains_cell(enemy["pos"]):
+			continue
 		enemy["hit_flash"] = maxf(0.0, float(enemy.get("hit_flash", 0.0)) - delta)
 		enemy["boss_hurt_flash"] = maxf(0.0, float(enemy.get("boss_hurt_flash", 0.0)) - delta)
 		if _update_enemy_elemental_status(i, delta):
@@ -5392,6 +5820,8 @@ func _player_dig_speed() -> float:
 func _update_rocks(delta: float) -> void:
 	for rock in rocks:
 		var pos: Vector2i = rock["pos"]
+		if _closed_vault_contains_cell(pos):
+			continue
 		var below := pos + Vector2i.DOWN
 		var can_fall := _can_rock_fall_to(below)
 		if not can_fall:
@@ -5501,6 +5931,8 @@ func _crush_at(pos: Vector2i, fall_distance: int) -> void:
 			enemies.remove_at(i)
 			run_kills += 1
 			run_boulder_kills += 1
+			if _open_vault_contains_cell(dead_pos):
+				vault_combo_kills += 1
 			_record_enemy_defeat(dead_kind)
 			_increment_lifetime("boulder_kills")
 			_complete_achievement("first_boulder_kill")
@@ -5730,6 +6162,19 @@ func _collect_super_gem_at(pos: Vector2i) -> void:
 			_shake(0.18)
 			if not _add_beacon_charge(BEACON_SUPER_GEM_CHARGE, "Super gem"):
 				message = "Super gem!"
+			return
+
+
+func _collect_key_at(pos: Vector2i) -> void:
+	for i in range(key_pickups.size() - 1, -1, -1):
+		if key_pickups[i] == pos:
+			key_pickups.remove_at(i)
+			keys_held += 1
+			keys_found += 1
+			_award_score(45 + depth_tier * 8, true, "Key")
+			_add_cell_pulse(pos, CAVE_KEY, PULSE_FEEDBACK_TIME + 0.16, 1.0, true)
+			_play_sfx("gem")
+			message = "Cave key found. Choose a vault."
 			return
 
 
@@ -6503,7 +6948,7 @@ func _can_regrow_cell(pos: Vector2i) -> bool:
 		return false
 	if pos.distance_squared_to(player_pos) < REGROW_PLAYER_SAFE_RADIUS * REGROW_PLAYER_SAFE_RADIUS:
 		return false
-	if _has_rock(pos) or _enemy_index_at(pos) != -1 or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_xp_pickup(pos):
+	if _has_rock(pos) or _enemy_index_at(pos) != -1 or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos) or _has_key_pickup(pos) or _has_xp_pickup(pos) or _vault_contains_cell(pos):
 		return false
 	return true
 
@@ -6530,8 +6975,25 @@ func _draw_board() -> void:
 
 	_draw_extraction_beacon()
 
+	for key_pos in key_pickups:
+		if not _cell_intersects_board_view(key_pos):
+			continue
+		if _cell_open_mask(key_pos) == 0:
+			continue
+		_draw_key_pickup(_cell_center(key_pos))
+
+	for vault in vault_rooms:
+		var gate_pos: Vector2i = vault["gate"]
+		if not _cell_intersects_board_view(gate_pos):
+			continue
+		if bool(vault.get("opened", false)):
+			continue
+		_draw_vault_gate(gate_pos, vault)
+
 	for chest in treasure_chests:
 		var chest_pos: Vector2i = chest["pos"]
+		if _closed_vault_contains_cell(chest_pos):
+			continue
 		if not _cell_intersects_board_view(chest_pos):
 			continue
 		if _cell_open_mask(chest_pos) == 0:
@@ -6541,6 +7003,8 @@ func _draw_board() -> void:
 		_draw_treasure_chest(_cell_center(chest_pos), chest.get("reward", {}))
 
 	for gem_pos in gems:
+		if _closed_vault_contains_cell(gem_pos):
+			continue
 		if not _cell_intersects_board_view(gem_pos):
 			continue
 		if _cell_open_mask(gem_pos) == 0:
@@ -6555,6 +7019,8 @@ func _draw_board() -> void:
 		draw_rect(Rect2(_snap_px(center) + Vector2(-1, -7), Vector2(2, 2)), Color("#ffffffcc"))
 
 	for super_pos in super_gems:
+		if _closed_vault_contains_cell(super_pos):
+			continue
 		if not _cell_intersects_board_view(super_pos):
 			continue
 		if _cell_open_mask(super_pos) == 0:
@@ -6570,6 +7036,8 @@ func _draw_board() -> void:
 
 	for relic in run_relics:
 		var relic_pos: Vector2i = relic["pos"]
+		if _closed_vault_contains_cell(relic_pos):
+			continue
 		if not _cell_intersects_board_view(relic_pos):
 			continue
 		var relic_open := _cell_open_mask(relic_pos) != 0
@@ -6666,6 +7134,59 @@ func _draw_deep_signal() -> void:
 	trail.a = color.a * 0.45
 	draw_rect(Rect2(_snap_px(Vector2(x - 2.0, y - 18.0)), Vector2(4, 4)), trail)
 	draw_rect(Rect2(_snap_px(Vector2(x - 1.0, y - 28.0)), Vector2(2, 3)), trail)
+
+
+func _draw_key_pickup(center: Vector2) -> void:
+	var pulse := 0.5 + sin(anim_time * 6.0 + center.x * 0.02) * 0.5
+	var glow := CAVE_KEY
+	glow.a = 0.20 + pulse * 0.16
+	_draw_pixel_ring(center, 9.0 + pulse * 2.0, glow, 2)
+	draw_rect(Rect2(_snap_px(center) + Vector2(-7, -2), Vector2(11, 5)), CAVE_KEY)
+	draw_rect(Rect2(_snap_px(center) + Vector2(-9, -4), Vector2(5, 9)), CAVE_KEY.darkened(0.2))
+	draw_rect(Rect2(_snap_px(center) + Vector2(3, 1), Vector2(3, 6)), CAVE_KEY.darkened(0.35))
+	draw_rect(Rect2(_snap_px(center) + Vector2(7, 1), Vector2(3, 4)), CAVE_KEY.darkened(0.35))
+	draw_rect(Rect2(_snap_px(center) + Vector2(-7, -1), Vector2(3, 2)), Color("#fff8c9cc"))
+
+
+func _draw_vault_gate(gate_pos: Vector2i, vault: Dictionary) -> void:
+	var origin := _cell_to_px(gate_pos)
+	var center := _cell_center(gate_pos)
+	var pulse := 0.5 + sin(anim_time * 4.8 + gate_pos.x) * 0.5
+	var edge := VAULT_GATE.lerp(CAVE_KEY, pulse * 0.25)
+	draw_rect(Rect2(origin + Vector2(4, 2), Vector2(CELL - 8, CELL - 4)), VAULT_GATE_DARK)
+	draw_rect(Rect2(origin + Vector2(7, 5), Vector2(CELL - 14, CELL - 10)), Color("#120d1d"))
+	for x_i in range(3):
+		draw_rect(Rect2(origin + Vector2(8 + x_i * 6, 5), Vector2(3, CELL - 10)), edge.darkened(0.15 + float(x_i) * 0.08))
+	draw_rect(Rect2(origin + Vector2(4, 2), Vector2(CELL - 8, 4)), edge)
+	draw_rect(Rect2(origin + Vector2(4, CELL - 6), Vector2(CELL - 8, 4)), edge.darkened(0.35))
+	draw_rect(Rect2(_snap_px(center) + Vector2(-4, -2), Vector2(8, 7)), CAVE_KEY.darkened(0.25))
+	draw_rect(Rect2(_snap_px(center) + Vector2(-2, 0), Vector2(4, 3)), Color("#090910"))
+	if gate_pos.distance_squared_to(player_pos) <= 16:
+		_draw_vault_preview(gate_pos, vault)
+
+
+func _draw_vault_preview(gate_pos: Vector2i, vault: Dictionary) -> void:
+	var label := "%s %s" % [String(vault.get("reward_label", "VAULT")), _vault_danger_text(vault)]
+	var center := _cell_center(gate_pos)
+	var width := minf(136.0, maxf(72.0, _text_width(label, 11) + 18.0))
+	var y := center.y - 38.0
+	if y < _board_view_rect().position.y + 8.0:
+		y = center.y + 24.0
+	var rect := Rect2(_snap_px(Vector2(center.x - width * 0.5, y)), Vector2(width, 20))
+	_draw_pixel_panel(rect, Color("#101018ee"), VAULT_GATE)
+	_text_fit(rect.position + Vector2(9, 15), label, 11, CAVE_KEY if keys_held > 0 else MUTED, rect.size.x - 18.0, 8)
+
+
+func _vault_danger_text(vault: Dictionary) -> String:
+	var pips := ""
+	for i in range(int(vault.get("danger_pips", 1))):
+		pips += "!"
+	match String(vault.get("danger", VAULT_DANGER_TIME)):
+		VAULT_DANGER_TRAP:
+			return "TRAP%s" % pips
+		VAULT_DANGER_ALERT:
+			return "ALERT%s" % pips
+	return "TIME%s" % pips
 
 
 func _draw_treasure_chest(center: Vector2, reward: Dictionary) -> void:
@@ -6791,6 +7312,8 @@ func _draw_surface_layer() -> void:
 
 func _draw_actors() -> void:
 	for enemy in enemies:
+		if _closed_vault_contains_cell(enemy["pos"]):
+			continue
 		for cell in _enemy_fire_cells(enemy):
 			if not _cell_intersects_board_view(cell):
 				continue
@@ -6826,6 +7349,8 @@ func _draw_actors() -> void:
 	_draw_crush_feedback()
 
 	for rock in rocks:
+		if _closed_vault_contains_cell(rock["pos"]):
+			continue
 		if not _visual_intersects_board_view(_dict_visual(rock), 36.0):
 			continue
 		var center := _visual_to_center(_dict_visual(rock))
@@ -6834,6 +7359,8 @@ func _draw_actors() -> void:
 		_draw_rock_sprite(center)
 
 	for enemy in enemies:
+		if _closed_vault_contains_cell(enemy["pos"]):
+			continue
 		var view_padding := 78.0 if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND else (68.0 if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND else 44.0)
 		if not _visual_intersects_board_view(_dict_visual(enemy), view_padding):
 			continue
@@ -6933,6 +7460,8 @@ func _draw_actors() -> void:
 
 func _draw_enemy_lunge_telegraphs() -> void:
 	for enemy in enemies:
+		if _closed_vault_contains_cell(enemy["pos"]):
+			continue
 		if float(enemy.get("attack_windup", 0.0)) <= 0.0:
 			continue
 		_draw_enemy_lunge_telegraph(enemy)
@@ -7302,9 +7831,9 @@ func _guide_pages() -> Array:
 		{
 			"title": "Run Basics",
 			"lines": [
-				"Dig into dirt to carve routes, collect gems, and reach deep prizes.",
-				"Gems, relics, chests, and pressure bounties charge the extraction beacon.",
-				"When the beacon arms, return to it and interact before the den overwhelms you."
+				"Dig into dirt to carve routes, find cave keys, and reach deep prizes.",
+				"Keys open optional vaults. Spend time on greed, or bank the run and extract.",
+				"Gems, relics, chests, and pressure bounties still charge the extraction beacon."
 			]
 		},
 		{
@@ -7312,7 +7841,15 @@ func _guide_pages() -> Array:
 			"lines": [
 				"Face an enemy and fire the lance. Pump pinned targets to rupture them.",
 				"Boulders are dangerous tools: lure enemies under falling rocks for big XP.",
-				"Pressure surges mark bounty targets that give extra beacon charge."
+				"Crusher vaults are built for risky boulder kill chains and extraction bonuses."
+			]
+		},
+		{
+			"title": "Vaults",
+			"lines": [
+				"Locked gates preview reward type and danger. Stand next to one and interact.",
+				"Cache, Tool, Relic, and Crush vaults each tempt a different kind of greed.",
+				"Vaults are optional: spending every key can pay big, but extraction remains the goal."
 			]
 		},
 		{
@@ -7684,6 +8221,7 @@ func _draw_portrait_hud() -> void:
 
 	_text(Vector2(left + 424, 37), "HP", 13, Color("#ff8fa3"))
 	_draw_hearts(Vector2(left + 454, 26))
+	_text(Vector2(left + 558, 38), "KEY %d" % keys_held, 13, CAVE_KEY)
 
 
 func _draw_portrait_status_panel() -> void:
@@ -7704,9 +8242,9 @@ func _draw_portrait_status_panel() -> void:
 
 func _draw_mobile_controls() -> void:
 	_draw_dpad()
-	var action_label := "BEACON" if _can_use_beacon() else "LANCE"
-	var action_color := BEACON_ARMED if _can_use_beacon() else _lance_color()
-	_draw_touch_button(_mobile_lance_rect(), action_label, action_color, lance_active or _can_use_beacon())
+	var action_label := "BEACON" if _can_use_beacon() else ("KEY" if _nearby_vault_gate() != Vector2i.ZERO else "LANCE")
+	var action_color := BEACON_ARMED if _can_use_beacon() else (CAVE_KEY if _nearby_vault_gate() != Vector2i.ZERO else _lance_color())
+	_draw_touch_button(_mobile_lance_rect(), action_label, action_color, lance_active or _can_use_beacon() or _nearby_vault_gate() != Vector2i.ZERO)
 
 
 func _draw_desktop_ui() -> void:
@@ -7726,9 +8264,10 @@ func _draw_desktop_ui() -> void:
 
 	_text(Vector2(700, 220), "HP", 15, Color("#ff8fa3"))
 	_draw_hearts(Vector2(742, 208))
+	_text(Vector2(700, 246), "KEYS %d  VAULTS %d/%d" % [keys_held, vaults_opened, vault_rooms.size()], 13, CAVE_KEY)
 	var detail := _status_detail_string()
 	if detail != "":
-		_text(Vector2(700, 260), _trim_status_text(detail), 13, MUTED)
+		_text(Vector2(700, 268), _trim_status_text(detail), 13, MUTED)
 	_text(Vector2(700, 288), "UPGRADES", 15, UI_PANEL_HILITE)
 	_draw_touch_button(_pause_button_rect(), "PAUSE", MUTED, paused)
 	_draw_upgrade_summary(Vector2(700, 314), 196.0, 1)
@@ -8027,6 +8566,9 @@ func _run_result_detail(include_unlocks: bool) -> String:
 	else:
 		parts.append("Best combo x%d" % best_combo)
 		parts.append("Kills %d" % run_kills)
+	if keys_found > 0 or vaults_opened > 0:
+		parts.append("Keys %d/%d" % [keys_spent, keys_found])
+		parts.append("Vaults %d" % vaults_opened)
 	if meta_notice != "" and (include_unlocks or meta_notice.begins_with("Research") or meta_notice.begins_with("Relic research")):
 		parts.append(meta_notice)
 	return _trim_text(_join_strings(parts, " | "), 72)
@@ -8048,6 +8590,9 @@ func _status_detail_string() -> String:
 	var bounty_text := _bounty_status_text()
 	if bounty_text != "":
 		parts.append(bounty_text)
+	parts.append("Keys %d" % keys_held)
+	if vaults_opened > 0:
+		parts.append("Vaults %d/%d" % [vaults_opened, vault_rooms.size()])
 	var treasure_text := _treasure_compass_text()
 	if treasure_text != "":
 		parts.append(treasure_text)
@@ -9559,7 +10104,7 @@ func _is_open_tile(pos: Vector2i) -> bool:
 func _cell_open_mask(pos: Vector2i) -> int:
 	if not _in_bounds(pos):
 		return 0
-	if _tile(pos) == TILE_BEACON:
+	if _tile(pos) == TILE_BEACON or _tile(pos) == TILE_VAULT_GATE:
 		return DIG_FULL_MASK
 	if dig_masks.has(pos):
 		return int(dig_masks.get(pos, 0))
@@ -9570,6 +10115,8 @@ func _cell_open_mask(pos: Vector2i) -> int:
 
 func _cell_is_passable(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _has_rock(pos):
+		return false
+	if _tile(pos) == TILE_VAULT_GATE:
 		return false
 	if _terrain_blocks_dig(pos) and _tile(pos) == TILE_DIRT:
 		return false
@@ -9582,6 +10129,8 @@ func _cell_is_fully_open(pos: Vector2i) -> bool:
 
 func _cell_has_tunnel_opening(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _has_rock(pos):
+		return false
+	if _tile(pos) == TILE_VAULT_GATE:
 		return false
 	if _terrain_blocks_dig(pos) and _tile(pos) == TILE_DIRT:
 		return false
@@ -9659,6 +10208,8 @@ func _centerline_open_at_cell(pos: Vector2i) -> bool:
 
 func _carve_cell(pos: Vector2i, connect_neighbors := true, reveal := true) -> void:
 	if not _in_bounds(pos):
+		return
+	if _tile(pos) == TILE_VAULT_GATE:
 		return
 	if _terrain_blocks_dig(pos):
 		return
@@ -10067,6 +10618,43 @@ func _has_treasure_chest(pos: Vector2i) -> bool:
 	for chest in treasure_chests:
 		if chest["pos"] == pos:
 			return true
+	return false
+
+
+func _has_key_pickup(pos: Vector2i) -> bool:
+	for key_pos in key_pickups:
+		if key_pos == pos:
+			return true
+	return false
+
+
+func _vault_contains_cell(pos: Vector2i) -> bool:
+	for vault in vault_rooms:
+		if vault.get("gate", Vector2i.ZERO) == pos:
+			return true
+		for cell_value in vault.get("cells", []):
+			if cell_value == pos:
+				return true
+	return false
+
+
+func _closed_vault_contains_cell(pos: Vector2i) -> bool:
+	for vault in vault_rooms:
+		if bool(vault.get("opened", false)):
+			continue
+		for cell_value in vault.get("cells", []):
+			if cell_value == pos:
+				return true
+	return false
+
+
+func _open_vault_contains_cell(pos: Vector2i) -> bool:
+	for vault in vault_rooms:
+		if not bool(vault.get("opened", false)):
+			continue
+		for cell_value in vault.get("cells", []):
+			if cell_value == pos:
+				return true
 	return false
 
 
