@@ -2414,7 +2414,7 @@ func _try_place_vault_room(kind: String) -> bool:
 			continue
 		var dirs := _vault_direction_options(kind)
 		for dir in dirs:
-			var gate := approach + dir
+			var gate: Vector2i = approach + dir
 			var room_cells := _vault_room_cells(gate, dir, kind)
 			if not _can_place_vault_at(approach, gate, dir, room_cells, kind):
 				continue
@@ -3462,7 +3462,7 @@ func _can_use_vault_gate() -> bool:
 
 func _nearby_vault_gate() -> Vector2i:
 	for dir in DIRS:
-		var pos := player_pos + dir
+		var pos: Vector2i = player_pos + dir
 		if _in_bounds(pos) and _tile(pos) == TILE_VAULT_GATE:
 			return pos
 	if _in_bounds(player_pos) and _tile(player_pos) == TILE_VAULT_GATE:

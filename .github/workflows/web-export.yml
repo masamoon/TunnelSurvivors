@@ -46,8 +46,14 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/templates
           mv /tmp/templates/templates/* "${HOME}/.local/share/godot/export_templates/${EXPORT_TEMPLATE_DIR}/"
 
-      - name: Validate project loads
-        run: godot --headless --path . --quit
+      - name: Validate scripts and project load
+        run: |
+          set -euo pipefail
+          godot --headless --path . --check-only --script res://scripts/main.gd
+          godot --headless --path . --quit 2>&1 | tee /tmp/godot-validate.log
+          if grep -E "SCRIPT ERROR|Parse Error|ERROR: Failed to load script" /tmp/godot-validate.log; then
+            exit 1
+          fi
 
       - name: Export Web build
         run: |
