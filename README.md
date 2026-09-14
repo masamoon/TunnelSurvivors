@@ -5,14 +5,16 @@ Diggy is a compact arcade mining extraction game built in Godot 4. Dig through t
 ## Controls
 
 - Move: `WASD` or arrow keys
-- Lance / pump: `Space`
+- Lance / pump: hold `Space`, release to disengage
 - Interact with armed beacon / vault gate: `E` or `Enter`
 - Upgrade inventory: `I`
 - Guide / codex: `H`
 - Pause / settings: `Esc` or `P`
 - Hub / rerun after a run: `Enter` for hub, `R` to rerun
 
-On touch devices, use the on-screen directional pad, `LANCE` button, and pause button. The action button changes to `KEY` near a locked vault gate and `BEACON` at an armed beacon. Hub panels can be tapped to cycle unlocked setup options.
+When multiple movement keys are held, the most recently pressed direction wins; releasing it restores the previous held direction. Pumping can be changed to toggle mode in pause settings.
+
+On touch devices, use the on-screen directional pad, `LANCE` button, contextual `KEY` / `BEACON` interaction button, and pause button. Combat and interaction remain separate, so standing beside a gate never consumes an attack. Hub panels can be tapped to cycle unlocked setup options.
 
 ## Keys and Vaults
 
@@ -22,17 +24,21 @@ Runs now include cave keys and optional locked side rooms. Vault gates preview t
 
 Completed runs earn relic research and runes from survival time, gems, kills, relic finds, and extraction. Research milestones add more relics to future upgrade rotations, while runes buy permanent hub upgrades that improve starts, research gain, and chest relic odds. Achievements can still unlock maps, loadouts, elements, and special relics early.
 
+Restarting or returning to the hub abandons the current run and awards no research or runes. A short defeat remains eligible once the player has meaningfully participated by digging, collecting, opening a vault, or landing a successful pump.
+
 The boulder upgrade branch includes Boulder Lance, a shorter weaker lance that can create boulders where lance-killed enemies fall. Later ranks improve its boulder chance, and those ranks can appear in chests once unlocked. Your first boulder crush also unlocks the Stonecaller starting build, which begins runs with Boulder Lance.
 
 The base lance branch uses standalone upgrades such as Anchor Chain, Snap Reel, Piston Head, Rupture Wave, and Beacon Coupler. These do not require elemental status setups to pay off.
 
-The pause settings include master audio, music, SFX volume, music volume, screen shake, first-run hints, and a double-confirm wipe-save button.
+The pause settings include master audio, music, SFX volume, music volume, screen shake, pump input mode, first-run hints, and a double-confirm wipe-save button.
 
 Boss kills unlock the harder Obsidian Rift site, the Field Kit loadout, and the Treasure Compass beacon mod.
 
 ## Checks
 
 Run `python3 tools/balance_check.py` to validate upgrade, research, and unlock table references.
+
+Run `godot --headless --path . --script res://tests/run_regressions.gd` to check ordered movement input, pump press/release behavior, modal timer freezes, and run reward eligibility.
 
 ## Release Build
 

@@ -25,6 +25,8 @@ The game is a mining extraction loop inspired by arcade dig-and-chase games:
 7. The extraction beacon arms when fully charged or when the run timer expires. The player must reach it and interact to win.
 8. Completed or failed runs award long-term research and runes based on survival time, gems, kills, vaults, relics, and extraction.
 
+Restarting or returning to the hub is an explicit abandonment and awards no research or runes. Defeats award progression after meaningful player participation; incidental environmental kills do not qualify an otherwise idle run.
+
 The main design tension is extraction versus greed: digging creates routes and access to rewards, but keys and vaults ask whether a risky detour is worth the time, traps, enemy alerts, and possible route decay. The player is encouraged to use the cave layout itself as a weapon through choke points, boulders, lance lines, and upgrade synergies.
 
 ## Runtime State Model
@@ -56,6 +58,10 @@ The script uses numeric constants for tiles, enemy kinds, and game states:
 - Playing: update cooldowns and run timer, depth tier, pressure surge, boss spawning, lance, player motion, enemy spawning, enemies, rocks, treasure, XP pickups, tunnel regrowth, beacon scanner, and beacon arming.
 
 `_unhandled_input(event)` handles keyboard, mouse, and touch. It supports desktop and mobile controls, meta hub setup cycling, pause/settings, guide pages, upgrade choice, inventory, restart/rerun, lance, and beacon interaction.
+
+Movement intent is event-driven: the most recently pressed held cardinal input wins and releasing it restores the previous held direction. The default lance contract is hold-to-pump and release-to-disengage, with toggle mode available as an accessibility setting. Combat and contextual interaction use distinct inputs on keyboard and touch.
+
+Gameplay timers advance only while actively playing. Pause, the guide, the upgrade inventory, and upgrade choices stop combo, recovery, spawning, enemies, rocks, and the run clock while allowing cosmetic presentation updates.
 
 Rendering is entirely custom in `_draw()` and helper functions. The board, actors, effects, UI panels, modals, touch controls, guide, meta hub, pixel sprites, and synthesized-looking effects are drawn with Godot canvas calls.
 

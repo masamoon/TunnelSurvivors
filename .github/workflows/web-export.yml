@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -55,6 +58,12 @@ jobs:
             exit 1
           fi
 
+      - name: Run balance and gameplay regressions
+        run: |
+          set -euo pipefail
+          python3 tools/balance_check.py
+          godot --headless --path . --script res://tests/run_regressions.gd
+
       - name: Export Web build
         run: |
           set -euo pipefail
@@ -70,13 +79,16 @@ jobs:
           if-no-files-found: error
 
       - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist/web
 
       - name: Deploy to GitHub Pages
+        if: github.event_name != 'pull_request'
         id: deployment
         uses: actions/deploy-pages@v4

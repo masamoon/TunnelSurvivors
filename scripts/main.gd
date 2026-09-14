@@ -22,7 +22,8 @@ const MOBILE_DPAD_CENTER := Vector2(140, 822)
 const MOBILE_STATUS_H := 112
 const MOBILE_DPAD_BUTTON := 64
 const MOBILE_DPAD_GAP := 8
-const MOBILE_LANCE_RECT := Rect2(Vector2(396, 790), Vector2(208, 128))
+const MOBILE_LANCE_RECT := Rect2(Vector2(384, 790), Vector2(220, 96))
+const MOBILE_INTERACT_RECT := Rect2(Vector2(420, 718), Vector2(184, 80))
 const MOBILE_RESTART_RECT := Rect2(Vector2(552, 22), Vector2(66, 34))
 const MOBILE_PAUSE_RECT := Rect2(Vector2(478, 22), Vector2(66, 34))
 const SURFACE_ROW := 0
@@ -243,7 +244,6 @@ const ATTACK_FLASH_TIME := 0.32
 const LANCE_HIT_DELAY := 0.10
 const LANCE_RETRACT_DELAY := 0.22
 const LANCE_PUMP_INTERVAL := 0.70
-const LANCE_TAP_PUMP_INTERVAL := 0.56
 const LANCE_HOLD_STUN := 0.18
 const ENEMY_INFLATE_RECOVER_DELAY := 0.42
 const LANCE_ELEMENT_BASE := "base"
@@ -266,6 +266,9 @@ const PLAYER_TURN_GATE := 0.22
 const PLAYER_HURT_FLASH_TIME := 0.75
 const PLAYER_HIT_RECOVERY_TIME := 1.15
 const COMBO_WINDOW := 2.2
+const RUN_OUTCOME_DEFEAT := "defeat"
+const RUN_OUTCOME_EXTRACTION := "extraction"
+const RUN_OUTCOME_ABANDONED := "abandoned"
 const BG := Color("#090b12")
 const DIRT := Color("#8a4d27")
 const DIRT_DARK := Color("#4f2a1a")
@@ -396,7 +399,12 @@ var kill_sfx_cooldown := 0.0
 var music_player: AudioStreamPlayer
 var ambience_player: AudioStreamPlayer
 var mobile_touch_dirs := {}
+var mobile_touch_order: Array[int] = []
 var mobile_move_dir := Vector2i.ZERO
+var mobile_lance_pointers := {}
+var keyboard_move_dirs := {}
+var keyboard_move_order: Array[int] = []
+var keyboard_move_dir := Vector2i.ZERO
 var show_touch_controls := true
 var show_upgrade_inventory := false
 var show_guide := false
@@ -452,7 +460,6 @@ var lance_pump_timer := 0.0
 var lance_pump_damage := 1
 var lance_pump_count := 0
 var lance_has_struck := false
-var lance_pulse_queued := false
 var hurt_flash := 0.0
 var player_hit_recovery := 0.0
 var anim_time := 0.0
@@ -567,6 +574,7 @@ var keys_spent := 0
 var vaults_opened := 0
 var vault_combo_kills := 0
 var run_damage_taken := 0
+var run_lance_hits := 0
 var run_meta_recorded := false
 
 func _ready() -> void:
@@ -613,6 +621,8 @@ func _setup_music_audio() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_SIZE_CHANGED:
 		call_deferred("_handle_viewport_changed")
+	elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_clear_gameplay_input()
 
 
 func _handle_viewport_changed() -> void:
@@ -621,7 +631,7 @@ func _handle_viewport_changed() -> void:
 	_apply_content_scale()
 	_refresh_touch_control_visibility()
 	if had_touch_controls != show_touch_controls:
-		_clear_mobile_input()
+		_clear_gameplay_input()
 	queue_redraw()
 
 
@@ -909,6 +919,7 @@ func _default_meta() -> Dictionary:
 			"sfx_volume": 3,
 			"music_volume": 2,
 			"screen_shake": true,
+			"hold_to_pump": true,
 			"tutorial": true
 		},
 		"tutorial": {
@@ -1052,6 +1063,10 @@ func _screen_shake_enabled() -> bool:
 	return _setting_enabled("screen_shake", true)
 
 
+func _hold_to_pump_enabled() -> bool:
+	return _setting_enabled("hold_to_pump", true)
+
+
 func _tutorial_enabled() -> bool:
 	return _setting_enabled("tutorial", true)
 
@@ -1084,7 +1099,7 @@ func _toggle_guide() -> void:
 	if show_guide:
 		wipe_save_confirm = false
 		show_upgrade_inventory = false
-		_clear_mobile_input()
+		_clear_gameplay_input()
 		if lance_active:
 			_release_lance(false)
 	_play_sfx("ui")
@@ -1112,7 +1127,7 @@ func _press_wipe_save() -> void:
 
 func _wipe_save_data() -> void:
 	wipe_save_confirm = false
-	_clear_mobile_input()
+	_clear_gameplay_input()
 	if lance_active:
 		_release_lance(false)
 	meta = _default_meta()
@@ -1418,17 +1433,21 @@ func _increment_lifetime(key: String, amount := 1) -> void:
 	_save_meta()
 
 
-func _record_run_meta_progress(extracted: bool) -> void:
+func _record_run_meta_progress(outcome: String) -> void:
 	if run_meta_recorded:
 		return
 	run_meta_recorded = true
+	var extracted := outcome == RUN_OUTCOME_EXTRACTION
+	var completed := outcome != RUN_OUTCOME_ABANDONED
+	var reward_eligible := extracted or (outcome == RUN_OUTCOME_DEFEAT and _run_has_meaningful_participation())
 	var lifetime: Dictionary = meta.get("lifetime", {})
-	lifetime["runs_completed"] = int(lifetime.get("runs_completed", 0)) + 1
-	lifetime["total_run_time"] = int(lifetime.get("total_run_time", 0)) + floori(run_time)
-	lifetime["total_gems"] = int(lifetime.get("total_gems", 0)) + gems_collected
-	lifetime["total_kills"] = int(lifetime.get("total_kills", 0)) + run_kills
-	var research_gain := _run_relic_research_gain(extracted)
-	var rune_gain := _run_rune_gain(extracted)
+	if completed:
+		lifetime["runs_completed"] = int(lifetime.get("runs_completed", 0)) + 1
+		lifetime["total_run_time"] = int(lifetime.get("total_run_time", 0)) + floori(run_time)
+		lifetime["total_gems"] = int(lifetime.get("total_gems", 0)) + gems_collected
+		lifetime["total_kills"] = int(lifetime.get("total_kills", 0)) + run_kills
+	var research_gain := _run_relic_research_gain(extracted, reward_eligible)
+	var rune_gain := _run_rune_gain(extracted, reward_eligible)
 	lifetime["relic_research"] = int(lifetime.get("relic_research", 0)) + research_gain
 	lifetime["runes"] = int(lifetime.get("runes", 0)) + rune_gain
 	meta["lifetime"] = lifetime
@@ -1437,11 +1456,29 @@ func _record_run_meta_progress(extracted: bool) -> void:
 		meta_notice = "Research unlocked %d relic%s. Runes +%d." % [unlocked, "" if unlocked == 1 else "s", rune_gain]
 	elif research_gain > 0:
 		meta_notice = "Research +%d. Runes +%d." % [research_gain, rune_gain]
+	elif outcome == RUN_OUTCOME_ABANDONED:
+		meta_notice = "Run abandoned. No research awarded."
+	elif not reward_eligible:
+		meta_notice = "No research: explore, collect, or land a pump first."
 	_check_lifetime_achievements()
 	_save_meta()
 
 
-func _run_relic_research_gain(extracted: bool) -> int:
+func _run_has_meaningful_participation() -> bool:
+	return (
+		dig_scored_cells.size() > 0
+		or run_gems_collected > 0
+		or run_super_gems_collected > 0
+		or run_relics_found > 0
+		or keys_found > 0
+		or vaults_opened > 0
+		or run_lance_hits > 0
+	)
+
+
+func _run_relic_research_gain(extracted: bool, eligible := true) -> int:
+	if not eligible:
+		return 0
 	var gain := 1
 	gain += mini(4, floori(run_time / 75.0))
 	gain += mini(3, floori(float(gems_collected) / 10.0))
@@ -1455,7 +1492,9 @@ func _run_relic_research_gain(extracted: bool) -> int:
 	return maxi(1, gain)
 
 
-func _run_rune_gain(extracted: bool) -> int:
+func _run_rune_gain(extracted: bool, eligible := true) -> int:
+	if not eligible:
+		return 0
 	var gain := 1
 	gain += mini(2, floori(run_time / 120.0))
 	gain += mini(2, run_relics_found)
@@ -1667,19 +1706,19 @@ func _buy_meta_upgrade(upgrade_id: String) -> void:
 
 
 func _go_to_meta() -> void:
-	if state == STATE_PLAYING and not run_meta_recorded and run_time >= 10.0:
-		_record_run_meta_progress(false)
+	if state == STATE_PLAYING and not run_meta_recorded:
+		_record_run_meta_progress(RUN_OUTCOME_ABANDONED)
 	state = STATE_META
 	paused = false
 	wipe_save_confirm = false
 	show_upgrade_inventory = false
-	_clear_mobile_input()
+	_clear_gameplay_input()
 	message = "Choose a dig site."
 	queue_redraw()
 
 
 func _start_selected_run() -> void:
-	_clear_mobile_input()
+	_clear_gameplay_input()
 	paused = false
 	_play_sfx("start")
 	_new_run()
@@ -1846,7 +1885,6 @@ func _start_run_map() -> void:
 	lance_pump_damage = _effective_lance_damage()
 	lance_pump_count = 0
 	lance_has_struck = false
-	lance_pulse_queued = false
 	temp_lance_range = 0
 	temp_lance_damage = 0
 	temp_stun_bonus = 0.0
@@ -1914,6 +1952,7 @@ func _start_run_map() -> void:
 	vaults_opened = 0
 	vault_combo_kills = 0
 	run_damage_taken = 0
+	run_lance_hits = 0
 	run_meta_recorded = false
 	player_step_squash = 0.0
 	message = "%s. Dig space, time your lance, harvest gems." % String(current_map_def.get("name", "Survive"))
@@ -1926,7 +1965,7 @@ func _start_run_map() -> void:
 
 func _resume_survival() -> void:
 	state = STATE_PLAYING
-	_clear_mobile_input()
+	_clear_gameplay_input()
 	upgrade_choices.clear()
 	message = "Level %d. Back into the dirt." % player_level
 	queue_redraw()
@@ -2845,7 +2884,6 @@ func _process(delta: float) -> void:
 	anim_time += delta
 	_update_music_audio()
 	hurt_flash = maxf(0.0, hurt_flash - delta)
-	player_hit_recovery = maxf(0.0, player_hit_recovery - delta)
 	attack_flash = maxf(0.0, attack_flash - delta)
 	player_step_squash = maxf(0.0, player_step_squash - delta)
 	screen_shake = maxf(0.0, screen_shake - delta)
@@ -2856,10 +2894,6 @@ func _process(delta: float) -> void:
 	screen_shake_offset = Vector2.ZERO
 	if screen_shake > 0.0:
 		screen_shake_offset = Vector2(rng.randf_range(-screen_shake, screen_shake), rng.randf_range(-screen_shake, screen_shake)) * 12.0
-	if combo_timer > 0.0:
-		combo_timer = maxf(0.0, combo_timer - delta)
-		if combo_timer <= 0.0:
-			combo_count = 0
 	_update_feedback(delta)
 	if attack_flash <= 0.0 and not lance_active:
 		last_attack_cells.clear()
@@ -2868,7 +2902,7 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 
-	if paused:
+	if paused or show_guide:
 		if lance_active:
 			_release_lance(false)
 		_update_visual_positions(delta)
@@ -2893,6 +2927,11 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 
+	player_hit_recovery = maxf(0.0, player_hit_recovery - delta)
+	if combo_timer > 0.0:
+		combo_timer = maxf(0.0, combo_timer - delta)
+		if combo_timer <= 0.0:
+			combo_count = 0
 	move_cooldown = maxf(0.0, move_cooldown - delta)
 	attack_cooldown = maxf(0.0, attack_cooldown - delta)
 	run_time += delta
@@ -2937,14 +2976,35 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if not (event is InputEventKey):
 		return
-	if not event.pressed or event.echo:
+	var key_event := event as InputEventKey
+	var move_dir := _direction_for_keycode(key_event.keycode)
+	if move_dir == Vector2i.ZERO:
+		move_dir = _direction_for_keycode(key_event.physical_keycode)
+	var gameplay_input_enabled := (
+		state == STATE_PLAYING
+		and not paused
+		and not show_guide
+		and not show_upgrade_inventory
+	)
+	if move_dir != Vector2i.ZERO:
+		if gameplay_input_enabled:
+			_handle_keyboard_move_event(key_event, move_dir)
+			return
+		if not key_event.pressed:
+			_release_keyboard_move_key(_input_key_id(key_event))
+			return
+	if key_event.keycode == KEY_SPACE and state == STATE_PLAYING and not key_event.echo:
+		if gameplay_input_enabled:
+			_set_lance_input(key_event.pressed)
+		return
+	if not key_event.pressed or key_event.echo:
 		return
 
-	if event.keycode == KEY_R:
+	if key_event.keycode == KEY_R:
 		_press_restart()
 		return
 
-	if event.keycode == KEY_ESCAPE or event.keycode == KEY_P:
+	if key_event.keycode == KEY_ESCAPE or key_event.keycode == KEY_P:
 		if show_guide:
 			show_guide = false
 			queue_redraw()
@@ -2952,98 +3012,133 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_pause()
 		return
 
-	if event.keycode == KEY_H:
+	if key_event.keycode == KEY_H:
 		_toggle_guide()
 		return
 
 	if show_guide:
-		if event.keycode == KEY_LEFT or event.keycode == KEY_A:
+		if key_event.keycode == KEY_LEFT or key_event.keycode == KEY_A:
 			_cycle_guide_page(-1)
-		elif event.keycode == KEY_RIGHT or event.keycode == KEY_D or event.keycode == KEY_TAB:
+		elif key_event.keycode == KEY_RIGHT or key_event.keycode == KEY_D or key_event.keycode == KEY_TAB:
 			_cycle_guide_page(1)
 		return
 
 	if state == STATE_META:
-		if event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
+		if key_event.keycode == KEY_SPACE or key_event.keycode == KEY_ENTER:
 			_start_selected_run()
-		elif event.keycode == KEY_B:
+		elif key_event.keycode == KEY_B:
 			_buy_selected_meta_upgrade()
-		elif event.keycode == KEY_1 or event.keycode == KEY_KP_1:
+		elif key_event.keycode == KEY_1 or key_event.keycode == KEY_KP_1:
 			_buy_meta_upgrade_by_index(0)
-		elif event.keycode == KEY_2 or event.keycode == KEY_KP_2:
+		elif key_event.keycode == KEY_2 or key_event.keycode == KEY_KP_2:
 			_buy_meta_upgrade_by_index(1)
-		elif event.keycode == KEY_3 or event.keycode == KEY_KP_3:
+		elif key_event.keycode == KEY_3 or key_event.keycode == KEY_KP_3:
 			_buy_meta_upgrade_by_index(2)
-		elif event.keycode == KEY_4 or event.keycode == KEY_KP_4:
+		elif key_event.keycode == KEY_4 or key_event.keycode == KEY_KP_4:
 			_buy_meta_upgrade_by_index(3)
-		elif event.keycode == KEY_Q:
+		elif key_event.keycode == KEY_Q:
 			_cycle_meta_upgrade(-1)
-		elif event.keycode == KEY_E:
+		elif key_event.keycode == KEY_E:
 			_cycle_meta_upgrade(1)
-		elif event.keycode == KEY_LEFT or event.keycode == KEY_A:
+		elif key_event.keycode == KEY_LEFT or key_event.keycode == KEY_A:
 			_cycle_selected_map(-1)
-		elif event.keycode == KEY_RIGHT or event.keycode == KEY_D:
+		elif key_event.keycode == KEY_RIGHT or key_event.keycode == KEY_D:
 			_cycle_selected_map(1)
-		elif event.keycode == KEY_UP or event.keycode == KEY_W:
+		elif key_event.keycode == KEY_UP or key_event.keycode == KEY_W:
 			_cycle_selected_loadout(-1)
-		elif event.keycode == KEY_DOWN or event.keycode == KEY_S:
+		elif key_event.keycode == KEY_DOWN or key_event.keycode == KEY_S:
 			_cycle_selected_loadout(1)
-		elif event.keycode == KEY_TAB:
+		elif key_event.keycode == KEY_TAB:
 			_cycle_selected_beacon_mod(1)
 		return
 
 	if paused:
 		return
 
-	if state == STATE_PLAYING and event.keycode == KEY_I:
+	if state == STATE_PLAYING and key_event.keycode == KEY_I:
 		show_upgrade_inventory = not show_upgrade_inventory
-		_clear_mobile_input()
+		_clear_gameplay_input()
 		queue_redraw()
 		return
 
 	if state == STATE_PLAYING:
 		if show_upgrade_inventory:
 			return
-		if event.keycode == KEY_SPACE:
-			_press_lance()
-		elif event.keycode == KEY_E or event.keycode == KEY_ENTER:
+		if key_event.keycode == KEY_E or key_event.keycode == KEY_ENTER:
 			_try_interact()
 	elif state == STATE_CHOOSING:
-		if event.keycode == KEY_1 or event.keycode == KEY_KP_1:
+		if key_event.keycode == KEY_1 or key_event.keycode == KEY_KP_1:
 			_choose_upgrade(0)
-		elif event.keycode == KEY_2 or event.keycode == KEY_KP_2:
+		elif key_event.keycode == KEY_2 or key_event.keycode == KEY_KP_2:
 			_choose_upgrade(1)
-		elif event.keycode == KEY_3 or event.keycode == KEY_KP_3:
+		elif key_event.keycode == KEY_3 or key_event.keycode == KEY_KP_3:
 			_choose_upgrade(2)
-		elif event.keycode == KEY_4 or event.keycode == KEY_KP_4:
+		elif key_event.keycode == KEY_4 or key_event.keycode == KEY_KP_4:
 			_choose_upgrade(3)
-		elif event.keycode == KEY_0 or event.keycode == KEY_KP_0 or event.keycode == KEY_E or event.keycode == KEY_ENTER:
+		elif key_event.keycode == KEY_0 or key_event.keycode == KEY_KP_0 or key_event.keycode == KEY_E or key_event.keycode == KEY_ENTER:
 			_skip_upgrade_choice()
 	elif state == STATE_GAME_OVER or state == STATE_WIN:
 		if result_input_lock > 0.0:
 			return
-		if event.keycode == KEY_ENTER:
+		if key_event.keycode == KEY_ENTER:
 			_go_to_meta()
 
 
 func _read_move_dir() -> Vector2i:
 	if mobile_move_dir != Vector2i.ZERO:
 		return mobile_move_dir
-	if Input.is_action_pressed("ui_left") or Input.is_key_pressed(KEY_A):
-		return Vector2i.LEFT
-	if Input.is_action_pressed("ui_right") or Input.is_key_pressed(KEY_D):
-		return Vector2i.RIGHT
-	if Input.is_action_pressed("ui_up") or Input.is_key_pressed(KEY_W):
-		return Vector2i.UP
-	if Input.is_action_pressed("ui_down") or Input.is_key_pressed(KEY_S):
-		return Vector2i.DOWN
+	return keyboard_move_dir
+
+
+func _direction_for_keycode(keycode: Key) -> Vector2i:
+	match keycode:
+		KEY_LEFT, KEY_A:
+			return Vector2i.LEFT
+		KEY_RIGHT, KEY_D:
+			return Vector2i.RIGHT
+		KEY_UP, KEY_W:
+			return Vector2i.UP
+		KEY_DOWN, KEY_S:
+			return Vector2i.DOWN
 	return Vector2i.ZERO
+
+
+func _input_key_id(event: InputEventKey) -> int:
+	return int(event.physical_keycode) if event.physical_keycode != KEY_NONE else int(event.keycode)
+
+
+func _handle_keyboard_move_event(event: InputEventKey, dir: Vector2i) -> void:
+	var key_id := _input_key_id(event)
+	if event.pressed and not event.echo:
+		keyboard_move_dirs[key_id] = dir
+		keyboard_move_order.erase(key_id)
+		keyboard_move_order.append(key_id)
+		if lance_active:
+			_release_lance()
+	elif not event.pressed:
+		_release_keyboard_move_key(key_id)
+	_refresh_keyboard_move_dir()
+
+
+func _release_keyboard_move_key(key_id: int) -> void:
+	keyboard_move_dirs.erase(key_id)
+	keyboard_move_order.erase(key_id)
+	_refresh_keyboard_move_dir()
+
+
+func _refresh_keyboard_move_dir() -> void:
+	keyboard_move_dir = Vector2i.ZERO
+	for i in range(keyboard_move_order.size() - 1, -1, -1):
+		var key_id: int = keyboard_move_order[i]
+		if keyboard_move_dirs.has(key_id):
+			keyboard_move_dir = keyboard_move_dirs[key_id]
+			return
 
 
 func _refresh_touch_control_visibility() -> void:
 	show_touch_controls = _should_show_touch_controls()
 	if not show_touch_controls:
-		_clear_mobile_input()
+		_clear_gameplay_input()
 
 
 func _should_show_touch_controls() -> bool:
@@ -3068,7 +3163,7 @@ func _apply_content_scale() -> void:
 
 
 func _interact_prompt_text() -> String:
-	return "tap LANCE" if show_touch_controls else "press E"
+	return "tap BEACON" if show_touch_controls else "press E"
 
 
 func _restart_prompt_text() -> String:
@@ -3086,7 +3181,7 @@ func _toggle_pause() -> void:
 	wipe_save_confirm = false
 	show_upgrade_inventory = false
 	if paused:
-		_clear_mobile_input()
+		_clear_gameplay_input()
 		if lance_active:
 			_release_lance(false)
 		message = "Paused."
@@ -3109,33 +3204,51 @@ func _resume_from_pause() -> void:
 func _press_lance() -> void:
 	if state != STATE_PLAYING or paused:
 		return
-	if _can_use_beacon():
-		_try_interact()
+	if lance_active:
 		return
-	if _nearby_vault_gate() != Vector2i.ZERO:
-		_try_interact()
+	var move_intent := _read_move_dir()
+	if move_intent != Vector2i.ZERO:
+		facing = move_intent
+	_start_lance()
+
+
+func _set_lance_input(pressed: bool) -> void:
+	if _hold_to_pump_enabled():
+		if pressed:
+			_press_lance()
+		elif lance_active:
+			_release_lance()
+		return
+	if not pressed:
 		return
 	if lance_active:
-		lance_pulse_queued = true
+		_release_lance()
 	else:
-		_start_lance()
+		_press_lance()
 
 
 func _press_restart() -> void:
-	_clear_mobile_input()
+	_clear_gameplay_input()
 	paused = false
 	if state == STATE_META:
 		_start_selected_run()
 	else:
-		if state == STATE_PLAYING and not run_meta_recorded and run_time >= 10.0:
-			_record_run_meta_progress(false)
+		if state == STATE_PLAYING and not run_meta_recorded:
+			_record_run_meta_progress(RUN_OUTCOME_ABANDONED)
 		_play_sfx("start")
 		_new_run()
 
 
-func _clear_mobile_input() -> void:
+func _clear_gameplay_input() -> void:
 	mobile_touch_dirs.clear()
+	mobile_touch_order.clear()
 	mobile_move_dir = Vector2i.ZERO
+	mobile_lance_pointers.clear()
+	keyboard_move_dirs.clear()
+	keyboard_move_order.clear()
+	keyboard_move_dir = Vector2i.ZERO
+	if lance_active:
+		_release_lance(false)
 
 
 func _handle_touch_event(event: InputEventScreenTouch) -> void:
@@ -3144,8 +3257,7 @@ func _handle_touch_event(event: InputEventScreenTouch) -> void:
 	if event.pressed:
 		_handle_pointer_press(event.index, event.position)
 	else:
-		mobile_touch_dirs.erase(event.index)
-		_refresh_mobile_move_dir()
+		_release_mobile_pointer(event.index)
 
 
 func _handle_touch_drag(event: InputEventScreenDrag) -> void:
@@ -3155,7 +3267,11 @@ func _handle_touch_drag(event: InputEventScreenDrag) -> void:
 		var dir := _direction_from_dpad(event.position)
 		if dir == Vector2i.ZERO:
 			mobile_touch_dirs.erase(event.index)
+			mobile_touch_order.erase(event.index)
 		else:
+			if mobile_touch_dirs[event.index] != dir:
+				mobile_touch_order.erase(event.index)
+				mobile_touch_order.append(event.index)
 			mobile_touch_dirs[event.index] = dir
 		_refresh_mobile_move_dir()
 
@@ -3166,8 +3282,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.pressed:
 		_handle_pointer_press(-1, event.position)
 	else:
-		mobile_touch_dirs.erase(-1)
-		_refresh_mobile_move_dir()
+		_release_mobile_pointer(-1)
 
 
 func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
@@ -3218,7 +3333,7 @@ func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
 
 	if _inventory_button_rect().has_point(pos):
 		show_upgrade_inventory = true
-		_clear_mobile_input()
+		_clear_gameplay_input()
 		queue_redraw()
 		return
 
@@ -3226,21 +3341,45 @@ func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
 		return
 
 	if _mobile_lance_rect().has_point(pos):
-		_press_lance()
+		mobile_lance_pointers[pointer_id] = true
+		_set_lance_input(true)
+		return
+
+	if _mobile_interact_rect().has_point(pos) and _contextual_interaction_available():
+		_try_interact()
 		return
 
 	var dir := _direction_from_dpad(pos)
 	if dir != Vector2i.ZERO:
 		mobile_touch_dirs[pointer_id] = dir
+		mobile_touch_order.erase(pointer_id)
+		mobile_touch_order.append(pointer_id)
+		if lance_active:
+			_release_lance()
 		_refresh_mobile_move_dir()
+
+
+func _release_mobile_pointer(pointer_id: int) -> void:
+	mobile_touch_dirs.erase(pointer_id)
+	mobile_touch_order.erase(pointer_id)
+	if mobile_lance_pointers.has(pointer_id):
+		mobile_lance_pointers.erase(pointer_id)
+		if mobile_lance_pointers.is_empty():
+			_set_lance_input(false)
+	_refresh_mobile_move_dir()
 
 
 func _refresh_mobile_move_dir() -> void:
 	mobile_move_dir = Vector2i.ZERO
-	for pointer_id in mobile_touch_dirs.keys():
-		var dir: Vector2i = mobile_touch_dirs[pointer_id]
-		if dir != Vector2i.ZERO:
-			mobile_move_dir = dir
+	for i in range(mobile_touch_order.size() - 1, -1, -1):
+		var pointer_id: int = mobile_touch_order[i]
+		if mobile_touch_dirs.has(pointer_id):
+			mobile_move_dir = mobile_touch_dirs[pointer_id]
+			return
+
+
+func _contextual_interaction_available() -> bool:
+	return _can_use_beacon() or _nearby_vault_gate() != Vector2i.ZERO
 
 
 func _direction_from_dpad(pos: Vector2) -> Vector2i:
@@ -3257,7 +3396,7 @@ func _direction_from_dpad(pos: Vector2) -> Vector2i:
 
 
 func _update_player_motion(delta: float, input_dir: Vector2i) -> void:
-	if attack_flash > 0.0 or lance_active:
+	if lance_active:
 		player_move_dir = Vector2i.ZERO
 		player_target_digging = false
 		player_digging = false
@@ -3437,7 +3576,7 @@ func _try_interact() -> void:
 		_mark_tutorial_complete()
 		state = STATE_WIN
 		result_input_lock = 0.85
-		_clear_mobile_input()
+		_clear_gameplay_input()
 		message = "The beacon hauls you out with a pack full of strange gems."
 		_play_sfx("win")
 	elif _can_use_vault_gate():
@@ -3724,7 +3863,7 @@ func _award_extraction_bonus() -> void:
 
 
 func _record_extraction() -> void:
-	_record_run_meta_progress(true)
+	_record_run_meta_progress(RUN_OUTCOME_EXTRACTION)
 	_increment_lifetime("extractions")
 	_increment_map_clear(current_map_id)
 	_complete_achievement("first_extraction")
@@ -3743,7 +3882,6 @@ func _start_lance() -> void:
 	last_attack_cells.clear()
 	message = ""
 	lance_has_struck = false
-	lance_pulse_queued = false
 	lance_pump_damage = _effective_lance_damage()
 	lance_pump_count = 0
 	_play_sfx("lance")
@@ -3777,10 +3915,6 @@ func _start_lance() -> void:
 
 
 func _update_lance(delta: float) -> void:
-	if lance_has_struck and _read_move_dir() != Vector2i.ZERO:
-		_release_lance()
-		return
-
 	lance_pump_timer -= delta
 	if not lance_has_struck:
 		if lance_attached_enemy != -1 and not _pin_lance_target():
@@ -3805,12 +3939,8 @@ func _update_lance(delta: float) -> void:
 		_release_lance()
 		return
 
-	if lance_pulse_queued and lance_pump_timer > LANCE_TAP_PUMP_INTERVAL:
-		lance_pump_timer = LANCE_TAP_PUMP_INTERVAL
-
 	if lance_pump_timer <= 0.0:
 		lance_pump_timer = LANCE_PUMP_INTERVAL
-		lance_pulse_queued = false
 		_pump_lance_target()
 
 
@@ -4576,7 +4706,6 @@ func _release_lance(start_recovery := true) -> void:
 	lance_has_blocker = false
 	lance_pump_timer = 0.0
 	lance_has_struck = false
-	lance_pulse_queued = false
 	lance_pump_count = 0
 	attack_flash = 0.0
 	last_attack_cells.clear()
@@ -4741,6 +4870,7 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
 		_add_cell_pulse(enemy["pos"], ENEMY_SHIELDBUG, PULSE_FEEDBACK_TIME, 0.95)
 		_shake(0.05)
 		return true
+	run_lance_hits += 1
 	enemy["hp"] -= damage
 	_boss_hit_feedback(enemy, enemy["pos"], damage)
 	enemy["riposte_window"] = false
@@ -6013,10 +6143,10 @@ func _hurt_player(amount: int, defeat_reason := "The den got you.") -> bool:
 
 func _game_over(reason: String) -> void:
 	paused = false
-	_record_run_meta_progress(false)
+	_record_run_meta_progress(RUN_OUTCOME_DEFEAT)
 	state = STATE_GAME_OVER
 	result_input_lock = 0.85
-	_clear_mobile_input()
+	_clear_gameplay_input()
 	message = reason
 	_play_sfx("fail")
 
@@ -6344,7 +6474,7 @@ func _offer_upgrades() -> void:
 		queue_redraw()
 		return
 	state = STATE_CHOOSING
-	_clear_mobile_input()
+	_clear_gameplay_input()
 	normal_choices.shuffle()
 	if not heal_choice.is_empty():
 		upgrade_choices.append(heal_choice.duplicate())
@@ -7785,6 +7915,7 @@ func _draw_pause_overlay() -> void:
 	_draw_volume_row(_pause_sfx_volume_rect(), "SFX volume", _sfx_volume_step())
 	_draw_volume_row(_pause_music_volume_rect(), "Music volume", _music_volume_step())
 	_draw_setting_row(_pause_shake_rect(), "Screen shake", _screen_shake_enabled())
+	_draw_setting_row(_pause_pump_rect(), "Hold to pump", _hold_to_pump_enabled())
 	_draw_setting_row(_pause_tutorial_rect(), "First-run hints", _tutorial_enabled())
 	_draw_wipe_save_row(_pause_wipe_rect())
 	var prompt := "Esc / P resumes." if not show_touch_controls else "Tap RESUME to continue."
@@ -8146,6 +8277,8 @@ func _handle_pause_pointer(pos: Vector2) -> void:
 		_cycle_volume_setting("music_volume")
 	elif _pause_shake_rect().has_point(pos):
 		_toggle_setting("screen_shake")
+	elif _pause_pump_rect().has_point(pos):
+		_toggle_setting("hold_to_pump")
 	elif _pause_tutorial_rect().has_point(pos):
 		_toggle_setting("tutorial")
 	elif _pause_hub_rect().has_point(pos):
@@ -8242,9 +8375,11 @@ func _draw_portrait_status_panel() -> void:
 
 func _draw_mobile_controls() -> void:
 	_draw_dpad()
-	var action_label := "BEACON" if _can_use_beacon() else ("KEY" if _nearby_vault_gate() != Vector2i.ZERO else "LANCE")
-	var action_color := BEACON_ARMED if _can_use_beacon() else (CAVE_KEY if _nearby_vault_gate() != Vector2i.ZERO else _lance_color())
-	_draw_touch_button(_mobile_lance_rect(), action_label, action_color, lance_active or _can_use_beacon() or _nearby_vault_gate() != Vector2i.ZERO)
+	_draw_touch_button(_mobile_lance_rect(), "LANCE", _lance_color(), lance_active)
+	if _contextual_interaction_available():
+		var action_label := "BEACON" if _can_use_beacon() else "KEY"
+		var action_color := BEACON_ARMED if _can_use_beacon() else CAVE_KEY
+		_draw_touch_button(_mobile_interact_rect(), action_label, action_color, true)
 
 
 func _draw_desktop_ui() -> void:
@@ -8374,7 +8509,7 @@ func _mobile_pause_rect() -> Rect2:
 func _pause_panel_rect() -> Rect2:
 	var viewport := get_viewport_rect().size
 	var width := minf(viewport.x - 48.0, 500.0)
-	var height := minf(viewport.y - 48.0, 482.0)
+	var height := minf(viewport.y - 48.0, 526.0)
 	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
 
 
@@ -8395,12 +8530,17 @@ func _pause_shake_rect() -> Rect2:
 
 func _pause_tutorial_rect() -> Rect2:
 	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 410), Vector2(rect.size.x - 72, 38))
+
+
+func _pause_pump_rect() -> Rect2:
+	var rect := _pause_panel_rect()
 	return Rect2(rect.position + Vector2(36, 366), Vector2(rect.size.x - 72, 38))
 
 
 func _pause_wipe_rect() -> Rect2:
 	var rect := _pause_panel_rect()
-	return Rect2(rect.position + Vector2(36, 410), Vector2(rect.size.x - 72, 48))
+	return Rect2(rect.position + Vector2(36, 454), Vector2(rect.size.x - 72, 48))
 
 
 func _pause_hub_rect() -> Rect2:
@@ -8477,7 +8617,13 @@ func _mobile_dpad_center() -> Vector2:
 func _mobile_lance_rect() -> Rect2:
 	var center := _mobile_dpad_center()
 	var x := _portrait_layout_left() + MOBILE_LANCE_RECT.position.x - BOARD_ORIGIN.x
-	return Rect2(Vector2(x, center.y - 32.0), MOBILE_LANCE_RECT.size)
+	return Rect2(Vector2(x, center.y + 18.0), MOBILE_LANCE_RECT.size)
+
+
+func _mobile_interact_rect() -> Rect2:
+	var center := _mobile_dpad_center()
+	var x := _portrait_layout_left() + MOBILE_INTERACT_RECT.position.x - BOARD_ORIGIN.x
+	return Rect2(Vector2(x, center.y - 110.0), MOBILE_INTERACT_RECT.size)
 
 
 func _mobile_restart_rect() -> Rect2:
