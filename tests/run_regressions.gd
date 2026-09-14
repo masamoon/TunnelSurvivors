@@ -19,8 +19,10 @@ func _run() -> void:
 	_test_gameplay_timers_freeze_in_menus()
 	_test_reward_eligibility()
 	_test_presentation_contracts()
+	_test_cave_encounter_grammar()
+	_test_boulder_kill_attribution()
 	if failures.is_empty():
-		print("OK: control, pumping, timer, reward, and presentation regressions")
+		print("OK: control, presentation, encounter, and attribution regressions")
 		quit(0)
 		return
 	for failure in failures:
@@ -257,3 +259,50 @@ func _test_presentation_contracts() -> void:
 	var lines: Array = game._wrap_text(hint, 14, 500.0, 2)
 	_expect(lines.size() <= 2 and "disengage" in " ".join(lines), "touch pumping instruction is truncated")
 	game.free()
+
+
+func _test_cave_encounter_grammar() -> void:
+	for seed_value in range(16):
+		var game := _game()
+		game.player_pos = Vector2i(int(game.BOARD_W * 0.5), 1)
+		game.player_target_cell = game.player_pos
+		game.current_map_def = {}
+		game.depth_tier = 3
+		game.rng.seed = 1200 + seed_value
+		game._build_cavern()
+		var errors: Array[String] = game._encounter_validation_errors()
+		_expect(errors.is_empty(), "seed %d produced invalid encounter geometry: %s" % [seed_value, "; ".join(errors)])
+		_expect(game.cave_encounters.size() == 3, "seed %d did not place the three encounter patterns" % seed_value)
+		var ids := {}
+		for encounter in game.cave_encounters:
+			ids[String(encounter["id"])] = true
+			_expect(game._connected_tunnel_cells(encounter["approach"]).has(encounter["escape"]), "seed %d encounter has no usable escape" % seed_value)
+		_expect(ids.has(game.ENCOUNTER_ROCK_AMBUSH), "seed %d is missing the rock ambush" % seed_value)
+		_expect(ids.has(game.ENCOUNTER_FLANK_LOOP), "seed %d is missing the flank loop" % seed_value)
+		_expect(ids.has(game.ENCOUNTER_GUARDED_VEIN), "seed %d is missing the guarded vein" % seed_value)
+		_expect(game._active_special_enemy_kinds().size() <= 1, "seed %d introduced multiple unfamiliar enemy types together" % seed_value)
+		game.free()
+
+
+func _test_boulder_kill_attribution() -> void:
+	var cave_in := _game()
+	_prepare_open_board(cave_in)
+	cave_in._add_rock(Vector2i(8, 4))
+	cave_in._add_enemy(Vector2i(8, 5), cave_in.ENEMY_GRUB_KIND)
+	cave_in._update_rocks(cave_in.ROCK_LOOSE_DELAY + 0.01)
+	_expect(cave_in.run_kills == 1, "environmental cave-in did not resolve its enemy kill")
+	_expect(cave_in.run_boulder_kills == 0, "untriggered cave-in counted as a player boulder kill")
+	_expect(int(cave_in.meta["lifetime"].get("boulder_kills", 0)) == 0, "untriggered cave-in advanced lifetime boulder progress")
+	_expect(not bool(cave_in.meta["achievements"].get("first_boulder_kill", false)), "untriggered cave-in unlocked Rock Plan")
+	cave_in.free()
+
+	var player_drop := _game()
+	_prepare_open_board(player_drop)
+	player_drop._add_rock(Vector2i(8, 4))
+	player_drop.player_dug_cells[Vector2i(8, 5)] = 0.0
+	player_drop._add_enemy(Vector2i(8, 5), player_drop.ENEMY_GRUB_KIND)
+	player_drop._update_rocks(player_drop.ROCK_LOOSE_DELAY + 0.01)
+	_expect(player_drop.run_boulder_kills == 1, "player-dug support did not attribute the boulder kill")
+	_expect(int(player_drop.meta["lifetime"].get("boulder_kills", 0)) == 1, "player boulder kill did not advance lifetime progress")
+	_expect(bool(player_drop.meta["achievements"].get("first_boulder_kill", false)), "player boulder kill did not unlock Rock Plan")
+	player_drop.free()

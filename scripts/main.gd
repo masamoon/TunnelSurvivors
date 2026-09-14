@@ -160,6 +160,9 @@ const VAULT_KIND_CRUSHER := "crusher"
 const VAULT_DANGER_TIME := "time"
 const VAULT_DANGER_TRAP := "trap"
 const VAULT_DANGER_ALERT := "alert"
+const ENCOUNTER_ROCK_AMBUSH := "rock_ambush"
+const ENCOUNTER_FLANK_LOOP := "flank_loop"
+const ENCOUNTER_GUARDED_VEIN := "guarded_vein"
 
 const DIRS := [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]
 const ROCK_LOOSE_DELAY := 1.12
@@ -374,6 +377,9 @@ var super_gems := []
 var treasure_chests := []
 var key_pickups := []
 var vault_rooms := []
+var cave_encounters := []
+var encounter_reserved_cells := {}
+var cavern_generation_active := false
 var xp_pickups := []
 var enemies := []
 var recent_spawn_cells: Array[Vector2i] = []
@@ -1983,6 +1989,7 @@ func _apply_starting_loadout() -> void:
 
 
 func _build_cavern() -> void:
+	cavern_generation_active = true
 	grid.clear()
 	rocks.clear()
 	gems.clear()
@@ -1992,6 +1999,8 @@ func _build_cavern() -> void:
 	treasure_chests.clear()
 	key_pickups.clear()
 	vault_rooms.clear()
+	cave_encounters.clear()
+	encounter_reserved_cells.clear()
 	enemies.clear()
 	recent_spawn_cells.clear()
 	run_relics.clear()
@@ -2010,7 +2019,8 @@ func _build_cavern() -> void:
 	_set_tile(beacon_pos, TILE_BEACON)
 
 	var enemy_count := 4 + depth_tier + int(current_map_def.get("enemy_bonus", 0))
-	var patrol_cells := _carve_enemy_patrols(enemy_count)
+	_place_cave_encounters()
+	var patrol_cells := _carve_enemy_patrols(maxi(0, enemy_count - enemies.size()))
 
 	_place_rocks(roundi(float(12 + depth_tier * 2) * float(current_map_def.get("rock_mult", 1.0))))
 	_place_gems(roundi(float(22 + depth_tier * 3 + _effective_extra_gems_bonus()) * float(current_map_def.get("gem_mult", 1.0))))
@@ -2027,11 +2037,201 @@ func _build_cavern() -> void:
 	_place_vault_rooms()
 	_place_key_pickups()
 	_rebuild_soil_mask_from_grid()
+	cavern_generation_active = false
+	var encounter_errors := _encounter_validation_errors()
+	if not encounter_errors.is_empty():
+		push_error("Invalid cave encounter generation: %s" % "; ".join(encounter_errors))
 
 
 func _carve_player_start() -> void:
 	_carve_cell(player_pos)
 	_carve_cell(player_pos + Vector2i.DOWN)
+
+
+func _place_cave_encounters() -> void:
+	var specs := [
+		{"id": ENCOUNTER_ROCK_AMBUSH, "y": rng.randi_range(5, 6)},
+		{"id": ENCOUNTER_FLANK_LOOP, "y": rng.randi_range(13, 15)},
+		{"id": ENCOUNTER_GUARDED_VEIN, "y": rng.randi_range(22, 24)}
+	]
+	for spec in specs:
+		var encounter_id := String(spec["id"])
+		var width := 7
+		var origin := Vector2i(rng.randi_range(2, BOARD_W - width - 2), int(spec["y"]))
+		var mirrored := rng.randf() < 0.5
+		var encounter := _cave_encounter_blueprint(encounter_id, origin, mirrored)
+		if _can_place_cave_encounter(encounter):
+			_commit_cave_encounter(encounter)
+
+
+func _cave_encounter_blueprint(encounter_id: String, origin: Vector2i, mirrored: bool) -> Dictionary:
+	var open_rel := []
+	var approach_rel := Vector2i.ZERO
+	var escape_rel := Vector2i.ZERO
+	var reward_rel := Vector2i.ZERO
+	var enemy_rel := []
+	var rock_rel := Vector2i(-1, -1)
+	var support_rel := Vector2i(-1, -1)
+	var reward_kind := ""
+	match encounter_id:
+		ENCOUNTER_ROCK_AMBUSH:
+			open_rel = [
+				Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1),
+				Vector2i(0, 2), Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5),
+				Vector2i(3, 2), Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5),
+				Vector2i(4, 2), Vector2i(5, 2), Vector2i(6, 2),
+				Vector2i(6, 3), Vector2i(6, 4), Vector2i(6, 5),
+				Vector2i(1, 5), Vector2i(2, 5), Vector2i(4, 5), Vector2i(5, 5)
+			]
+			approach_rel = Vector2i(0, 1)
+			escape_rel = Vector2i(6, 2)
+			reward_rel = Vector2i(6, 5)
+			enemy_rel = [Vector2i(3, 3), Vector2i(3, 4)]
+			rock_rel = Vector2i(3, 0)
+			support_rel = Vector2i(3, 1)
+			reward_kind = TREASURE_KIND_GEMS
+		ENCOUNTER_FLANK_LOOP:
+			for x in range(7):
+				open_rel.append(Vector2i(x, 0))
+				open_rel.append(Vector2i(x, 4))
+				open_rel.append(Vector2i(x, 2))
+			for y in range(1, 4):
+				open_rel.append(Vector2i(0, y))
+				open_rel.append(Vector2i(6, y))
+			approach_rel = Vector2i(0, 2)
+			escape_rel = Vector2i(6, 2)
+			reward_rel = Vector2i(3, 0)
+			enemy_rel = [Vector2i(5, 2)]
+			reward_kind = "super_gem"
+		ENCOUNTER_GUARDED_VEIN:
+			for x in range(5):
+				open_rel.append(Vector2i(x, 2))
+			for x in range(4, 7):
+				for y in range(1, 4):
+					open_rel.append(Vector2i(x, y))
+			for x in range(3, 7):
+				open_rel.append(Vector2i(x, 4))
+			open_rel.append(Vector2i(3, 3))
+			approach_rel = Vector2i(0, 2)
+			escape_rel = Vector2i(3, 4)
+			reward_rel = Vector2i(6, 2)
+			enemy_rel = [Vector2i(4, 2)]
+			reward_kind = "gem_vein"
+
+	var width := 7
+	var to_cell := func(rel: Vector2i) -> Vector2i:
+		var local_cell: Vector2i = Vector2i(width - 1 - rel.x, rel.y) if mirrored else rel
+		return origin + local_cell
+	var open_cells := []
+	for rel_value in open_rel:
+		var open_cell: Vector2i = to_cell.call(rel_value)
+		if not open_cells.has(open_cell):
+			open_cells.append(open_cell)
+	var enemy_cells := []
+	for rel_value in enemy_rel:
+		enemy_cells.append(to_cell.call(rel_value))
+	var footprint := open_cells.duplicate()
+	if rock_rel.x >= 0:
+		footprint.append(to_cell.call(rock_rel))
+		footprint.append(to_cell.call(support_rel))
+	return {
+		"id": encounter_id,
+		"origin": origin,
+		"mirrored": mirrored,
+		"open_cells": open_cells,
+		"footprint": footprint,
+		"approach": to_cell.call(approach_rel),
+		"escape": to_cell.call(escape_rel),
+		"reward_cell": to_cell.call(reward_rel),
+		"reward_kind": reward_kind,
+		"enemy_cells": enemy_cells,
+		"rock_cell": to_cell.call(rock_rel) if rock_rel.x >= 0 else Vector2i(-1, -1),
+		"support_cell": to_cell.call(support_rel) if support_rel.x >= 0 else Vector2i(-1, -1)
+	}
+
+
+func _can_place_cave_encounter(encounter: Dictionary) -> bool:
+	var unique := {}
+	for cell_value in encounter.get("footprint", []):
+		var cell: Vector2i = cell_value
+		if unique.has(cell) or not _in_bounds(cell) or not _can_spawn_underground_at(cell):
+			return false
+		unique[cell] = true
+		if _tile(cell) != TILE_DIRT or _terrain_at(cell) != "" or _has_any_pickup_or_actor(cell):
+			return false
+		if cell == beacon_pos or cell.distance_squared_to(player_pos) < 9:
+			return false
+	return true
+
+
+func _commit_cave_encounter(encounter: Dictionary) -> void:
+	for cell_value in encounter["footprint"]:
+		encounter_reserved_cells[cell_value] = String(encounter["id"])
+	for cell_value in encounter["open_cells"]:
+		_carve_cell(cell_value, true, false)
+	var encounter_id := String(encounter["id"])
+	if encounter_id == ENCOUNTER_ROCK_AMBUSH:
+		_add_rock(encounter["rock_cell"])
+		treasure_chests.append({
+			"pos": encounter["reward_cell"],
+			"reward": {"kind": TREASURE_KIND_GEMS, "amount": TREASURE_JACKPOT_MAX + depth_tier},
+			"encounter": encounter_id
+		})
+	elif encounter_id == ENCOUNTER_FLANK_LOOP:
+		super_gems.append(encounter["reward_cell"])
+	elif encounter_id == ENCOUNTER_GUARDED_VEIN:
+		var chamber_gems := [Vector2i(5, 1), Vector2i(6, 1), Vector2i(5, 3), Vector2i(6, 3)]
+		for rel in chamber_gems:
+			var local_cell: Vector2i = Vector2i(6 - rel.x, rel.y) if bool(encounter["mirrored"]) else rel
+			var gem_pos: Vector2i = encounter["origin"] + local_cell
+			if not gems.has(gem_pos):
+				gems.append(gem_pos)
+		super_gems.append(encounter["reward_cell"])
+
+	for i in range(encounter["enemy_cells"].size()):
+		var enemy_pos: Vector2i = encounter["enemy_cells"][i]
+		var kind := ENEMY_GRUB_KIND
+		if encounter_id == ENCOUNTER_GUARDED_VEIN:
+			kind = _encounter_featured_enemy_kind()
+		_add_enemy(enemy_pos, kind)
+	cave_encounters.append(encounter)
+
+
+func _encounter_featured_enemy_kind() -> int:
+	if depth_tier < FYGAR_MIN_DEPTH_TIER:
+		return ENEMY_GRUB_KIND
+	var choices := [ENEMY_FYGAR_KIND]
+	if depth_tier >= 3:
+		choices.append(ENEMY_BURROWER_KIND)
+	return int(choices[rng.randi_range(0, choices.size() - 1)])
+
+
+func _encounter_validation_errors() -> Array[String]:
+	var errors: Array[String] = []
+	var seen_ids := {}
+	for encounter in cave_encounters:
+		var encounter_id := String(encounter.get("id", "unknown"))
+		if seen_ids.has(encounter_id):
+			errors.append("duplicate %s" % encounter_id)
+		seen_ids[encounter_id] = true
+		var connected := _connected_tunnel_cells(encounter["approach"])
+		if not connected.has(encounter["escape"]):
+			errors.append("%s has no escape route" % encounter_id)
+		if not connected.has(encounter["reward_cell"]):
+			errors.append("%s reward is disconnected" % encounter_id)
+		if encounter_id == ENCOUNTER_ROCK_AMBUSH:
+			var rock_cell: Vector2i = encounter["rock_cell"]
+			var support_cell: Vector2i = encounter["support_cell"]
+			if not _has_rock(rock_cell) or _cell_open_mask(support_cell) != 0:
+				errors.append("rock ambush starts unsupported")
+	for required_id in [ENCOUNTER_ROCK_AMBUSH, ENCOUNTER_FLANK_LOOP, ENCOUNTER_GUARDED_VEIN]:
+		if not seen_ids.has(required_id):
+			errors.append("missing %s" % required_id)
+	return errors
+
+
+func _is_encounter_reserved(pos: Vector2i) -> bool:
+	return encounter_reserved_cells.has(pos)
 
 
 func _carve_enemy_patrols(count: int) -> Array:
@@ -2174,20 +2374,21 @@ func _place_rocks(count: int) -> void:
 		var pos := Vector2i(rng.randi_range(1, BOARD_W - 2), rng.randi_range(3, BOARD_H - 3))
 		if _cell_open_mask(pos) != 0:
 			continue
-		if _has_rock(pos) or pos.distance_squared_to(player_pos) < 25:
+		if _is_encounter_reserved(pos) or _has_rock(pos) or pos.distance_squared_to(player_pos) < 25:
 			continue
 		if rng.randf() < 0.62 and _cell_open_mask(pos + Vector2i.DOWN) == 0:
 			continue
 		_add_rock(pos)
 
 
-func _add_rock(pos: Vector2i) -> void:
+func _add_rock(pos: Vector2i, player_attributed := false) -> void:
 	rocks.append({
 		"pos": pos,
 		"visual_pos": _visual_from_pos(pos),
 		"falling": false,
 		"timer": ROCK_LOOSE_DELAY,
-		"fall_distance": 0
+		"fall_distance": 0,
+		"player_attributed": player_attributed
 	})
 
 
@@ -2196,7 +2397,7 @@ func _place_gems(count: int) -> void:
 	while gems.size() < count and attempts < 1000:
 		attempts += 1
 		var pos := Vector2i(rng.randi_range(1, BOARD_W - 2), rng.randi_range(UNDERGROUND_SPAWN_MIN_ROW, BOARD_H - 2))
-		if pos == player_pos or pos == beacon_pos or _has_gem(pos) or _has_treasure_chest(pos):
+		if _is_encounter_reserved(pos) or pos == player_pos or pos == beacon_pos or _has_gem(pos) or _has_treasure_chest(pos):
 			continue
 		if _has_rock(pos) or _has_relic(pos):
 			continue
@@ -2226,7 +2427,7 @@ func _place_super_gems(count: int) -> void:
 	while super_gems.size() < count and attempts < 1200:
 		attempts += 1
 		var pos := Vector2i(rng.randi_range(1, BOARD_W - 2), rng.randi_range(UNDERGROUND_SPAWN_MIN_ROW, BOARD_H - 2))
-		if pos == player_pos or pos == beacon_pos or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_treasure_chest(pos):
+		if _is_encounter_reserved(pos) or pos == player_pos or pos == beacon_pos or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_treasure_chest(pos):
 			continue
 		if _cell_open_mask(pos) != 0:
 			continue
@@ -2278,6 +2479,8 @@ func _can_place_crystal_terrain_at(pos: Vector2i, kind: String) -> bool:
 	if not _in_bounds(pos) or pos.y <= SURFACE_ROW:
 		return false
 	if _cell_open_mask(pos) != 0:
+		return false
+	if _is_encounter_reserved(pos):
 		return false
 	if pos == player_pos or pos == beacon_pos or pos.distance_squared_to(player_pos) < 49:
 		return false
@@ -2332,6 +2535,8 @@ func _can_place_crystal_at(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or pos.y <= SURFACE_ROW:
 		return false
 	if _cell_open_mask(pos) != 0:
+		return false
+	if _is_encounter_reserved(pos):
 		return false
 	if pos == player_pos or pos == beacon_pos:
 		return false
@@ -2389,7 +2594,7 @@ func _place_run_relics(count: int) -> void:
 	while run_relics.size() < target_count and attempts < 900 and not pool.is_empty():
 		attempts += 1
 		var pos := Vector2i(rng.randi_range(2, BOARD_W - 3), rng.randi_range(UNDERGROUND_SPAWN_MIN_ROW, BOARD_H - 3))
-		if pos == player_pos or pos == beacon_pos or _terrain_at(pos) != "" or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
+		if _is_encounter_reserved(pos) or pos == player_pos or pos == beacon_pos or _terrain_at(pos) != "" or _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
 			continue
 		if rng.randf() < 0.75 and _adjacent_tunnel_count(pos) == 0:
 			continue
@@ -2413,7 +2618,7 @@ func _place_deep_treasure() -> void:
 	var best_score := -999999.0
 	for attempt in range(180):
 		var pos := Vector2i(rng.randi_range(2, BOARD_W - 3), rng.randi_range(min_y, max_y))
-		if pos == player_pos or pos == beacon_pos:
+		if _is_encounter_reserved(pos) or pos == player_pos or pos == beacon_pos:
 			continue
 		if _has_rock(pos) or _has_gem(pos) or _has_super_gem(pos) or _has_relic(pos) or _has_treasure_chest(pos):
 			continue
@@ -2503,7 +2708,7 @@ func _can_place_vault_at(approach: Vector2i, gate: Vector2i, dir: Vector2i, room
 		return false
 	if not _in_bounds(gate) or _tile(gate) != TILE_DIRT or not _can_spawn_underground_at(gate):
 		return false
-	if _terrain_at(gate) != "" or gate == beacon_pos or _has_any_pickup_or_actor(gate):
+	if _is_encounter_reserved(gate) or _terrain_at(gate) != "" or gate == beacon_pos or _has_any_pickup_or_actor(gate):
 		return false
 	if _adjacent_tunnel_count(gate) != 1:
 		return false
@@ -2513,7 +2718,7 @@ func _can_place_vault_at(approach: Vector2i, gate: Vector2i, dir: Vector2i, room
 		if unique.has(cell):
 			return false
 		unique[cell] = true
-		if not _in_bounds(cell) or not _can_spawn_underground_at(cell):
+		if not _in_bounds(cell) or not _can_spawn_underground_at(cell) or _is_encounter_reserved(cell):
 			return false
 		if _tile(cell) != TILE_DIRT or _terrain_at(cell) != "":
 			return false
@@ -2655,7 +2860,7 @@ func _seed_crusher_vault(vault: Dictionary) -> void:
 		return
 	var rock_pos: Vector2i = room_cells[0]
 	if _can_place_vault_rock_at(rock_pos):
-		_add_rock(rock_pos)
+		_add_rock(rock_pos, true)
 	for i in range(1, mini(3, room_cells.size())):
 		var enemy_pos: Vector2i = room_cells[i]
 		if _enemy_index_at(enemy_pos) == -1 and not _has_rock(enemy_pos):
@@ -2668,7 +2873,7 @@ func _seed_crusher_vault(vault: Dictionary) -> void:
 func _try_place_vault_falling_rock(target_cell: Vector2i) -> bool:
 	var rock_pos := target_cell + Vector2i.UP
 	if _can_place_vault_rock_at(rock_pos) and _is_open_tile(target_cell):
-		_add_rock(rock_pos)
+		_add_rock(rock_pos, true)
 		return true
 	return false
 
@@ -2703,6 +2908,8 @@ func _place_key_pickups() -> void:
 
 func _can_place_key_pickup_at(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or not _is_open_tile(pos):
+		return false
+	if _is_encounter_reserved(pos):
 		return false
 	if pos == player_pos or pos == player_target_cell or pos == player_step_from or pos == beacon_pos:
 		return false
@@ -2822,6 +3029,14 @@ func _choose_enemy_kind() -> int:
 		weighted.append({"kind": ENEMY_LEECH_KIND, "weight": 24 + floori(run_time / 80.0) * 3 + int(current_map_def.get("leech_weight_bonus", 0))})
 	if run_time >= BROOD_POD_MIN_TIME and player_level >= BROOD_POD_MIN_LEVEL:
 		weighted.append({"kind": ENEMY_BROOD_POD_KIND, "weight": 12 + floori(run_time / 120.0) * 3})
+	var active_special_kinds := _active_special_enemy_kinds()
+	if not active_special_kinds.is_empty():
+		var staged := []
+		for entry in weighted:
+			var kind := int(entry["kind"])
+			if kind == ENEMY_GRUB_KIND or active_special_kinds.has(kind):
+				staged.append(entry)
+		weighted = staged
 
 	var total := 0
 	for entry in weighted:
@@ -2833,6 +3048,15 @@ func _choose_enemy_kind() -> int:
 		if roll <= cursor:
 			return int(entry["kind"])
 	return ENEMY_GRUB_KIND
+
+
+func _active_special_enemy_kinds() -> Dictionary:
+	var kinds := {}
+	for enemy in enemies:
+		var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+		if kind != ENEMY_GRUB_KIND and kind != ENEMY_BOSS_KIND and kind != ENEMY_REAPER_KIND:
+			kinds[kind] = true
+	return kinds
 
 
 func _enemy_max_hp_for_kind(kind: int) -> int:
@@ -4277,6 +4501,8 @@ func _can_spawn_enemy_at(pos: Vector2i) -> bool:
 		return false
 	if not _can_spawn_underground_at(pos):
 		return false
+	if cavern_generation_active and _is_encounter_reserved(pos):
+		return false
 	if pos == player_pos or pos == player_target_cell or pos == beacon_pos:
 		return false
 	if not _is_open_tile(pos):
@@ -4292,6 +4518,8 @@ func _can_spawn_enemy_breach_at(pos: Vector2i) -> bool:
 	if not _in_bounds(pos):
 		return false
 	if not _can_spawn_underground_at(pos):
+		return false
+	if cavern_generation_active and _is_encounter_reserved(pos):
 		return false
 	if pos == player_pos or pos == player_target_cell or pos == beacon_pos:
 		return false
@@ -4431,6 +4659,8 @@ func _can_spawn_rock_at(pos: Vector2i) -> bool:
 		return false
 	if not _can_spawn_underground_at(pos):
 		return false
+	if _is_encounter_reserved(pos) or _is_encounter_reserved(pos + Vector2i.DOWN):
+		return false
 	if _cell_open_mask(pos) != 0:
 		return false
 	if _terrain_at(pos) != "":
@@ -4453,6 +4683,8 @@ func _can_spawn_buried_rock_at(pos: Vector2i) -> bool:
 		return false
 	if _cell_open_mask(pos) != 0:
 		return false
+	if _is_encounter_reserved(pos):
+		return false
 	if _terrain_at(pos) != "":
 		return false
 	if pos.distance_squared_to(player_pos) < ROCK_SPAWN_SAFE_RADIUS * ROCK_SPAWN_SAFE_RADIUS:
@@ -4471,7 +4703,7 @@ func _try_spawn_boulder_lance_rock(pos: Vector2i) -> bool:
 		return false
 	if not _can_place_boulder_lance_rock_at(pos):
 		return false
-	_add_rock(pos)
+	_add_rock(pos, true)
 	_add_cell_pulse(pos, ROCK, PULSE_FEEDBACK_TIME + 0.18, 1.2, true)
 	_shake(0.10)
 	return true
@@ -4568,6 +4800,8 @@ func _can_place_treasure_chest_at(pos: Vector2i) -> bool:
 		return false
 	if not _can_spawn_underground_at(pos):
 		return false
+	if _is_encounter_reserved(pos):
+		return false
 	if pos == player_pos or pos == player_target_cell or pos == player_step_from or pos == beacon_pos:
 		return false
 	if pos.distance_squared_to(player_pos) < TREASURE_CHEST_PLAYER_SAFE_RADIUS * TREASURE_CHEST_PLAYER_SAFE_RADIUS:
@@ -4624,6 +4858,8 @@ func _can_place_breached_treasure_chest_at(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _cell_open_mask(pos) != 0:
 		return false
 	if _terrain_at(pos) != "":
+		return false
+	if _is_encounter_reserved(pos):
 		return false
 	if not _can_spawn_underground_at(pos):
 		return false
@@ -4690,6 +4926,8 @@ func _can_place_lure_gem_at(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or not _is_open_tile(pos):
 		return false
 	if not _can_spawn_underground_at(pos):
+		return false
+	if _is_encounter_reserved(pos):
 		return false
 	if pos == player_pos or pos == player_target_cell or pos == player_step_from or pos == beacon_pos:
 		return false
@@ -5961,6 +6199,8 @@ func _update_rocks(delta: float) -> void:
 			rock["fall_distance"] = 0
 			continue
 
+		if player_dug_cells.has(below):
+			rock["player_attributed"] = true
 		rock["falling"] = true
 		rock["timer"] -= delta
 		if rock["timer"] > 0.0:
@@ -5970,7 +6210,7 @@ func _update_rocks(delta: float) -> void:
 		rock["pos"] = below
 		rock["fall_distance"] += 1
 		_pull_enemies_toward_boulder_drop(below, rock["fall_distance"])
-		_crush_at(below, rock["fall_distance"])
+		_crush_at(below, rock["fall_distance"], bool(rock.get("player_attributed", false)))
 
 
 func _can_rock_fall_to(pos: Vector2i) -> bool:
@@ -6024,7 +6264,7 @@ func _can_boulder_snare_enemy_step(from: Vector2i, target: Vector2i) -> bool:
 	return _tunnel_allows_step(from, target)
 
 
-func _crush_at(pos: Vector2i, fall_distance: int) -> void:
+func _crush_at(pos: Vector2i, fall_distance: int, player_attributed := false) -> void:
 	if fall_distance <= 0:
 		return
 
@@ -6061,21 +6301,29 @@ func _crush_at(pos: Vector2i, fall_distance: int) -> void:
 			_award_boss_defeat_reward(crushed_enemy)
 			enemies.remove_at(i)
 			run_kills += 1
-			run_boulder_kills += 1
+			if player_attributed:
+				run_boulder_kills += 1
 			if _open_vault_contains_cell(dead_pos):
 				vault_combo_kills += 1
 			_record_enemy_defeat(dead_kind)
-			_increment_lifetime("boulder_kills")
-			_complete_achievement("first_boulder_kill")
+			if player_attributed:
+				_increment_lifetime("boulder_kills")
+				_complete_achievement("first_boulder_kill")
 			var actual_xp := _drop_xp(dead_pos, xp_award, crushed_enemy)
 			_award_enemy_score_at(dead_pos, 170 + depth_tier * 12, "Boulder crush")
 			_shake(0.22)
 			crushes += 1
 			crush_xp += actual_xp
-			message = "Boulder crush!" if crushes == 1 else "Boulder crush x%d!" % crushes
+			if player_attributed:
+				message = "Boulder crush!" if crushes == 1 else "Boulder crush x%d!" % crushes
+			else:
+				message = "Cave-in crush!" if crushes == 1 else "Cave-in crush x%d!" % crushes
 	if crushes > 0:
 		_add_boulder_crush_feedback(pos, fall_distance, crushes, crush_xp)
-		message = "Boulder crush! +%d XP" % crush_xp if crushes == 1 else "Boulder crush x%d! +%d XP" % [crushes, crush_xp]
+		if player_attributed:
+			message = "Boulder crush! +%d XP" % crush_xp if crushes == 1 else "Boulder crush x%d! +%d XP" % [crushes, crush_xp]
+		else:
+			message = "Cave-in crush! +%d XP" % crush_xp if crushes == 1 else "Cave-in crush x%d! +%d XP" % [crushes, crush_xp]
 
 
 func _boulder_crush_xp(enemy_kind: int, fall_distance: int, chain_index: int) -> int:
