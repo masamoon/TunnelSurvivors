@@ -28,6 +28,8 @@ Restarting or returning to the hub abandons the current run and awards no resear
 
 The boulder upgrade branch includes Boulder Lance, a shorter weaker lance that can create boulders where lance-killed enemies fall. Later ranks improve its boulder chance, and those ranks can appear in chests once unlocked. Your first boulder crush also unlocks the Stonecaller starting build, which begins runs with Boulder Lance.
 
+Each cave now stages a mirrored rock ambush, a flankable loop, and a guarded gem vein alongside the optional crusher vault. Generic generation preserves their approach, reward, and escape cells. Only boulders released by player digging or an explicit player tool advance Rock Plan progress; incidental cave-ins still defeat enemies and drop XP.
+
 The base lance branch uses standalone upgrades such as Anchor Chain, Snap Reel, Piston Head, Rupture Wave, and Beacon Coupler. These do not require elemental status setups to pay off.
 
 The pause settings include master audio, music, SFX volume, music volume, screen shake, pump input mode, first-run hints, and a double-confirm wipe-save button.
@@ -38,7 +40,7 @@ Boss kills unlock the harder Obsidian Rift site, the Field Kit loadout, and the 
 
 Run `python3 tools/balance_check.py` to validate upgrade, research, and unlock table references.
 
-Run `godot --headless --path . --script res://tests/run_regressions.gd` to check ordered movement input, pump press/release behavior, modal timer freezes, and run reward eligibility.
+Run `godot --headless --path . --script res://tests/run_regressions.gd` to check controls, presentation, encounter connectivity and support, staged enemy variety, and boulder-kill attribution.
 
 ## Release Build
 
