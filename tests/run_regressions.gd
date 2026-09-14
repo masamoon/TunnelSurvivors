@@ -18,8 +18,9 @@ func _run() -> void:
 	_test_two_pointer_touch_input()
 	_test_gameplay_timers_freeze_in_menus()
 	_test_reward_eligibility()
+	_test_presentation_contracts()
 	if failures.is_empty():
-		print("OK: control, pumping, timer, and reward regressions")
+		print("OK: control, pumping, timer, reward, and presentation regressions")
 		quit(0)
 		return
 	for failure in failures:
@@ -225,3 +226,34 @@ func _test_reward_eligibility() -> void:
 	active_defeat._record_run_meta_progress(active_defeat.RUN_OUTCOME_DEFEAT)
 	_expect(active_defeat.meta["lifetime"]["relic_research"] > 0, "genuine short defeat did not earn research")
 	active_defeat.free()
+
+
+func _test_presentation_contracts() -> void:
+	var game := _game()
+	_expect(game._portrait_board_rows_for_height(960.0) == 16, "compact portrait layout no longer reserves control space")
+	_expect(game._portrait_board_rows_for_height(1385.0) == 31, "tall portrait layout did not spend extra height on cave rows")
+	_expect(float(game.MOBILE_DPAD_BUTTON) * 390.0 / float(game.MOBILE_LAYOUT_W) >= 48.0, "direction controls are under 48 display pixels at 390px wide")
+	_expect(game.MOBILE_INTERACT_RECT.size.y * 390.0 / float(game.MOBILE_LAYOUT_W) >= 48.0, "interact target is under 48 display pixels at 390px wide")
+
+	_prepare_open_board(game)
+	game._add_enemy(Vector2i(7, 5), game.ENEMY_GRUB_KIND)
+	var enemy: Dictionary = game.enemies[0]
+	_expect(game._enemy_pressure_pose(enemy) == "neutral", "healthy enemy pose is not neutral")
+	enemy["inflated"] = true
+	game.lance_active = true
+	game.lance_attached_enemy = 0
+	_expect(game._enemy_pressure_pose(enemy) == "pumping", "attached enemy pose is not pumping")
+	enemy["hp"] = 1
+	_expect(game._enemy_pressure_pose(enemy) == "critical", "almost-bursting enemy pose is not critical")
+	enemy["hp"] = 2
+	game.lance_active = false
+	game.lance_attached_enemy = -1
+	_expect(game._enemy_pressure_pose(enemy) == "recovering", "released inflated enemy pose is not recovering")
+
+	game.font = ThemeDB.get_fallback_font()
+	game.show_touch_controls = true
+	game.run_time = 10.0
+	var hint: String = game._tutorial_hint_text()
+	var lines: Array = game._wrap_text(hint, 14, 500.0, 2)
+	_expect(lines.size() <= 2 and "disengage" in " ".join(lines), "touch pumping instruction is truncated")
+	game.free()
