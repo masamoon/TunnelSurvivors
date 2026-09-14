@@ -12,7 +12,7 @@ Diggy is a compact arcade mining extraction game built in Godot 4. Dig through t
 - Pause / settings: `Esc` or `P`
 - Hub / rerun after a run: `Enter` for hub, `R` to rerun
 
-When multiple movement keys are held, the most recently pressed direction wins; releasing it restores the previous held direction. Pumping can be changed to toggle mode in pause settings.
+When multiple movement keys are held, the most recently pressed direction wins; releasing it restores the previous held direction. Pumping can be changed to toggle mode in pause settings, where impact hit-stop can also be reduced or disabled.
 
 On touch devices, use the on-screen directional pad, `LANCE` button, contextual `KEY` / `BEACON` interaction button, and pause button. Combat and interaction remain separate, so standing beside a gate never consumes an attack. Hub panels can be tapped to cycle unlocked setup options.
 

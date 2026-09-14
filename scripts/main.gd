@@ -5031,9 +5031,9 @@ func _pump_lance_target() -> void:
 	_play_sfx("pump_%d" % mini(lance_pump_count, 3))
 	var alive := _inflate_lance_target(lance_attached_enemy, lance_pump_damage)
 	_add_pressure_feedback(enemy_pos, 1.0 + float(mini(lance_pump_count, 3)) * 0.16, lance_pump_count)
-	_hit_stop(HIT_STOP_PUMP_BEAT if alive else HIT_STOP_LANCE_KILL)
 	if alive and lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and not bool(enemies[lance_attached_enemy].get("blocked_lance", false)):
 		alive = _apply_lance_element(lance_attached_enemy, enemy_pos, lance_pump_damage)
+	_hit_stop(HIT_STOP_PUMP_BEAT if alive else HIT_STOP_LANCE_KILL)
 	if not alive:
 		_trigger_pierce_from(enemy_pos, facing, maxi(1, lance_pump_damage - 1))
 		_release_lance()
