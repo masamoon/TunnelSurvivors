@@ -12,7 +12,7 @@ Diggy is a compact arcade mining extraction game built in Godot 4. Dig through t
 - Pause / settings: `Esc` or `P`
 - Hub / rerun after a run: `Enter` for hub, `R` to rerun
 
-When multiple movement keys are held, the most recently pressed direction wins; releasing it restores the previous held direction. Pumping can be changed to toggle mode in pause settings.
+When multiple movement keys are held, the most recently pressed direction wins; releasing it restores the previous held direction. Pumping can be changed to toggle mode in pause settings, where impact hit-stop can also be reduced or disabled.
 
 On touch devices, use the on-screen directional pad, `LANCE` button, contextual `KEY` / `BEACON` interaction button, and pause button. Combat and interaction remain separate, so standing beside a gate never consumes an attack. Hub panels can be tapped to cycle unlocked setup options.
 
@@ -30,6 +30,8 @@ The boulder upgrade branch includes Boulder Lance, a shorter weaker lance that c
 
 Each cave now stages a mirrored rock ambush, a flankable loop, and a guarded gem vein alongside the optional crusher vault. Generic generation preserves their approach, reward, and escape cells. Only boulders released by player digging or an explicit player tool advance Rock Plan progress; incidental cave-ins still defeat enemies and drop XP.
 
+Prepared tunnels move at 3.2 cells per second while fresh digging moves at 2.5; basic pursuit keeps an independent 2.0 cells-per-second baseline. Pump beats escalate through lock, pressure, and critical states with optional capped hit-stop. Boulder damage resolves when the sprite reaches the impact cell, with falling acceleration, landing dust, weighted audio, and combat-cause traces for tuning.
+
 The base lance branch uses standalone upgrades such as Anchor Chain, Snap Reel, Piston Head, Rupture Wave, and Beacon Coupler. These do not require elemental status setups to pay off.
 
 The pause settings include master audio, music, SFX volume, music volume, screen shake, pump input mode, first-run hints, and a double-confirm wipe-save button.
@@ -40,7 +42,7 @@ Boss kills unlock the harder Obsidian Rift site, the Field Kit loadout, and the 
 
 Run `python3 tools/balance_check.py` to validate upgrade, research, and unlock table references.
 
-Run `godot --headless --path . --script res://tests/run_regressions.gd` to check controls, presentation, encounter connectivity and support, staged enemy variety, and boulder-kill attribution.
+Run `godot --headless --path . --script res://tests/run_regressions.gd` to check controls, encounter connectivity, independent movement speeds, pump timing, impact alignment, hit-stop caps, and boulder-kill attribution.
 
 ## Release Build
 

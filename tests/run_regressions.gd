@@ -21,8 +21,9 @@ func _run() -> void:
 	_test_presentation_contracts()
 	_test_cave_encounter_grammar()
 	_test_boulder_kill_attribution()
+	_test_movement_and_impact_contracts()
 	if failures.is_empty():
-		print("OK: control, presentation, encounter, and attribution regressions")
+		print("OK: control, encounter, movement, impact, and attribution regressions")
 		quit(0)
 		return
 	for failure in failures:
@@ -137,6 +138,8 @@ func _test_pump_timing_and_release() -> void:
 	_expect(game.lance_active and game.lance_attached_enemy == 0, "lance did not attach in the pump fixture")
 	game._update_lance(game.LANCE_HIT_DELAY + 0.01)
 	_expect(game.enemies[0]["hp"] == 2, "first pressure beat did not deal one damage")
+	_expect(game.combat_trace.size() == 1 and String(game.combat_trace[0].get("cause", "")) == "lance_pump", "first pressure beat was not traced as lance damage")
+	_expect(int(game.combat_trace[0].get("amount", 0)) == 1, "pump trace did not record its damage amount")
 	game._update_lance(game.LANCE_PUMP_INTERVAL + 0.01)
 	_expect(game.enemies[0]["hp"] == 1, "held pump did not apply a subsequent pressure beat")
 	game._set_lance_input(false)
@@ -290,7 +293,11 @@ func _test_boulder_kill_attribution() -> void:
 	cave_in._add_rock(Vector2i(8, 4))
 	cave_in._add_enemy(Vector2i(8, 5), cave_in.ENEMY_GRUB_KIND)
 	cave_in._update_rocks(cave_in.ROCK_LOOSE_DELAY + 0.01)
+	_expect(cave_in.enemies.size() == 1 and bool(cave_in.rocks[0]["impact_pending"]), "cave-in damage landed before the rock sprite")
+	cave_in._update_visual_positions(1.0)
+	cave_in._update_rocks(0.0)
 	_expect(cave_in.run_kills == 1, "environmental cave-in did not resolve its enemy kill")
+	_expect(cave_in.combat_trace.size() == 1 and String(cave_in.combat_trace[0].get("cause", "")) == "cave_in", "environmental rock damage was not traced as a cave-in")
 	_expect(cave_in.run_boulder_kills == 0, "untriggered cave-in counted as a player boulder kill")
 	_expect(int(cave_in.meta["lifetime"].get("boulder_kills", 0)) == 0, "untriggered cave-in advanced lifetime boulder progress")
 	_expect(not bool(cave_in.meta["achievements"].get("first_boulder_kill", false)), "untriggered cave-in unlocked Rock Plan")
@@ -302,7 +309,35 @@ func _test_boulder_kill_attribution() -> void:
 	player_drop.player_dug_cells[Vector2i(8, 5)] = 0.0
 	player_drop._add_enemy(Vector2i(8, 5), player_drop.ENEMY_GRUB_KIND)
 	player_drop._update_rocks(player_drop.ROCK_LOOSE_DELAY + 0.01)
+	player_drop._update_visual_positions(1.0)
+	player_drop._update_rocks(0.0)
 	_expect(player_drop.run_boulder_kills == 1, "player-dug support did not attribute the boulder kill")
+	_expect(player_drop.combat_trace.size() == 1 and String(player_drop.combat_trace[0].get("cause", "")) == "boulder_player", "player rock damage was not traced to the player")
 	_expect(int(player_drop.meta["lifetime"].get("boulder_kills", 0)) == 1, "player boulder kill did not advance lifetime progress")
 	_expect(bool(player_drop.meta["achievements"].get("first_boulder_kill", false)), "player boulder kill did not unlock Rock Plan")
 	player_drop.free()
+
+
+func _test_movement_and_impact_contracts() -> void:
+	var game := _game()
+	_prepare_open_board(game)
+	_expect(is_equal_approx(game._player_tunnel_speed(), 3.2), "prepared tunnel speed is not 3.2 cells/s")
+	_expect(is_equal_approx(game._player_dig_speed(), 2.5), "fresh-soil speed is not 2.5 cells/s")
+	game._add_enemy(Vector2i(9, 5), game.ENEMY_GRUB_KIND)
+	_expect(is_equal_approx(game._enemy_move_speed(game.enemies[0]), 2.0), "basic pursuit no longer has an independent 2.0 cells/s baseline")
+	game.move_delay *= 0.5
+	_expect(game._player_tunnel_speed() > 6.0, "player speed modifier did not affect tunnel movement")
+	_expect(is_equal_approx(game._enemy_move_speed(game.enemies[0]), 2.0), "player speed modifier also accelerated enemies")
+
+	game._hit_stop(1.0)
+	_expect(is_equal_approx(game.hit_stop_timer, game.HIT_STOP_MAX), "hit-stop did not respect its multi-impact cap")
+	var settings: Dictionary = game.meta["settings"]
+	settings["hit_stop"] = false
+	game.meta["settings"] = settings
+	game.hit_stop_timer = 0.0
+	game._hit_stop(game.HIT_STOP_BOULDER_IMPACT)
+	_expect(is_zero_approx(game.hit_stop_timer), "disabled hit-stop still froze gameplay")
+
+	_expect(game._boss_max_hp_for_variant(2) == game.BOSS_MAX_HP + 20, "boss health still scales primarily through repeated pump cycles")
+	_expect(game._boss_boulder_damage(3) * 2 >= game._boss_max_hp_for_variant(0), "terrain damage is not a practical boss answer")
+	game.free()

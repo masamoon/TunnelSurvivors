@@ -219,7 +219,7 @@ const BROOD_POD_SUMMON_COOLDOWN_MAX := 8.5
 const BOSS_SPAWN_TIMES := [120.0, 240.0, 360.0]
 const BOSS_SUMMON_COOLDOWN_MIN := 4.8
 const BOSS_SUMMON_COOLDOWN_MAX := 7.2
-const BOSS_MAX_HP := 42
+const BOSS_MAX_HP := 36
 const BOSS_FREEZE_DURATION_MULT := 0.22
 const BOSS_FREEZE_DURATION_MAX := 0.55
 const BOSS_CHILL_DURATION_MULT := 0.18
@@ -231,7 +231,9 @@ const UBER_HP_BONUS := 3
 const UBER_SPEED_MULT := 1.15
 const REAPER_SPAWN_TIME := RUN_GOAL_TIME - 32.0
 const REAPER_SPEED_RATIO := 1.28
-const ROCK_VISUAL_SPEED := 4.0
+const ROCK_VISUAL_SPEED_MIN := 4.0
+const ROCK_VISUAL_SPEED_MAX := 8.5
+const ROCK_IMPACT_VISUAL_EPS := 0.06
 const ENEMY_HIT_FLASH := 0.26
 const DIG_FEEDBACK_TIME := 0.34
 const PULSE_FEEDBACK_TIME := 0.42
@@ -242,11 +244,16 @@ const BOULDER_FANFARE_SAMPLE_RATE := 22050
 const SFX_SAMPLE_RATE := 22050
 const MUSIC_SAMPLE_RATE := 22050
 const AUDIO_VOLUME_STEPS := 4
-const ATTACK_RECOVERY_DELAY := 0.32
+const ATTACK_RECOVERY_DELAY := 0.24
 const ATTACK_FLASH_TIME := 0.32
 const LANCE_HIT_DELAY := 0.10
-const LANCE_RETRACT_DELAY := 0.22
-const LANCE_PUMP_INTERVAL := 0.70
+const LANCE_RETRACT_DELAY := 0.16
+const LANCE_PUMP_INTERVAL := 0.62
+const HIT_STOP_PUMP_BEAT := 0.025
+const HIT_STOP_LANCE_KILL := 0.060
+const HIT_STOP_ROCK_LAND := 0.050
+const HIT_STOP_BOULDER_IMPACT := 0.075
+const HIT_STOP_MAX := 0.105
 const LANCE_HOLD_STUN := 0.18
 const ENEMY_INFLATE_RECOVER_DELAY := 0.42
 const LANCE_ELEMENT_BASE := "base"
@@ -261,8 +268,9 @@ const FIRE_SPREAD_RADIUS := 1
 const THUNDER_STUN_DURATION := 0.62
 const THUNDER_CHAIN_RADIUS := 4
 const HEAL_UPGRADE_ID := "full_heal"
-const BASE_MOVE_DELAY := 0.50
-const BASE_DIG_DELAY_MULT := 1.0
+const BASE_MOVE_DELAY := 0.3125
+const BASE_DIG_DELAY_MULT := 1.28
+const BASE_ENEMY_MOVE_SPEED := 2.0
 const PLAYER_CENTER_EPS := 0.015
 const PLAYER_TARGET_GATE := 0.22
 const PLAYER_TURN_GATE := 0.22
@@ -393,6 +401,7 @@ var dig_scored_cells := {}
 var player_dug_cells := {}
 var pulse_feedback := []
 var crush_feedback := []
+var combat_trace := []
 var zap_feedback := []
 var upgrade_pickup_toast := {}
 var crush_sfx_players: Array[AudioStreamPlayer] = []
@@ -458,6 +467,7 @@ var result_input_lock := 0.0
 var move_cooldown := 0.0
 var attack_cooldown := 0.0
 var attack_flash := 0.0
+var hit_stop_timer := 0.0
 var lance_active := false
 var lance_attached_enemy := -1
 var lance_blocking_cell := Vector2i.ZERO
@@ -701,8 +711,28 @@ func _build_sfx_stream(id: String) -> AudioStreamWAV:
 				{"freq": 185.0, "duration": 0.035, "volume": 0.14, "wave": "saw"},
 				{"freq": 320.0, "duration": 0.05, "volume": 0.17, "wave": "square"}
 			]
-		"pump":
-			notes = [{"freq": 128.0, "duration": 0.06, "volume": 0.20, "wave": "square"}]
+		"attach":
+			notes = [
+				{"freq": 210.0, "duration": 0.028, "volume": 0.16, "wave": "saw"},
+				{"freq": 420.0, "duration": 0.045, "volume": 0.17, "wave": "square"}
+			]
+		"pump_1":
+			notes = [{"freq": 116.0, "duration": 0.065, "volume": 0.19, "wave": "square"}]
+		"pump_2":
+			notes = [
+				{"freq": 128.0, "duration": 0.055, "volume": 0.20, "wave": "square"},
+				{"freq": 192.0, "duration": 0.035, "volume": 0.12, "wave": "sine"}
+			]
+		"pump_3":
+			notes = [
+				{"freq": 142.0, "duration": 0.06, "volume": 0.22, "wave": "square"},
+				{"freq": 284.0, "duration": 0.045, "volume": 0.15, "wave": "saw"}
+			]
+		"rock_impact":
+			notes = [
+				{"freq": 58.0, "duration": 0.10, "volume": 0.28, "wave": "noise"},
+				{"freq": 73.42, "duration": 0.12, "volume": 0.22, "wave": "sine"}
+			]
 		"kill":
 			notes = [
 				{"freq": 124.0, "duration": 0.035, "volume": 0.22, "wave": "noise"},
@@ -925,6 +955,7 @@ func _default_meta() -> Dictionary:
 			"sfx_volume": 3,
 			"music_volume": 2,
 			"screen_shake": true,
+			"hit_stop": true,
 			"hold_to_pump": true,
 			"tutorial": true
 		},
@@ -1067,6 +1098,10 @@ func _update_music_audio() -> void:
 
 func _screen_shake_enabled() -> bool:
 	return _setting_enabled("screen_shake", true)
+
+
+func _hit_stop_enabled() -> bool:
+	return _setting_enabled("hit_stop", true)
 
 
 func _hold_to_pump_enabled() -> bool:
@@ -1881,6 +1916,7 @@ func _start_run_map() -> void:
 	beacon_armed = false
 	move_cooldown = 0.0
 	attack_cooldown = 0.0
+	hit_stop_timer = 0.0
 	hurt_flash = 0.0
 	player_hit_recovery = 0.0
 	lance_active = false
@@ -1940,6 +1976,7 @@ func _start_run_map() -> void:
 	player_dug_cells.clear()
 	pulse_feedback.clear()
 	crush_feedback.clear()
+	combat_trace.clear()
 	zap_feedback.clear()
 	xp_pickups.clear()
 	tunnel_age.clear()
@@ -2388,6 +2425,7 @@ func _add_rock(pos: Vector2i, player_attributed := false) -> void:
 		"falling": false,
 		"timer": ROCK_LOOSE_DELAY,
 		"fall_distance": 0,
+		"impact_pending": false,
 		"player_attributed": player_attributed
 	})
 
@@ -3060,8 +3098,12 @@ func _active_special_enemy_kinds() -> Dictionary:
 
 
 func _enemy_max_hp_for_kind(kind: int) -> int:
-	var scaling := floori(float(depth_tier) / 3.0)
+	var scaling := mini(1, floori(float(depth_tier) / 3.0))
 	match kind:
+		ENEMY_GRUB_KIND:
+			return 3
+		ENEMY_BURROWER_KIND, ENEMY_FYGAR_KIND:
+			return 3 + scaling
 		ENEMY_SPITTER_KIND:
 			return 3 + scaling
 		ENEMY_SHIELDBUG_KIND:
@@ -3069,17 +3111,16 @@ func _enemy_max_hp_for_kind(kind: int) -> int:
 		ENEMY_LEECH_KIND:
 			return 3 + scaling
 		ENEMY_BROOD_POD_KIND:
-			return 8 + floori(float(depth_tier) / 2.0)
+			return 8 + mini(2, floori(float(depth_tier) / 3.0))
 		ENEMY_BOSS_KIND:
-			return BOSS_MAX_HP + floori(run_time / 60.0) * 3
+			return BOSS_MAX_HP
 		ENEMY_REAPER_KIND:
 			return 9999
-		_:
-			return 3 + scaling
+	return 3
 
 
 func _boss_max_hp_for_variant(variant: int) -> int:
-	return BOSS_MAX_HP + variant * 18 + floori(run_time / 60.0) * 3
+	return BOSS_MAX_HP + variant * 10
 
 
 func _boss_name(variant: int) -> String:
@@ -3148,6 +3189,11 @@ func _process(delta: float) -> void:
 			_release_lance(false)
 		_update_visual_positions(delta)
 		_update_camera(delta)
+		queue_redraw()
+		return
+
+	if hit_stop_timer > 0.0:
+		hit_stop_timer = maxf(0.0, hit_stop_timer - delta)
 		queue_redraw()
 		return
 
@@ -4132,7 +4178,8 @@ func _start_lance() -> void:
 			lance_blocking_cell = pos
 			lance_has_blocker = true
 			_pin_lance_target()
-			_add_pressure_feedback(pos, 1.0)
+			_play_sfx("attach")
+			_add_pressure_feedback(pos, 1.0, -1)
 			return
 		if _cell_open_mask(pos) == 0:
 			_add_pressure_feedback(pos, 0.75)
@@ -4981,16 +5028,27 @@ func _pump_lance_target() -> void:
 		return
 	var enemy_pos: Vector2i = enemies[lance_attached_enemy]["pos"]
 	lance_pump_count += 1
-	_play_sfx("pump")
+	_play_sfx("pump_%d" % mini(lance_pump_count, 3))
 	var alive := _inflate_lance_target(lance_attached_enemy, lance_pump_damage)
-	_add_pressure_feedback(enemy_pos, 1.0)
+	_add_pressure_feedback(enemy_pos, 1.0 + float(mini(lance_pump_count, 3)) * 0.16, lance_pump_count)
 	if alive and lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and not bool(enemies[lance_attached_enemy].get("blocked_lance", false)):
 		alive = _apply_lance_element(lance_attached_enemy, enemy_pos, lance_pump_damage)
+	_hit_stop(HIT_STOP_PUMP_BEAT if alive else HIT_STOP_LANCE_KILL)
 	if not alive:
 		_trigger_pierce_from(enemy_pos, facing, maxi(1, lance_pump_damage - 1))
 		_release_lance()
 	elif lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and _should_brood_queen_break_lance(enemies[lance_attached_enemy]):
 		_break_brood_queen_lance_lock(lance_attached_enemy)
+	else:
+		message = _pump_pressure_message()
+
+
+func _pump_pressure_message() -> String:
+	if lance_pump_count <= 1:
+		return "Pressure locked."
+	if lance_pump_count == 2:
+		return "Pressure rising!"
+	return "Critical pressure!"
 
 
 func _should_brood_queen_break_lance(enemy: Dictionary) -> bool:
@@ -5110,6 +5168,7 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
 		_shake(0.05)
 		return true
 	run_lance_hits += 1
+	_trace_combat("damage", "lance_pump", enemy["pos"], damage, int(enemy.get("kind", ENEMY_GRUB_KIND)))
 	enemy["hp"] -= damage
 	_boss_hit_feedback(enemy, enemy["pos"], damage)
 	enemy["riposte_window"] = false
@@ -6149,7 +6208,7 @@ func _enemy_step_delay(enemy: Dictionary) -> float:
 
 func _enemy_move_speed(enemy: Dictionary) -> float:
 	if enemy.get("phasing", false):
-		return _player_dig_speed() * ENEMY_PHASE_SPEED_RATIO
+		return BASE_ENEMY_MOVE_SPEED * ENEMY_PHASE_SPEED_RATIO
 	var speed := _enemy_move_speed_for_kind(int(enemy.get("kind", ENEMY_GRUB_KIND)))
 	if bool(enemy.get("uber", false)):
 		speed *= UBER_SPEED_MULT
@@ -6175,7 +6234,7 @@ func _enemy_move_speed_for_kind(kind: int) -> float:
 	elif kind == ENEMY_REAPER_KIND:
 		ratio = REAPER_SPEED_RATIO
 	var speed_bonus := 0.0
-	return _player_dig_speed() * (ratio + speed_bonus)
+	return BASE_ENEMY_MOVE_SPEED * (ratio + speed_bonus)
 
 
 func _player_tunnel_speed() -> float:
@@ -6191,6 +6250,13 @@ func _update_rocks(delta: float) -> void:
 		var pos: Vector2i = rock["pos"]
 		if _closed_vault_contains_cell(pos):
 			continue
+		if bool(rock.get("impact_pending", false)):
+			var target_visual := _visual_from_pos(pos)
+			if _dict_visual(rock).distance_to(target_visual) > ROCK_IMPACT_VISUAL_EPS:
+				continue
+			_resolve_rock_impact(rock)
+			continue
+
 		var below := pos + Vector2i.DOWN
 		var can_fall := _can_rock_fall_to(below)
 		if not can_fall:
@@ -6209,8 +6275,28 @@ func _update_rocks(delta: float) -> void:
 		rock["timer"] = ROCK_STEP_DELAY
 		rock["pos"] = below
 		rock["fall_distance"] += 1
-		_pull_enemies_toward_boulder_drop(below, rock["fall_distance"])
-		_crush_at(below, rock["fall_distance"], bool(rock.get("player_attributed", false)))
+		rock["impact_pending"] = true
+
+
+func _resolve_rock_impact(rock: Dictionary) -> void:
+	rock["impact_pending"] = false
+	var pos: Vector2i = rock["pos"]
+	var fall_distance := int(rock.get("fall_distance", 1))
+	_pull_enemies_toward_boulder_drop(pos, fall_distance)
+	var enemy_count_before := enemies.size()
+	_crush_at(pos, fall_distance, bool(rock.get("player_attributed", false)))
+	var landed := not _can_rock_fall_to(pos + Vector2i.DOWN)
+	if landed:
+		_add_cell_pulse(pos, ROCK.lerp(RUPTURE, 0.24), PULSE_FEEDBACK_TIME + 0.12, 1.0, true)
+		_play_sfx("rock_impact")
+		if enemies.size() == enemy_count_before:
+			_hit_stop(HIT_STOP_ROCK_LAND)
+		_shake(0.18)
+
+
+func _rock_visual_speed(rock: Dictionary) -> float:
+	var fall_distance := maxi(0, int(rock.get("fall_distance", 0)))
+	return lerpf(ROCK_VISUAL_SPEED_MIN, ROCK_VISUAL_SPEED_MAX, clampf(float(fall_distance) / 4.0, 0.0, 1.0))
 
 
 func _can_rock_fall_to(pos: Vector2i) -> bool:
@@ -6219,6 +6305,10 @@ func _can_rock_fall_to(pos: Vector2i) -> bool:
 	if _has_rock(pos) or _has_treasure_chest(pos):
 		return false
 	return _is_open_tile(pos)
+
+
+func _boss_boulder_damage(fall_distance: int) -> int:
+	return 12 + mini(fall_distance, 4) * 3
 
 
 func _pull_enemies_toward_boulder_drop(rock_pos: Vector2i, fall_distance: int) -> void:
@@ -6284,7 +6374,8 @@ func _crush_at(pos: Vector2i, fall_distance: int, player_attributed := false) ->
 				message = "The Reaper passes through the stone."
 				continue
 			if dead_kind == ENEMY_BOSS_KIND:
-				var boss_damage := 8 + mini(fall_distance, 4) * 2
+				var boss_damage := _boss_boulder_damage(fall_distance)
+				_trace_combat("damage", "boulder_player" if player_attributed else "cave_in", dead_pos, boss_damage, dead_kind)
 				enemies[i]["hp"] -= boss_damage
 				_boss_hit_feedback(enemies[i], dead_pos, boss_damage)
 				_add_boulder_crush_feedback(dead_pos, fall_distance, 1, boss_damage)
@@ -6297,6 +6388,8 @@ func _crush_at(pos: Vector2i, fall_distance: int, player_attributed := false) ->
 			if dead_kind == ENEMY_BOSS_KIND:
 				xp_award += 12
 			var crushed_enemy: Dictionary = enemies[i]
+			if dead_kind != ENEMY_BOSS_KIND:
+				_trace_combat("damage", "boulder_player" if player_attributed else "cave_in", dead_pos, maxi(1, int(crushed_enemy.get("hp", 1))), dead_kind)
 			_add_rupture_feedback(dead_pos)
 			_award_boss_defeat_reward(crushed_enemy)
 			enemies.remove_at(i)
@@ -6440,6 +6533,12 @@ func _dirt_layer_index_for_row(row: int) -> int:
 	var dirt_row := clampi(row - 1, 0, BOARD_H - 2)
 	var layer_height := ceili(float(BOARD_H - 1) / float(layer_count))
 	return clampi(floori(float(dirt_row) / float(layer_height)), 0, layer_count - 1)
+
+
+func _hit_stop(duration: float) -> void:
+	if not _hit_stop_enabled():
+		return
+	hit_stop_timer = minf(HIT_STOP_MAX, maxf(hit_stop_timer, duration))
 
 
 func _shake(amount: float) -> void:
@@ -7218,7 +7317,7 @@ func _update_visual_positions(delta: float) -> void:
 
 	for rock in rocks:
 		var target := _visual_from_pos(rock["pos"])
-		rock["visual_pos"] = _dict_visual(rock).move_toward(target, ROCK_VISUAL_SPEED * delta)
+		rock["visual_pos"] = _dict_visual(rock).move_toward(target, _rock_visual_speed(rock) * delta)
 
 
 func _update_camera(delta: float) -> void:
@@ -8169,6 +8268,7 @@ func _draw_pause_overlay() -> void:
 	_draw_volume_row(_pause_sfx_volume_rect(), "SFX volume", _sfx_volume_step())
 	_draw_volume_row(_pause_music_volume_rect(), "Music volume", _music_volume_step())
 	_draw_setting_row(_pause_shake_rect(), "Screen shake", _screen_shake_enabled())
+	_draw_setting_row(_pause_hit_stop_rect(), "Impact hit-stop", _hit_stop_enabled())
 	_draw_setting_row(_pause_pump_rect(), "Hold to pump", _hold_to_pump_enabled())
 	_draw_setting_row(_pause_tutorial_rect(), "First-run hints", _tutorial_enabled())
 	_draw_wipe_save_row(_pause_wipe_rect())
@@ -8554,6 +8654,8 @@ func _handle_pause_pointer(pos: Vector2) -> void:
 		_cycle_volume_setting("music_volume")
 	elif _pause_shake_rect().has_point(pos):
 		_toggle_setting("screen_shake")
+	elif _pause_hit_stop_rect().has_point(pos):
+		_toggle_setting("hit_stop")
 	elif _pause_pump_rect().has_point(pos):
 		_toggle_setting("hold_to_pump")
 	elif _pause_tutorial_rect().has_point(pos):
@@ -8781,7 +8883,7 @@ func _mobile_pause_rect() -> Rect2:
 func _pause_panel_rect() -> Rect2:
 	var viewport := get_viewport_rect().size
 	var width := minf(viewport.x - 48.0, 500.0)
-	var height := minf(viewport.y - 48.0, 526.0)
+	var height := minf(viewport.y - 48.0, 570.0)
 	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
 
 
@@ -8800,19 +8902,24 @@ func _pause_shake_rect() -> Rect2:
 	return Rect2(rect.position + Vector2(36, 322), Vector2(rect.size.x - 72, 38))
 
 
-func _pause_tutorial_rect() -> Rect2:
-	var rect := _pause_panel_rect()
-	return Rect2(rect.position + Vector2(36, 410), Vector2(rect.size.x - 72, 38))
-
-
-func _pause_pump_rect() -> Rect2:
+func _pause_hit_stop_rect() -> Rect2:
 	var rect := _pause_panel_rect()
 	return Rect2(rect.position + Vector2(36, 366), Vector2(rect.size.x - 72, 38))
 
 
+func _pause_tutorial_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 454), Vector2(rect.size.x - 72, 38))
+
+
+func _pause_pump_rect() -> Rect2:
+	var rect := _pause_panel_rect()
+	return Rect2(rect.position + Vector2(36, 410), Vector2(rect.size.x - 72, 38))
+
+
 func _pause_wipe_rect() -> Rect2:
 	var rect := _pause_panel_rect()
-	return Rect2(rect.position + Vector2(36, 454), Vector2(rect.size.x - 72, 48))
+	return Rect2(rect.position + Vector2(36, 498), Vector2(rect.size.x - 72, 48))
 
 
 func _pause_hub_rect() -> Rect2:
@@ -9157,7 +9264,16 @@ func _draw_pulse_feedback() -> void:
 		var color: Color = effect["color"]
 		color.a = float(effect["alpha"]) * (1.0 - progress)
 		var radius := CELL * (0.18 + float(effect["radius"]) * progress)
-		_draw_world_pixel_ring(center, radius, color, 3)
+		var pressure_beat := int(effect.get("pressure_beat", 0))
+		_draw_world_pixel_ring(center, radius, color, 4 if pressure_beat != 0 else 3)
+		if pressure_beat != 0:
+			var marker_count := 4 if pressure_beat < 0 else 4 + mini(pressure_beat, 3) * 2
+			var marker_color := color.lerp(Color.WHITE, 0.28)
+			for marker_i in range(marker_count):
+				var angle := float(marker_i) * TAU / float(marker_count)
+				var marker_dir := Vector2(cos(angle), sin(angle))
+				var marker_pos := _snap_px(center + marker_dir * (radius + 5.0))
+				_draw_world_rect(Rect2(marker_pos - Vector2(2, 2), Vector2(5, 5)), marker_color)
 		if effect.get("burst", false):
 			var shard_color := RUPTURE
 			shard_color.a = 0.75 * (1.0 - progress)
@@ -10484,8 +10600,17 @@ func _add_dig_feedback(pos: Vector2i) -> void:
 	})
 
 
-func _add_pressure_feedback(pos: Vector2i, radius: float) -> void:
-	_add_cell_pulse(pos, PRESSURE, PULSE_FEEDBACK_TIME, radius)
+func _add_pressure_feedback(pos: Vector2i, radius: float, beat := 0) -> void:
+	pulse_feedback.append({
+		"pos": pos,
+		"time": PULSE_FEEDBACK_TIME,
+		"duration": PULSE_FEEDBACK_TIME,
+		"radius": radius,
+		"color": PRESSURE.lerp(RUPTURE, clampf(float(maxi(0, beat)) / 4.0, 0.0, 0.72)),
+		"alpha": 0.82,
+		"burst": beat >= 3,
+		"pressure_beat": beat
+	})
 
 
 func _add_rupture_feedback(pos: Vector2i) -> void:
@@ -10523,12 +10648,26 @@ func _add_boulder_crush_feedback(pos: Vector2i, fall_distance: int, count: int, 
 		if _in_bounds(cell):
 			_add_cell_pulse(cell, _crush_tier_color(tier, 0.75), PULSE_FEEDBACK_TIME + 0.08, 0.75 + float(tier) * 0.16, tier >= 2)
 	_play_crush_fanfare(tier)
+	_hit_stop(HIT_STOP_BOULDER_IMPACT + minf(0.025, float(tier - 1) * 0.008))
 	_shake(0.18 + minf(0.36, float(tier) * 0.08))
 
 
 func _crush_fanfare_tier(count: int) -> int:
 	var active_combo := combo_count if combo_timer > 0.0 else 0
 	return clampi(maxi(count, active_combo), 1, BOULDER_FANFARE_MAX_TIER)
+
+
+func _trace_combat(event: String, cause: String, pos: Vector2i, amount: int, target_kind: int) -> void:
+	combat_trace.append({
+		"event": event,
+		"cause": cause,
+		"pos": pos,
+		"amount": amount,
+		"target_kind": target_kind,
+		"time": run_time
+	})
+	if combat_trace.size() > 160:
+		combat_trace.pop_front()
 
 
 func _add_cell_pulse(pos: Vector2i, color: Color, duration: float, radius: float, burst := false) -> void:
