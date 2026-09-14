@@ -268,6 +268,7 @@ const FIRE_SPREAD_RADIUS := 1
 const THUNDER_STUN_DURATION := 0.62
 const THUNDER_CHAIN_RADIUS := 4
 const HEAL_UPGRADE_ID := "full_heal"
+const STARTER_UPGRADE_IDS := ["ice_tip", "fire_tip", "thunder_tip", "boulder_lance"]
 const BASE_MOVE_DELAY := 0.3125
 const BASE_DIG_DELAY_MULT := 1.28
 const BASE_ENEMY_MOVE_SPEED := 2.0
@@ -427,6 +428,7 @@ var guide_page := 0
 var paused := false
 var wipe_save_confirm := false
 var selected_meta_upgrade_index := 0
+var upgrade_choice_context := "level"
 
 var meta := {}
 var meta_notice := ""
@@ -462,6 +464,7 @@ var boss_spawn_index := 0
 var reaper_spawned := false
 var message := ""
 var last_run_summary := ""
+var run_defeat_reason := ""
 var result_input_lock := 0.0
 
 var move_cooldown := 0.0
@@ -1377,10 +1380,11 @@ func _relic_is_discovered(id: String) -> bool:
 		return true
 	var element := _upgrade_element(id)
 	if element != "":
-		return _element_is_researched(element)
+		return _element_is_researched(element) or _active_lance_element() == element
+	if id in ["boulder_lance_2", "boulder_lance_3", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger"] and _effective_boulder_lance_level() > 0:
+		return true
 	var unlocked: Dictionary = meta.get("unlocked_relics", {})
 	return bool(unlocked.get(id, false))
-
 
 func _element_is_researched(element: String) -> bool:
 	if element == "":
@@ -1896,7 +1900,9 @@ func _new_run() -> void:
 	boss_spawn_index = 0
 	reaper_spawned = false
 	last_run_summary = ""
+	run_defeat_reason = ""
 	_start_run_map()
+	_offer_starting_build_choice()
 
 
 func _start_run_map() -> void:
@@ -2010,9 +2016,9 @@ func _resume_survival() -> void:
 	state = STATE_PLAYING
 	_clear_gameplay_input()
 	upgrade_choices.clear()
+	upgrade_choice_context = "level"
 	message = "Level %d. Back into the dirt." % player_level
 	queue_redraw()
-
 
 func _apply_starting_loadout() -> void:
 	var loadout := _selected_loadout_def()
@@ -3595,7 +3601,10 @@ func _handle_pointer_press(pointer_id: int, pos: Vector2) -> void:
 	if state == STATE_GAME_OVER or state == STATE_WIN:
 		if result_input_lock > 0.0:
 			return
-		_go_to_meta()
+		if _result_retry_rect().has_point(pos):
+			_press_restart()
+		elif _result_hub_rect().has_point(pos):
+			_go_to_meta()
 		return
 
 	if state != STATE_PLAYING:
@@ -6485,13 +6494,13 @@ func _hurt_player(amount: int, defeat_reason := "The den got you.") -> bool:
 
 func _game_over(reason: String) -> void:
 	paused = false
+	run_defeat_reason = reason
 	_record_run_meta_progress(RUN_OUTCOME_DEFEAT)
 	state = STATE_GAME_OVER
 	result_input_lock = 0.85
 	_clear_gameplay_input()
 	message = reason
 	_play_sfx("fail")
-
 
 func _award_score(amount: int, combo: bool, label: String) -> int:
 	var award := amount
@@ -6807,40 +6816,70 @@ func _upgrade_pool() -> Array:
 	return pool
 
 
+func _offer_starting_build_choice() -> void:
+	show_upgrade_inventory = false
+	upgrade_choices.clear()
+	upgrade_choice_context = "starter"
+	for upgrade_id in STARTER_UPGRADE_IDS:
+		var id := String(upgrade_id)
+		if owned_upgrades.has(id) or temp_upgrades.has(id):
+			continue
+		var choice := _upgrade_by_id(id)
+		if not choice.is_empty():
+			upgrade_choices.append(_decorate_upgrade_choice(choice))
+	if upgrade_choices.is_empty():
+		upgrade_choice_context = "level"
+		return
+	state = STATE_CHOOSING
+	_clear_gameplay_input()
+	message = "Choose how this run will play."
+
+
 func _offer_upgrades() -> void:
 	show_upgrade_inventory = false
 	upgrade_choices.clear()
+	upgrade_choice_context = "level"
 	var pool := _available_upgrade_pool()
-	var heal_choice := _upgrade_by_id(HEAL_UPGRADE_ID)
+	var heal_choice := _upgrade_by_id(HEAL_UPGRADE_ID) if hp < max_hp else {}
 	var normal_choices := []
 	for upgrade in pool:
 		if upgrade["id"] != HEAL_UPGRADE_ID:
 			normal_choices.append(upgrade)
 	if heal_choice.is_empty() and normal_choices.is_empty():
 		state = STATE_PLAYING
-		message = "No new relics remain."
+		message = "No new run relics remain."
 		queue_redraw()
 		return
 	state = STATE_CHOOSING
 	_clear_gameplay_input()
 	normal_choices.shuffle()
 	if not heal_choice.is_empty():
-		upgrade_choices.append(heal_choice.duplicate())
+		upgrade_choices.append(_decorate_upgrade_choice(heal_choice))
 	for choice in _draft_upgrade_choices(normal_choices, 3):
-		upgrade_choices.append(choice)
-	message = "Choose a relic."
-
+		upgrade_choices.append(_decorate_upgrade_choice(choice))
+	message = "Choose a run relic."
 
 func _draft_upgrade_choices(normal_choices: Array, max_count: int) -> Array:
 	var selected := []
 	var selected_ids := {}
 	var selected_families := {}
+	var ranked_choices := normal_choices.duplicate()
+	ranked_choices.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return _upgrade_build_score(String(a["id"])) > _upgrade_build_score(String(b["id"]))
+	)
+	if not ranked_choices.is_empty():
+		var best_fit: Dictionary = ranked_choices[0]
+		if _upgrade_build_score(String(best_fit["id"])) > 0:
+			var build_choice := best_fit.duplicate()
+			selected.append(build_choice)
+			selected_ids[String(build_choice["id"])] = true
+			selected_families[_upgrade_family(String(build_choice["id"]))] = true
 	var hybrid_choices := []
 	for upgrade in normal_choices:
 		var pool_id := String(upgrade["id"])
-		if _is_hybrid_upgrade(pool_id):
+		if _is_hybrid_upgrade(pool_id) and not selected_ids.has(pool_id):
 			hybrid_choices.append(upgrade)
-	if not hybrid_choices.is_empty() and rng.randf() < 0.75:
+	if selected.size() < max_count and not hybrid_choices.is_empty() and rng.randf() < 0.75:
 		var hybrid_choice: Dictionary = hybrid_choices[rng.randi_range(0, hybrid_choices.size() - 1)].duplicate()
 		selected.append(hybrid_choice)
 		selected_ids[String(hybrid_choice["id"])] = true
@@ -6867,22 +6906,22 @@ func _draft_upgrade_choices(normal_choices: Array, max_count: int) -> Array:
 		selected_ids[fill_id] = true
 	return selected
 
-
 func _choose_upgrade(index: int) -> void:
 	if index < 0 or index >= upgrade_choices.size():
 		return
 	var choice: Dictionary = upgrade_choices[index]
-	_apply_upgrade(choice, "level")
+	var choice_context := upgrade_choice_context
+	_apply_upgrade(choice, choice_context)
 	_play_sfx("relic")
 	_resume_survival()
-
+	if choice_context == "starter":
+		message = "Run plan: %s. Find relics that compound it." % String(choice["name"])
 
 func _skip_upgrade_choice() -> void:
-	if state != STATE_CHOOSING:
+	if state != STATE_CHOOSING or upgrade_choice_context == "starter":
 		return
 	_play_sfx("ui")
 	_resume_survival()
-
 
 func _available_upgrade_pool() -> Array:
 	var available := []
@@ -6900,7 +6939,7 @@ func _available_chest_upgrade_pool() -> Array:
 
 func _upgrade_is_available(id: String) -> bool:
 	if id == HEAL_UPGRADE_ID:
-		return true
+		return hp < max_hp
 	if id == "damage":
 		return false
 	if owned_upgrades.has(id) or temp_upgrades.has(id):
@@ -6909,11 +6948,12 @@ func _upgrade_is_available(id: String) -> bool:
 	if _is_hybrid_upgrade(id):
 		return _hybrid_upgrade_is_available(id)
 	if element != "":
-		if not _element_is_researched(element):
+		var active_element := _active_lance_element()
+		if not _element_is_researched(element) and active_element != element:
 			return false
-		if lance_element != LANCE_ELEMENT_BASE and lance_element != element:
+		if active_element != LANCE_ELEMENT_BASE and active_element != element:
 			return false
-		if lance_element == LANCE_ELEMENT_BASE:
+		if active_element == LANCE_ELEMENT_BASE:
 			return id.ends_with("_tip") and player_level >= ELEMENT_TIP_MIN_LEVEL and run_time >= ELEMENT_TIP_MIN_TIME
 	match id:
 		"prospector", "gem_vein", "boulder_lance", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger":
@@ -6926,7 +6966,6 @@ func _upgrade_is_available(id: String) -> bool:
 			return max_hp < 5
 		_:
 			return true
-
 
 func _apply_upgrade(choice: Dictionary, source: String) -> void:
 	if source == "field":
@@ -7213,6 +7252,143 @@ func _register_family_upgrade(id: String, source: String) -> void:
 		message = "Found %s." % _upgrade_name(id)
 	else:
 		message = "Chose %s." % _upgrade_name(id)
+
+
+func _upgrade_build_score(id: String) -> int:
+	var family := _upgrade_family(id)
+	var score := int(family_points.get(family, 0)) * 4
+	var element := _upgrade_element(id)
+	if element != "" and _active_lance_element() == element:
+		score += 10
+	if _is_hybrid_upgrade(id):
+		score += 12
+	if id.begins_with("boulder_") or id in ["rock_whistle", "gravity_snare", "chute_drill", "rock_ledger"]:
+		if _effective_boulder_lance_level() > 0:
+			score += 9
+	if family == "lance" and _active_lance_element() == LANCE_ELEMENT_BASE:
+		score += 2
+	if family == "gem" and (_effective_gem_xp_bonus() > 0 or _effective_xp_magnet_bonus() > 0 or _effective_super_gem_bonus() > 0):
+		score += 5
+	return score
+
+
+func _decorate_upgrade_choice(choice: Dictionary) -> Dictionary:
+	var decorated := choice.duplicate()
+	var id := String(decorated.get("id", ""))
+	decorated["effect"] = _upgrade_effect_preview(id)
+	decorated["synergy"] = _upgrade_synergy_preview(id)
+	return decorated
+
+
+func _upgrade_effect_preview(id: String) -> String:
+	match id:
+		HEAL_UPGRADE_ID:
+			return "Hearts %d -> %d" % [hp, max_hp]
+		"ice_tip":
+			return "Lance %s -> Ice | freeze 0.0s -> %.2fs" % [_lance_element_label(), ICE_FREEZE_DURATION + _effective_freeze_duration_bonus() + 0.35]
+		"fire_tip":
+			return "Lance %s -> Fire | burn 0.0s -> %.2fs" % [_lance_element_label(), FIRE_BURN_DURATION + _effective_burn_duration_bonus() + 0.35]
+		"thunder_tip":
+			return "Lance %s -> Thunder | stun 0.0s -> %.2fs" % [_lance_element_label(), THUNDER_STUN_DURATION + _effective_thunder_stun_bonus() + 0.16]
+		"range":
+			return "Lance range %d -> %d cells" % [_effective_lance_range(), mini(5, _effective_lance_range() + 1)]
+		"damage", "piston_head":
+			return "Lance damage %d -> %d" % [_effective_lance_damage(), _effective_lance_damage() + 1]
+		"anchor_chain":
+			return "Pin %.2fs -> %.2fs | control +0.10s" % [_effective_lance_hold_stun(), _effective_lance_hold_stun() + 0.34]
+		"snap_reel":
+			var before := maxf(0.14, ATTACK_RECOVERY_DELAY - float(_effective_quick_reel()) * 0.045)
+			return "Recovery %.3fs -> %.3fs" % [before, maxf(0.14, before - 0.045)]
+		"rupture_wave":
+			return "Kill-wave tier %d -> %d" % [_effective_lance_aftershock(), _effective_lance_aftershock() + 1]
+		"beacon_coupler":
+			return "Kill charge +%d -> +%d" % [_effective_lance_charge_bonus(), _effective_lance_charge_bonus() + 3]
+		"stun":
+			return "Control bonus %.2fs -> %.2fs" % [_effective_stun_bonus(), _effective_stun_bonus() + 0.30]
+		"field_dressing":
+			return "Max hearts %d -> %d | hearts %d -> %d" % [max_hp, max_hp + 1, hp, mini(max_hp + 1, hp + 2)]
+		"gem_xp":
+			return "Gem XP bonus +%d -> +%d" % [_effective_gem_xp_bonus(), _effective_gem_xp_bonus() + 2]
+		"prospector":
+			return "Extra super gems %d -> %d" % [_effective_super_gem_bonus(), _effective_super_gem_bonus() + 1]
+		"gem_vein":
+			return "Extra-gem tier %d -> %d | sprouts 3 now" % [_effective_extra_gems_bonus(), _effective_extra_gems_bonus() + 2]
+		"magnet":
+			var magnet_before := XP_MAGNET_RADIUS + float(_effective_xp_magnet_bonus()) * 1.15
+			return "XP pull %.2f -> %.2f cells" % [magnet_before, magnet_before + 1.15]
+		"boulder_lance", "boulder_lance_2", "boulder_lance_3":
+			var chances := [0, 20, 35, 50]
+			var before_level := clampi(_effective_boulder_lance_level(), 0, 3)
+			var after_level := mini(3, before_level + 1)
+			return "Kill-rock chance %d%% -> %d%% | range -1" % [chances[before_level], chances[after_level]]
+		"rock_whistle":
+			return "Boulder lure tier %d -> %d" % [_effective_boulder_lure(), _effective_boulder_lure() + 1]
+		"gravity_snare":
+			return "Rock pull width %d -> %d cells" % [1 + _effective_boulder_snare(), 2 + _effective_boulder_snare()]
+		"chute_drill":
+			return "Crush depth bonus +%d -> +%d" % [_effective_boulder_chute(), _effective_boulder_chute() + 1]
+		"rock_ledger":
+			return "Boulder XP bonus +%d -> +%d" % [_effective_boulder_xp_bonus(), _effective_boulder_xp_bonus() + 2]
+		"ice_wall":
+			var freeze_before := ICE_FREEZE_DURATION + _effective_freeze_duration_bonus()
+			return "Freeze %.2fs -> %.2fs" % [freeze_before, freeze_before + 0.85]
+		"ice_front":
+			return "Cold-front tier %d -> %d" % [_effective_frost_front(), _effective_frost_front() + 1]
+		"ice_shatter":
+			return "Shatter tier %d -> %d" % [_effective_ice_shatter(), _effective_ice_shatter() + 1]
+		"ice_brittle":
+			return "Frozen-hit bonus +%d -> +%d" % [_effective_brittle_frost(), _effective_brittle_frost() + 1]
+		"ice_lock":
+			return "Freeze +0.50s | control +0.12s"
+		"fire_spread":
+			return "Spread tier %d -> %d" % [_effective_fire_spread(), _effective_fire_spread() + 1]
+		"fire_burst":
+			return "Backdraft tier %d -> %d" % [_effective_fire_burst(), _effective_fire_burst() + 1]
+		"fire_heat":
+			var burn_before := FIRE_BURN_DURATION + _effective_burn_duration_bonus()
+			return "Burn %.2fs -> %.2fs" % [burn_before, burn_before + 0.95]
+		"fire_coals":
+			return "Burn damage bonus +%d -> +%d" % [_effective_burn_damage_bonus(), _effective_burn_damage_bonus() + 2]
+		"fire_smoke":
+			return "Ignition stun +%.2fs -> +%.2fs" % [_effective_fire_stun(), _effective_fire_stun() + 0.50]
+		"thunder_chain":
+			return "Chain tier %d -> %d" % [_effective_thunder_chain(), _effective_thunder_chain() + 1]
+		"thunder_stun":
+			return "Shock stun +%.2fs -> +%.2fs" % [_effective_thunder_stun_bonus(), _effective_thunder_stun_bonus() + 0.30]
+		"thunder_overload":
+			return "Overload tier %d -> %d" % [_effective_thunder_overload(), _effective_thunder_overload() + 1]
+		"thunder_wire":
+			return "Chain damage +%d -> +%d" % [_effective_thunder_chain_damage(), _effective_thunder_chain_damage() + 2]
+		"thunder_field":
+			return "Static-field tier %d -> %d" % [_effective_static_field(), _effective_static_field() + 1]
+		"steam_core":
+			return "Steam reaction tier %d -> %d" % [_effective_steam_core(), _effective_steam_core() + 1]
+		"storm_cell":
+			return "Storm reaction tier %d -> %d" % [_effective_storm_cell(), _effective_storm_cell() + 1]
+		"glacier_rod":
+			return "Glacier reaction tier %d -> %d" % [_effective_glacier_rod(), _effective_glacier_rod() + 1]
+	return String(_upgrade_by_id(id).get("desc", "Changes this run."))
+
+
+func _upgrade_synergy_preview(id: String) -> String:
+	if id == HEAL_UPGRADE_ID:
+		return "Recovery only; no permanent stat gain."
+	if id == "ice_tip":
+		return "Controls lanes; enables Ice follow-ups this run."
+	if id == "fire_tip":
+		return "Rewards grouped pursuit; enables Fire follow-ups."
+	if id == "thunder_tip":
+		return "Interrupts multi-angle pressure; enables Thunder."
+	if id.begins_with("boulder_") or id in ["rock_whistle", "gravity_snare", "chute_drill", "rock_ledger"]:
+		return "Pairs with prepared rock lanes and cave-control relics."
+	var family := _upgrade_family(id)
+	var family_count := int(family_points.get(family, 0))
+	if family_count > 0:
+		return "%s build %d -> %d; set bonuses at 3/5/6." % [family.capitalize(), family_count, family_count + 1]
+	var element := _upgrade_element(id)
+	if element != "":
+		return "Extends the active %s plan." % element.capitalize()
+	return "Run-only %s relic; research unlocks future options." % family.capitalize()
 
 
 func _upgrade_family(id: String) -> String:
@@ -8218,9 +8394,9 @@ func _draw_ui() -> void:
 	if state == STATE_CHOOSING:
 		_draw_choice_modal()
 	elif state == STATE_GAME_OVER:
-		_draw_center_modal("Run ended", message, _restart_prompt_text(), _run_result_detail(false))
+		_draw_result_modal(false)
 	elif state == STATE_WIN:
-		_draw_center_modal("Extraction complete", "Score %d with %d gems." % [score, gems_collected], _restart_prompt_text(), _run_result_detail(true))
+		_draw_result_modal(true)
 	elif show_upgrade_inventory:
 		_draw_upgrade_inventory_panel()
 	elif paused:
@@ -8572,9 +8748,8 @@ func _next_relic_research_text() -> String:
 		if id == "" or bool(relics.get(id, false)):
 			continue
 		var remaining := maxi(0, int(milestone.get("cost", 0)) - research)
-		return "Next relic +%d" % remaining
-	return "All relics found"
-
+		return "Permanent %s: %d research" % [_upgrade_name(id), remaining]
+	return "All permanent relics found"
 
 func _meta_upgrade_short_text(id: String) -> String:
 	match id:
@@ -8824,10 +8999,10 @@ func _draw_upgrade_inventory_panel() -> void:
 	var rect := _inventory_panel_rect()
 	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), Color("#05060aaa"))
 	_draw_pixel_panel(rect, Color("#111820ee"), Color("#d8c27a"))
-	_text(rect.position + Vector2(28, 44), "Upgrade Inventory", 28, UI)
+	_text(rect.position + Vector2(28, 44), "Run Relics", 28, UI)
 	var upgrades := _current_upgrade_entries()
 	if upgrades.is_empty():
-		_text(rect.position + Vector2(30, 100), "No upgrades yet.", 18, MUTED)
+		_text(rect.position + Vector2(30, 100), "No run relics yet.", 18, MUTED)
 	else:
 		var columns := 3 if rect.size.x >= 760.0 else 2
 		var column_width := floorf((rect.size.x - 60.0) / float(columns))
@@ -8842,7 +9017,7 @@ func _draw_upgrade_inventory_panel() -> void:
 			var item_pos := start + Vector2(float(column) * column_width, float(row) * row_height)
 			var upgrade: Dictionary = upgrades[i]
 			var name := String(upgrade["name"])
-			if String(upgrade.get("source", "")) == "RUN":
+			if String(upgrade.get("source", "")) == "FOUND":
 				name += " *"
 			_text(item_pos, _trim_text(name, 24), 16, Color("#f7df86"))
 			_text(item_pos + Vector2(0, 24), _trim_text(String(upgrade["desc"]), 34), 12, MUTED)
@@ -9028,7 +9203,7 @@ func _current_upgrade_entries() -> Array:
 			damage_entry = damage_entry.duplicate()
 			damage_entry["name"] = "%s +%d" % [damage_entry["name"], damage_bonus]
 			damage_entry["desc"] = "+%d lance damage." % damage_bonus
-			damage_entry["source"] = "OWNED"
+			damage_entry["source"] = "RUN"
 			entries.append(damage_entry)
 	for upgrade in _upgrade_pool():
 		var id := String(upgrade["id"])
@@ -9036,14 +9211,13 @@ func _current_upgrade_entries() -> Array:
 			continue
 		if owned_upgrades.has(id):
 			var owned_entry: Dictionary = upgrade.duplicate()
-			owned_entry["source"] = "OWNED"
+			owned_entry["source"] = "RUN"
 			entries.append(owned_entry)
 		elif temp_upgrades.has(id):
 			var temp_entry: Dictionary = upgrade.duplicate()
-			temp_entry["source"] = "RUN"
+			temp_entry["source"] = "FOUND"
 			entries.append(temp_entry)
 	return entries
-
 
 func _trim_text(value: String, max_chars: int) -> String:
 	if value.length() <= max_chars:
@@ -9072,23 +9246,27 @@ func _draw_small_stat_chip(pos: Vector2, label: String, value: String, color: Co
 
 
 func _draw_choice_modal() -> void:
-	_draw_pixel_panel(Rect2(Vector2(28, 154), Vector2(584, 470)), Color("#111820ee"), Color("#d8c27a"))
-	_text(Vector2(54, 198), "Level %d relic" % player_level, 30, UI)
-	_text(Vector2(56, 228), "XP gathered: %d / %d" % [xp, xp_to_next], 16, MUTED)
-	if last_run_summary != "":
-		_text(Vector2(56, 252), last_run_summary, 13, Color("#f7df86"))
+	_draw_pixel_panel(Rect2(Vector2(28, 108), Vector2(584, 516)), Color("#111820ee"), Color("#d8c27a"))
+	var starter := upgrade_choice_context == "starter"
+	_text(Vector2(54, 150), "Choose your starting plan" if starter else "Level %d run relic" % player_level, 28, UI)
+	_text(Vector2(56, 178), "One defining mechanic; compound it during this run." if starter else "Lasts this run. Research permanently unlocks future relics.", 13, MUTED)
 	for i in range(upgrade_choices.size()):
 		var choice: Dictionary = upgrade_choices[i]
 		var rect := _choice_rect(i)
-		_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
-		_text_fit(rect.position + Vector2(18, 24), choice["name"], 18, Color("#f7df86"), rect.size.x - 36.0, 14)
-		_draw_wrapped_text(rect.position + Vector2(18, 45), choice["desc"], 12, MUTED, rect.size.x - 36.0, 2, 15.0)
-	_draw_touch_button(_choice_skip_rect(), "SKIP", MUTED, false)
-
+		var accent := _upgrade_color(String(choice.get("id", "")))
+		_draw_pixel_panel(rect, Color("#161520"), accent.darkened(0.35))
+		_text_fit(rect.position + Vector2(16, 21), "%d  %s" % [i + 1, String(choice.get("name", "Relic"))], 17, accent.lerp(Color.WHITE, 0.35), rect.size.x - 32.0, 13)
+		var effect := String(choice.get("effect", choice.get("desc", "")))
+		var synergy := String(choice.get("synergy", "Run-only relic."))
+		_text_fit(rect.position + Vector2(16, 42), effect, 12, UI, rect.size.x - 32.0, 10)
+		_text_fit(rect.position + Vector2(16, 59), synergy, 11, MUTED, rect.size.x - 32.0, 9)
+	if starter:
+		_text(Vector2(56, 586), "Choose 1-4. Your selection lasts for this run.", 13, Color("#f7df86"))
+	else:
+		_draw_touch_button(_choice_skip_rect(), "SKIP", MUTED, false)
 
 func _choice_rect(index: int) -> Rect2:
-	return Rect2(Vector2(54, 274 + index * 84), Vector2(532, 76))
-
+	return Rect2(Vector2(54, 208 + index * 78), Vector2(532, 70))
 
 func _choice_skip_rect() -> Rect2:
 	return Rect2(Vector2(214, 558), Vector2(212, 42))
@@ -9096,18 +9274,9 @@ func _choice_skip_rect() -> Rect2:
 
 func _run_result_detail(include_unlocks: bool) -> String:
 	var parts := []
-	if last_run_summary != "":
-		parts.append(last_run_summary)
-	else:
-		parts.append("Best combo x%d" % best_combo)
-		parts.append("Kills %d" % run_kills)
-	if keys_found > 0 or vaults_opened > 0:
-		parts.append("Keys %d/%d" % [keys_spent, keys_found])
-		parts.append("Vaults %d" % vaults_opened)
-	if meta_notice != "" and (include_unlocks or meta_notice.begins_with("Research") or meta_notice.begins_with("Relic research")):
-		parts.append(meta_notice)
-	return _trim_text(_join_strings(parts, " | "), 72)
-
+	for row in _run_result_rows(include_unlocks):
+		parts.append("%s: %s" % [String(row["label"]), String(row["value"])])
+	return _join_strings(parts, " | ")
 
 func _objective_status_text() -> String:
 	if beacon_armed:
@@ -9157,6 +9326,96 @@ func _treasure_compass_text() -> String:
 	if best_distance >= 999999:
 		return ""
 	return "Chest %d" % best_distance
+
+
+func _best_tactical_moment() -> String:
+	if vault_combo_kills > 0:
+		return "Engineered %d kill%s inside an opened vault." % [vault_combo_kills, "" if vault_combo_kills == 1 else "s"]
+	if run_boulder_kills > 0:
+		return "Engineered %d player-attributed rock kill%s." % [run_boulder_kills, "" if run_boulder_kills == 1 else "s"]
+	if best_combo >= 2:
+		return "Held a deliberate x%d combat chain." % best_combo
+	if vaults_opened > 0:
+		return "Risked %d locked vault%s and secured the reward." % [vaults_opened, "" if vaults_opened == 1 else "s"]
+	if run_relics_found > 0:
+		return "Recovered %d field relic%s." % [run_relics_found, "" if run_relics_found == 1 else "s"]
+	if run_kills > 0:
+		return "Defeated %d threat%s." % [run_kills, "" if run_kills == 1 else "s"]
+	return "No tactical highlight yet; prepare a lane and commit."
+
+
+func _run_build_summary() -> String:
+	var entries := _current_upgrade_entries()
+	if entries.is_empty():
+		return "Starter tools only"
+	var names := []
+	for entry in entries:
+		if names.size() >= 3:
+			break
+		names.append(String(entry.get("name", "Relic")))
+	var text := _join_strings(names, " + ")
+	if entries.size() > names.size():
+		text += " + %d more" % (entries.size() - names.size())
+	return text
+
+
+func _next_unlock_result_text() -> String:
+	var lifetime: Dictionary = meta.get("lifetime", {})
+	var research := int(lifetime.get("relic_research", 0))
+	var relics: Dictionary = meta.get("unlocked_relics", {})
+	for milestone in _relic_research_milestones():
+		var id := String(milestone.get("id", ""))
+		if id == "" or bool(relics.get(id, false)):
+			continue
+		var remaining := maxi(0, int(milestone.get("cost", 0)) - research)
+		return "Permanent: %s in %d research" % [_upgrade_name(id), remaining]
+	return "All permanent relic research complete"
+
+
+func _run_result_rows(extracted: bool) -> Array:
+	var cause := "Extraction secured before the Reaper closed in." if extracted else run_defeat_reason
+	if cause == "":
+		cause = message if message != "" else "The run ended."
+	return [
+		{"label": "CAUSE", "value": cause},
+		{"label": "BEST", "value": _best_tactical_moment()},
+		{"label": "BUILD", "value": _run_build_summary()},
+		{"label": "NEXT", "value": _next_unlock_result_text()}
+	]
+
+
+func _result_modal_rect() -> Rect2:
+	var viewport := get_viewport_rect().size
+	var width := minf(viewport.x - 48.0, 568.0)
+	var height := minf(viewport.y - 40.0, 420.0)
+	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
+
+
+func _result_retry_rect() -> Rect2:
+	var rect := _result_modal_rect()
+	return Rect2(rect.position + Vector2(28, rect.size.y - 66), Vector2((rect.size.x - 68) * 0.5, 42))
+
+
+func _result_hub_rect() -> Rect2:
+	var rect := _result_modal_rect()
+	var retry := _result_retry_rect()
+	return Rect2(Vector2(retry.end.x + 12, retry.position.y), retry.size)
+
+
+func _draw_result_modal(extracted: bool) -> void:
+	var rect := _result_modal_rect()
+	_draw_pixel_panel(rect, Color("#111820f4"), Color("#d8c27a"))
+	var left := rect.position.x + 30.0
+	_text(Vector2(left, rect.position.y + 46.0), "Extraction complete" if extracted else "Run ended", 30, UI)
+	_text(Vector2(left + 2.0, rect.position.y + 76.0), "Score %d  |  %s  |  %d gems" % [score, _format_time(run_time), gems_collected], 14, Color("#f7df86"))
+	var rows := _run_result_rows(extracted)
+	for i in range(rows.size()):
+		var row: Dictionary = rows[i]
+		var y := rect.position.y + 112.0 + float(i) * 52.0
+		_text(Vector2(left + 2.0, y), String(row["label"]), 10, MUTED)
+		_text_fit(Vector2(left + 2.0, y + 20.0), String(row["value"]), 14, UI, rect.size.x - 60.0, 11)
+	_draw_touch_button(_result_retry_rect(), "RERUN  [R]", RUPTURE, false)
+	_draw_touch_button(_result_hub_rect(), "HUB  [ENTER]", MUTED, false)
 
 
 func _draw_center_modal(title: String, line: String, prompt: String, detail := "") -> void:

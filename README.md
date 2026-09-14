@@ -22,7 +22,9 @@ Runs now include cave keys and optional locked side rooms. Vault gates preview t
 
 ## Progression
 
-Completed runs earn relic research and runes from survival time, gems, kills, relic finds, and extraction. Research milestones add more relics to future upgrade rotations, while runes buy permanent hub upgrades that improve starts, research gain, and chest relic odds. Achievements can still unlock maps, loadouts, elements, and special relics early.
+Every run opens with a choice between Ice, Fire, Thunder, and Boulder Lance. This starter plan lasts for that run and immediately enables its matching follow-up relics, so a fresh profile gets a mechanic-changing decision before its first extraction.
+
+Level-up cards show numerical before/after effects and how each relic compounds the current build. Full Heart only appears when healing would restore missing health. Run relics reset on rerun; research milestones permanently add relics to future rotations, while runes buy hub upgrades and alternate starts. Achievements can also unlock maps, loadouts, elements, and special relics early.
 
 Restarting or returning to the hub abandons the current run and awards no research or runes. A short defeat remains eligible once the player has meaningfully participated by digging, collecting, opening a vault, or landing a successful pump.
 
@@ -36,13 +38,13 @@ The base lance branch uses standalone upgrades such as Anchor Chain, Snap Reel, 
 
 The pause settings include master audio, music, SFX volume, music volume, screen shake, pump input mode, first-run hints, and a double-confirm wipe-save button.
 
-Boss kills unlock the harder Obsidian Rift site, the Field Kit loadout, and the Treasure Compass beacon mod.
+Boss kills unlock the harder Obsidian Rift site, the Field Kit alternate start, and the Treasure Compass beacon mod. End-of-run results identify the cause, best tactical moment, run build, and next permanent unlock, with direct rerun and hub actions.
 
 ## Checks
 
 Run `python3 tools/balance_check.py` to validate upgrade, research, and unlock table references.
 
-Run `godot --headless --path . --script res://tests/run_regressions.gd` to check controls, encounter connectivity, independent movement speeds, pump timing, impact alignment, hit-stop caps, and boulder-kill attribution.
+Run `godot --headless --path . --script res://tests/run_regressions.gd` to check controls, encounter connectivity, movement and impact contracts, starter plans, useful healing, build-aware drafts, result summaries, and boulder-kill attribution.
 
 ## Release Build
 

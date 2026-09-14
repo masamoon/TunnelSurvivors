@@ -22,8 +22,9 @@ func _run() -> void:
 	_test_cave_encounter_grammar()
 	_test_boulder_kill_attribution()
 	_test_movement_and_impact_contracts()
+	_test_run_identity_and_progression()
 	if failures.is_empty():
-		print("OK: control, encounter, movement, impact, and attribution regressions")
+		print("OK: control, encounter, movement, impact, run identity, and progression regressions")
 		quit(0)
 		return
 	for failure in failures:
@@ -341,3 +342,64 @@ func _test_movement_and_impact_contracts() -> void:
 	_expect(game._boss_max_hp_for_variant(2) == game.BOSS_MAX_HP + 20, "boss health still scales primarily through repeated pump cycles")
 	_expect(game._boss_boulder_damage(3) * 2 >= game._boss_max_hp_for_variant(0), "terrain damage is not a practical boss answer")
 	game.free()
+
+func _test_run_identity_and_progression() -> void:
+	var fresh := _game()
+	fresh._offer_starting_build_choice()
+	_expect(fresh.state == fresh.STATE_CHOOSING and fresh.upgrade_choice_context == "starter", "fresh run did not open with a starter-plan draft")
+	_expect(fresh.upgrade_choices.size() == 4, "fresh starter draft did not expose four mechanic-changing plans")
+	var starter_ids := {}
+	var ice_index := -1
+	for i in range(fresh.upgrade_choices.size()):
+		var choice: Dictionary = fresh.upgrade_choices[i]
+		var id := String(choice.get("id", ""))
+		starter_ids[id] = true
+		_expect("->" in String(choice.get("effect", "")), "starter choice %s lacks a numerical before/after preview" % id)
+		if id == "ice_tip":
+			ice_index = i
+	for expected_id in fresh.STARTER_UPGRADE_IDS:
+		_expect(starter_ids.has(String(expected_id)), "starter draft is missing %s" % String(expected_id))
+	_expect(ice_index >= 0, "starter draft has no Ice plan")
+	fresh._choose_upgrade(ice_index)
+	_expect(fresh.state == fresh.STATE_PLAYING and fresh._active_lance_element() == fresh.LANCE_ELEMENT_ICE, "starter choice did not define the current run")
+	_expect(not fresh._element_is_researched(fresh.LANCE_ELEMENT_ICE), "starter choice incorrectly became a permanent research unlock")
+	_expect(fresh._relic_is_discovered("ice_wall") and fresh._upgrade_is_available("ice_wall"), "starter element did not enable same-run follow-ups")
+	fresh.free()
+
+	var boulder := _game()
+	boulder._apply_upgrade(boulder._upgrade_by_id("boulder_lance"), "starter")
+	_expect(boulder._relic_is_discovered("boulder_lance_2") and boulder._upgrade_is_available("boulder_lance_2"), "Boulder starter did not enable its same-run progression branch")
+	boulder.free()
+
+	var healing := _game()
+	healing.hp = healing.max_hp
+	_expect(not healing._upgrade_is_available(healing.HEAL_UPGRADE_ID), "Full Heart is still offered at full health")
+	healing.hp -= 1
+	_expect(healing._upgrade_is_available(healing.HEAL_UPGRADE_ID), "Full Heart disappeared when recovery is useful")
+	var heal_preview := healing._decorate_upgrade_choice(healing._upgrade_by_id(healing.HEAL_UPGRADE_ID))
+	_expect("2 -> 3" in String(heal_preview.get("effect", "")), "Full Heart does not show the recovery before/after")
+	healing.free()
+
+	var build := _game()
+	build.temp_lance_element = build.LANCE_ELEMENT_ICE
+	build.temp_upgrades["ice_tip"] = true
+	build.family_points["ice"] = 1
+	var candidates := [
+		build._upgrade_by_id("range"),
+		build._upgrade_by_id("magnet"),
+		build._upgrade_by_id("ice_wall"),
+		build._upgrade_by_id("stun")
+	]
+	var drafted := build._draft_upgrade_choices(candidates, 3)
+	_expect(not drafted.is_empty() and build._upgrade_family(String(drafted[0]["id"])) == "ice", "draft did not guarantee a meaningful current-build choice")
+	build.run_defeat_reason = "A spitter caught the escape lane."
+	build.run_boulder_kills = 2
+	build.owned_upgrades["boulder_lance"] = true
+	var result_rows := build._run_result_rows(false)
+	_expect(result_rows.size() == 4, "run summary does not expose cause, best moment, build, and next unlock")
+	_expect(String(result_rows[0]["label"]) == "CAUSE" and "spitter" in String(result_rows[0]["value"]).to_lower(), "run summary lost the cause of defeat")
+	_expect(String(result_rows[1]["label"]) == "BEST" and "rock" in String(result_rows[1]["value"]).to_lower(), "run summary did not surface the best tactical moment")
+	_expect(String(result_rows[2]["label"]) == "BUILD" and "Boulder Lance" in String(result_rows[2]["value"]), "run summary did not identify the build")
+	_expect(String(result_rows[3]["label"]) == "NEXT" and "Permanent" in String(result_rows[3]["value"]), "run summary does not distinguish the next permanent unlock")
+	build.free()
+
