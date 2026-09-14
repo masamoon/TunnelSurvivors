@@ -15,7 +15,7 @@ const BOARD_ORIGIN := Vector2(12, 112)
 const DESKTOP_BOARD_ORIGIN := Vector2(24, 74)
 const TOP_HUD_RECT := Rect2(Vector2(12, 12), Vector2(616, 82))
 const STATUS_RECT := Rect2(Vector2(12, 604), Vector2(616, 140))
-const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 348), Vector2(196, 44))
+const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 420), Vector2(196, 44))
 const DESKTOP_PAUSE_BUTTON_RECT := Rect2(Vector2(826, 18), Vector2(104, 34))
 const INVENTORY_CLOSE_RECT := Rect2(Vector2(690, 544), Vector2(168, 44))
 const MOBILE_DPAD_CENTER := Vector2(140, 822)
@@ -8109,7 +8109,7 @@ func _draw_meta_hub() -> void:
 	var pos := rect.position
 	_text(pos + Vector2(28, 52), "DIGGY", 36, UI)
 	_draw_title_sparks(pos + Vector2(148, 37))
-	_text(pos + Vector2(30, 78), "CAVERNS OF CHANCE", 14, MUTED)
+	_text(pos + Vector2(30, 78), "CAVERNS OF CHANCE", 18 if show_touch_controls else 14, MUTED)
 
 	_draw_meta_selector(_meta_map_rect(), "DIG SITE", _map_choice_text(), _map_choice_desc(), "Left / Right")
 	_draw_meta_selector(_meta_loadout_rect(), "LOADOUT", _loadout_choice_text(), _loadout_choice_desc(), "Up / Down")
@@ -8118,10 +8118,12 @@ func _draw_meta_hub() -> void:
 	_draw_touch_button(_meta_guide_rect(), "GUIDE", PRESSURE, false)
 	_draw_touch_button(_meta_start_rect(), "START RUN", BEACON_ARMED, false)
 
-	if meta_notice != "":
-		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(meta_notice, 54), 14, WARN)
+	var footer_text := meta_notice if meta_notice != "" else _meta_prompt_text()
+	var footer_color := WARN if meta_notice != "" else MUTED
+	if show_touch_controls:
+		_draw_wrapped_text(pos + Vector2(30, rect.size.y - 24), footer_text, 16, footer_color, rect.size.x - 60.0, 2, 19.0)
 	else:
-		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(_meta_prompt_text(), 54), 14, MUTED)
+		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(footer_text, 54), 14, footer_color)
 
 
 func _draw_meta_backdrop(rect: Rect2) -> void:
@@ -8144,6 +8146,12 @@ func _draw_title_sparks(origin: Vector2) -> void:
 
 func _draw_meta_selector(rect: Rect2, label: String, value: String, desc: String, hint: String) -> void:
 	_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
+	if show_touch_controls:
+		_text(rect.position + Vector2(18, 28), label, 15, UI_PANEL_HILITE)
+		_text_fit(rect.position + Vector2(18, 60), value, 25, Color("#f7df86"), rect.size.x - 150.0, 18)
+		_draw_wrapped_text(rect.position + Vector2(18, 84), desc, 14, MUTED, rect.size.x - 36.0, 2, 17.0)
+		_text_fit(rect.position + Vector2(rect.size.x - 116, 28), hint, 13, MUTED, 98.0, 11)
+		return
 	_text(rect.position + Vector2(18, 22), label, 12, UI_PANEL_HILITE)
 	_text_fit(rect.position + Vector2(18, 47), value, 20, Color("#f7df86"), rect.size.x - 130.0, 14)
 	_text_fit(rect.position + Vector2(18, 68), desc, 12, MUTED, rect.size.x - 36.0, 9)
@@ -8156,10 +8164,16 @@ func _draw_meta_progress_panel(rect: Rect2) -> void:
 	var relics: Dictionary = meta.get("unlocked_relics", {})
 	var research := int(lifetime.get("relic_research", 0))
 	var runes := int(lifetime.get("runes", 0))
-	_text(rect.position + Vector2(18, 23), "RUNES %d" % runes, 17, RUPTURE)
-	_text(rect.position + Vector2(98, 23), "spendable currency", 11, MUTED)
-	_text_fit(rect.position + Vector2(244, 23), "Research %d | Relics %d | %s" % [research, _true_count(relics), _next_relic_research_text()], 12, MUTED, rect.size.x - 262.0, 9)
-	_text(rect.position + Vector2(18, 48), "PERMANENT UPGRADES", 12, UI_PANEL_HILITE)
+	if show_touch_controls:
+		_text(rect.position + Vector2(18, 29), "RUNES %d" % runes, 20, RUPTURE)
+		_text(rect.position + Vector2(126, 29), "RESEARCH %d  RELICS %d" % [research, _true_count(relics)], 15, MUTED)
+		_text_fit(rect.position + Vector2(368, 29), _next_relic_research_text(), 14, MUTED, rect.size.x - 386.0, 11)
+		_text(rect.position + Vector2(18, 63), "PERMANENT UPGRADES", 15, UI_PANEL_HILITE)
+	else:
+		_text(rect.position + Vector2(18, 23), "RUNES %d" % runes, 17, RUPTURE)
+		_text(rect.position + Vector2(98, 23), "spendable currency", 11, MUTED)
+		_text_fit(rect.position + Vector2(244, 23), "Research %d | Relics %d | %s" % [research, _true_count(relics), _next_relic_research_text()], 12, MUTED, rect.size.x - 262.0, 9)
+		_text(rect.position + Vector2(18, 48), "PERMANENT UPGRADES", 12, UI_PANEL_HILITE)
 	var defs := _meta_upgrade_defs()
 	for i in range(defs.size()):
 		var upgrade: Dictionary = defs[i]
@@ -8175,6 +8189,15 @@ func _draw_meta_upgrade_row(rect: Rect2, upgrade: Dictionary, index: int, runes:
 	var edge := BEACON_ARMED.darkened(0.12) if can_buy else UI_PANEL_EDGE
 	var fill := Color("#171823") if index % 2 == 0 else Color("#141620")
 	_draw_pixel_panel(rect, fill, edge)
+	if show_touch_controls:
+		_text(rect.position + Vector2(10, 24), "%d" % (index + 1), 13, MUTED)
+		_text_fit(rect.position + Vector2(34, 25), String(upgrade.get("name", "Upgrade")), 17, Color("#f7df86"), 154.0, 13)
+		_text_fit(rect.position + Vector2(198, 24), _meta_upgrade_short_text(id), 13, MUTED, rect.size.x - 350.0, 11)
+		_text(rect.position + Vector2(rect.size.x - 132, 24), "%d/%d" % [level, max_level], 14, UI)
+		var touch_state_text := "MAX" if level >= max_level else "%d rune%s" % [cost, "" if cost == 1 else "s"]
+		var touch_state_color := BEACON_ARMED if can_buy else (MUTED if level >= max_level else WARN)
+		_text_fit(rect.position + Vector2(rect.size.x - 78, 24), touch_state_text, 14, touch_state_color, 68.0, 11)
+		return
 	_text(rect.position + Vector2(10, 15), "%d" % (index + 1), 11, MUTED)
 	_text_fit(rect.position + Vector2(28, 16), String(upgrade.get("name", "Upgrade")), 14, Color("#f7df86"), 116.0, 10)
 	_text_fit(rect.position + Vector2(154, 16), _meta_upgrade_short_text(id), 11, MUTED, rect.size.x - 282.0, 9)
@@ -8293,6 +8316,10 @@ func _handle_pause_pointer(pos: Vector2) -> void:
 
 func _meta_panel_rect() -> Rect2:
 	var viewport := get_viewport_rect().size
+	if show_touch_controls:
+		var touch_width := minf(viewport.x - 24.0, 616.0)
+		var touch_height := minf(viewport.y - 48.0, 830.0)
+		return Rect2(Vector2((viewport.x - touch_width) * 0.5, (viewport.y - touch_height) * 0.5), Vector2(touch_width, touch_height))
 	var width := clampf(viewport.x - 48.0, 560.0, 760.0)
 	var height := clampf(viewport.y - 48.0, 540.0, 560.0)
 	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
@@ -8300,31 +8327,35 @@ func _meta_panel_rect() -> Rect2:
 
 func _meta_map_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 100), Vector2(rect.size.x - 56, 78))
+	return Rect2(rect.position + Vector2(28, 140 if show_touch_controls else 100), Vector2(rect.size.x - 56, 110 if show_touch_controls else 78))
 
 
 func _meta_loadout_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 188), Vector2(rect.size.x - 56, 78))
+	return Rect2(rect.position + Vector2(28, 260 if show_touch_controls else 188), Vector2(rect.size.x - 56, 110 if show_touch_controls else 78))
 
 
 func _meta_beacon_mod_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 276), Vector2(rect.size.x - 56, 78))
+	return Rect2(rect.position + Vector2(28, 380 if show_touch_controls else 276), Vector2(rect.size.x - 56, 110 if show_touch_controls else 78))
 
 
 func _meta_progress_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 368), Vector2(rect.size.x - 56, 148))
+	return Rect2(rect.position + Vector2(28, 504 if show_touch_controls else 368), Vector2(rect.size.x - 56, 280 if show_touch_controls else 148))
 
 
 func _meta_start_rect() -> Rect2:
 	var rect := _meta_panel_rect()
+	if show_touch_controls:
+		return Rect2(rect.position + Vector2(rect.size.x - 196, 38), Vector2(168, 80))
 	return Rect2(rect.position + Vector2(rect.size.x - 196, 42), Vector2(168, 34))
 
 
 func _meta_guide_rect() -> Rect2:
 	var rect := _meta_panel_rect()
+	if show_touch_controls:
+		return Rect2(rect.position + Vector2(rect.size.x - 376, 38), Vector2(168, 80))
 	return Rect2(rect.position + Vector2(rect.size.x - 196, 80), Vector2(168, 24))
 
 
@@ -8335,6 +8366,8 @@ func _meta_buy_rect() -> Rect2:
 
 func _meta_upgrade_row_rect(index: int) -> Rect2:
 	var rect := _meta_progress_rect()
+	if show_touch_controls:
+		return Rect2(rect.position + Vector2(18, 76 + float(index) * 46.0), Vector2(rect.size.x - 36, 38))
 	return Rect2(rect.position + Vector2(18, 56 + float(index) * 23.0), Vector2(rect.size.x - 36, 20))
 
 
@@ -8389,7 +8422,7 @@ func _draw_mobile_controls() -> void:
 
 
 func _draw_desktop_ui() -> void:
-	_draw_pixel_panel(Rect2(Vector2(680, 52), Vector2(250, 344)), UI_PANEL, UI_PANEL_EDGE)
+	_draw_pixel_panel(Rect2(Vector2(680, 52), Vector2(250, 430)), UI_PANEL, UI_PANEL_EDGE)
 	_draw_pixel_panel(Rect2(Vector2(18, 18), Vector2(378, 34)), Color("#11121a"), UI_PANEL_EDGE)
 	_text(Vector2(32, 42), "DIGGY: CAVERNS OF CHANCE", 24, UI)
 
@@ -8410,10 +8443,11 @@ func _draw_desktop_ui() -> void:
 	if detail != "":
 		_text(Vector2(700, 272), "DANGER", 12, RUPTURE)
 		_draw_wrapped_text(Vector2(700, 290), detail, 12, MUTED, 196.0, 2, 15.0)
+	if message != "":
+		_text(Vector2(700, 334), "EVENT", 12, UI_PANEL_HILITE)
+		_draw_wrapped_text(Vector2(700, 352), message, 12, WARN, 196.0, 3, 15.0)
 	_draw_touch_button(_pause_button_rect(), "PAUSE", MUTED, paused)
 	_draw_touch_button(_inventory_button_rect(), "INVENTORY", PRESSURE, show_upgrade_inventory)
-	if message != "":
-		_draw_wrapped_text(Vector2(24, 584), message, 16, WARN, 616.0, 2, 19.0)
 
 
 func _draw_dpad() -> void:
@@ -9231,14 +9265,14 @@ func _draw_rock_sprite(center: Vector2, rock: Dictionary) -> void:
 	if int(rock.get("fall_distance", 0)) == 0:
 		var warning := WARN
 		warning.a = 0.55 + sin(anim_time * 18.0) * 0.22
-		draw_rect(Rect2(_snap_px(center + Vector2(-9, 14)), Vector2(18, 3)), warning)
-		draw_rect(Rect2(_snap_px(center + Vector2(-5, 19)), Vector2(4, 4)), warning)
-		draw_rect(Rect2(_snap_px(center + Vector2(3, 19)), Vector2(4, 4)), warning)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-9, 14)), Vector2(18, 3)), warning)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-5, 19)), Vector2(4, 4)), warning)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(3, 19)), Vector2(4, 4)), warning)
 	else:
 		var streak := ROCK_SHADOW
 		streak.a = 0.72
-		draw_rect(Rect2(_snap_px(center + Vector2(-8, -24)), Vector2(3, 9)), streak)
-		draw_rect(Rect2(_snap_px(center + Vector2(5, -20)), Vector2(3, 7)), streak)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-8, -24)), Vector2(3, 9)), streak)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(5, -20)), Vector2(3, 7)), streak)
 
 
 func _enemy_pressure_pose(enemy: Dictionary) -> String:
@@ -9261,16 +9295,16 @@ func _draw_enemy_pressure_pose(center: Vector2, radius: float, pose: String) -> 
 		color.a = 0.7 + sin(anim_time * 16.0) * 0.2
 		for dir in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
 			var mark := _snap_px(center + dir * (radius + 7.0))
-			draw_rect(Rect2(mark - Vector2(3, 3), Vector2(6, 6)), color)
+			_draw_world_rect(Rect2(mark - Vector2(3, 3), Vector2(6, 6)), color)
 	elif pose == "pumping":
 		color.a = 0.72
-		draw_rect(Rect2(_snap_px(center + Vector2(-radius - 6.0, -5)), Vector2(3, 10)), color)
-		draw_rect(Rect2(_snap_px(center + Vector2(radius + 3.0, -5)), Vector2(3, 10)), color)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-radius - 6.0, -5)), Vector2(3, 10)), color)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(radius + 3.0, -5)), Vector2(3, 10)), color)
 	else:
 		color = color.darkened(0.3)
 		color.a = 0.5
-		draw_rect(Rect2(_snap_px(center + Vector2(-7, radius + 5.0)), Vector2(5, 3)), color)
-		draw_rect(Rect2(_snap_px(center + Vector2(3, radius + 8.0)), Vector2(4, 3)), color)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-7, radius + 5.0)), Vector2(5, 3)), color)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(3, radius + 8.0)), Vector2(4, 3)), color)
 
 
 func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool, hit_phase: float, pressure_pose := "neutral") -> void:
@@ -9382,7 +9416,7 @@ func _draw_pixel_sprite(center: Vector2, rows: Array, palette: Dictionary, pixel
 			var key := row.substr(x, 1)
 			if key == "." or key == " " or not palette.has(key):
 				continue
-			draw_rect(Rect2(top_left + Vector2(x * pixel_size, y * pixel_size), Vector2(pixel_size, pixel_size)), palette[key])
+			_draw_world_rect(Rect2(top_left + Vector2(x * pixel_size, y * pixel_size), Vector2(pixel_size, pixel_size)), palette[key])
 
 
 func _flip_rows(rows: Array) -> Array:
