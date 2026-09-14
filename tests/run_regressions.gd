@@ -376,7 +376,7 @@ func _test_run_identity_and_progression() -> void:
 	_expect(not healing._upgrade_is_available(healing.HEAL_UPGRADE_ID), "Full Heart is still offered at full health")
 	healing.hp -= 1
 	_expect(healing._upgrade_is_available(healing.HEAL_UPGRADE_ID), "Full Heart disappeared when recovery is useful")
-	var heal_preview := healing._decorate_upgrade_choice(healing._upgrade_by_id(healing.HEAL_UPGRADE_ID))
+	var heal_preview: Dictionary = healing._decorate_upgrade_choice(healing._upgrade_by_id(healing.HEAL_UPGRADE_ID))
 	_expect("2 -> 3" in String(heal_preview.get("effect", "")), "Full Heart does not show the recovery before/after")
 	healing.free()
 
@@ -390,12 +390,12 @@ func _test_run_identity_and_progression() -> void:
 		build._upgrade_by_id("ice_wall"),
 		build._upgrade_by_id("stun")
 	]
-	var drafted := build._draft_upgrade_choices(candidates, 3)
+	var drafted: Array = build._draft_upgrade_choices(candidates, 3)
 	_expect(not drafted.is_empty() and build._upgrade_family(String(drafted[0]["id"])) == "ice", "draft did not guarantee a meaningful current-build choice")
 	build.run_defeat_reason = "A spitter caught the escape lane."
 	build.run_boulder_kills = 2
 	build.owned_upgrades["boulder_lance"] = true
-	var result_rows := build._run_result_rows(false)
+	var result_rows: Array = build._run_result_rows(false)
 	_expect(result_rows.size() == 4, "run summary does not expose cause, best moment, build, and next unlock")
 	_expect(String(result_rows[0]["label"]) == "CAUSE" and "spitter" in String(result_rows[0]["value"]).to_lower(), "run summary lost the cause of defeat")
 	_expect(String(result_rows[1]["label"]) == "BEST" and "rock" in String(result_rows[1]["value"]).to_lower(), "run summary did not surface the best tactical moment")
