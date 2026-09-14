@@ -15,12 +15,12 @@ const BOARD_ORIGIN := Vector2(12, 112)
 const DESKTOP_BOARD_ORIGIN := Vector2(24, 74)
 const TOP_HUD_RECT := Rect2(Vector2(12, 12), Vector2(616, 82))
 const STATUS_RECT := Rect2(Vector2(12, 604), Vector2(616, 140))
-const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 348), Vector2(196, 44))
+const DESKTOP_INVENTORY_BUTTON_RECT := Rect2(Vector2(700, 420), Vector2(196, 44))
 const DESKTOP_PAUSE_BUTTON_RECT := Rect2(Vector2(826, 18), Vector2(104, 34))
 const INVENTORY_CLOSE_RECT := Rect2(Vector2(690, 544), Vector2(168, 44))
 const MOBILE_DPAD_CENTER := Vector2(140, 822)
-const MOBILE_STATUS_H := 112
-const MOBILE_DPAD_BUTTON := 64
+const MOBILE_STATUS_H := 128
+const MOBILE_DPAD_BUTTON := 80
 const MOBILE_DPAD_GAP := 8
 const MOBILE_LANCE_RECT := Rect2(Vector2(384, 790), Vector2(220, 96))
 const MOBILE_INTERACT_RECT := Rect2(Vector2(420, 718), Vector2(184, 80))
@@ -3384,7 +3384,8 @@ func _contextual_interaction_available() -> bool:
 
 func _direction_from_dpad(pos: Vector2) -> Vector2i:
 	var center := _mobile_dpad_center()
-	var bounds := Rect2(center - Vector2(126, 126), Vector2(252, 252))
+	var half_span := MOBILE_DPAD_BUTTON * 1.5 + MOBILE_DPAD_GAP
+	var bounds := Rect2(center - Vector2(half_span, half_span), Vector2(half_span * 2.0, half_span * 2.0))
 	if not bounds.has_point(pos):
 		return Vector2i.ZERO
 	var delta := pos - center
@@ -6987,12 +6988,12 @@ func _snap_camera_to_player() -> void:
 
 func _camera_target_y() -> float:
 	var player_center_y := _visual_to_board_px(player_visual_pos).y
-	var target := player_center_y - float(BOARD_VIEW_PX_H) * CAMERA_FOLLOW_BIAS
+	var target := player_center_y - _board_view_height_px() * CAMERA_FOLLOW_BIAS
 	return clampf(target, 0.0, _max_camera_y_px())
 
 
 func _max_camera_y_px() -> float:
-	return maxf(0.0, float(BOARD_PX_H - BOARD_VIEW_PX_H))
+	return maxf(0.0, float(BOARD_PX_H) - _board_view_height_px())
 
 
 func _update_feedback(delta: float) -> void:
@@ -7091,7 +7092,7 @@ func _has_xp_pickup(pos: Vector2i) -> bool:
 
 
 func _draw_board() -> void:
-	var board_rect := Rect2(_board_origin() - Vector2(4, 4), Vector2(BOARD_W * CELL + 8, BOARD_VIEW_PX_H + 8))
+	var board_rect := Rect2(_board_origin() - Vector2(4, 4), Vector2(BOARD_W * CELL + 8, _board_view_height_px() + 8.0))
 	draw_rect(board_rect, Color("#05060a"))
 	draw_rect(board_rect.grow(-2), TUNNEL_EDGE)
 	draw_rect(_board_view_rect(), TUNNEL)
@@ -7252,7 +7253,7 @@ func _draw_deep_signal() -> void:
 	if chest_center.y <= view.end.y - 18.0:
 		return
 	var distance := chest_center.y - view.end.y
-	var closeness := 1.0 - clampf(distance / float(BOARD_VIEW_PX_H), 0.0, 1.0)
+	var closeness := 1.0 - clampf(distance / _board_view_height_px(), 0.0, 1.0)
 	var pulse := 0.5 + sin(anim_time * 3.8) * 0.5
 	var x := clampf(chest_center.x, view.position.x + 34.0, view.end.x - 34.0)
 	var y := view.end.y - 13.0
@@ -7426,7 +7427,7 @@ func _draw_surface_layer() -> void:
 	var grass := CRYSTAL_GRASS if crystal_map else SURFACE_GRASS
 	var grass_dark := CRYSTAL_GRASS_DARK if crystal_map else SURFACE_GRASS_DARK
 	var crust := CRYSTAL_SURFACE_CRUST if crystal_map else Color("#442719")
-	var fleck := CRYSTAL_DIRT_LAYER_HIGHLIGHTS[0].lerp(surface_soil, 0.45) if crystal_map else DIRT_LAYER_HIGHLIGHTS[0].lerp(surface_soil, 0.45)
+	var fleck := CRYSTAL_DIRT_LAYER_HIGHLIGHTS[0].lerp(surface_soil, 0.72) if crystal_map else DIRT_LAYER_HIGHLIGHTS[0].lerp(surface_soil, 0.72)
 	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, CELL)), surface_soil)
 	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, 7)), grass_dark)
 	draw_rect(Rect2(origin, Vector2(BOARD_PX_W, 5)), grass)
@@ -7486,7 +7487,7 @@ func _draw_actors() -> void:
 		var center := _visual_to_center(_dict_visual(rock))
 		if rock["falling"] and rock["fall_distance"] == 0:
 			center += Vector2(sin(anim_time * 32.0) * 2.0, 0.0)
-		_draw_rock_sprite(center)
+		_draw_rock_sprite(center, rock)
 
 	for enemy in enemies:
 		if _closed_vault_contains_cell(enemy["pos"]):
@@ -7501,6 +7502,7 @@ func _draw_actors() -> void:
 		var missing_hp := clampi(max_enemy_hp - int(enemy["hp"]), 0, max_enemy_hp)
 		var pressure_ratio := float(missing_hp) / float(max_enemy_hp)
 		var inflated := bool(enemy.get("inflated", false))
+		var pressure_pose := _enemy_pressure_pose(enemy)
 		var hit_flash := float(enemy.get("hit_flash", 0.0))
 		var hit_phase := 0.0
 		if hit_flash > 0.0:
@@ -7545,7 +7547,9 @@ func _draw_actors() -> void:
 			bounty_glow.a = 0.55 + sin(anim_time * 10.0) * 0.14
 			_draw_pixel_ring(center, body_radius + 8.0, bounty_glow, 3)
 			_draw_pixel_diamond(center + Vector2(0, -body_radius - 15.0), 3, bounty_glow)
-		_draw_enemy_sprite(center, color, int(enemy["kind"]), inflated, hit_phase)
+		var sprite_center := center + (Vector2(0, 2) if pressure_pose == "recovering" else Vector2.ZERO)
+		_draw_enemy_sprite(sprite_center, color, int(enemy["kind"]), inflated, hit_phase, pressure_pose)
+		_draw_enemy_pressure_pose(center, body_radius, pressure_pose)
 		for ring in range(mini(3, missing_hp)):
 			var ring_color := PRESSURE.lerp(RUPTURE, float(ring) / 3.0)
 			ring_color.a = 0.65
@@ -7746,7 +7750,7 @@ func _draw_zap_feedback() -> void:
 		var bright := Color("#fff9bf")
 		bright.a = 0.72 * alpha
 		_draw_pixel_zap(from, to, color, int(effect.get("jump", 0)))
-		_draw_pixel_ring(to, 8.0 + progress * 9.0, bright, 2)
+		_draw_world_pixel_ring(to, 8.0 + progress * 9.0, bright, 2)
 
 
 func _draw_pixel_zap(from: Vector2, to: Vector2, color: Color, seed: int) -> void:
@@ -7771,7 +7775,7 @@ func _draw_pixel_segment(a: Vector2, b: Vector2, color: Color, thickness: int) -
 	var steps := maxi(1, ceili(delta.length() / 4.0))
 	for i in range(steps + 1):
 		var p := _snap_px(a.lerp(b, float(i) / float(steps)))
-		draw_rect(Rect2(p - Vector2(thickness * 0.5, thickness * 0.5), Vector2(thickness, thickness)), color)
+		_draw_world_rect(Rect2(p - Vector2(thickness * 0.5, thickness * 0.5), Vector2(thickness, thickness)), color)
 
 
 func _draw_player(pc: Vector2) -> void:
@@ -7826,6 +7830,8 @@ func _draw_player(pc: Vector2) -> void:
 		"T": Color("#0c3a37"),
 		"L": PRESSURE
 	}
+	var silhouette := {"K": Color("#05060a"), "D": Color("#05060a"), "S": Color("#05060a"), "F": Color("#05060a"), "E": Color("#05060a"), "B": Color("#05060a"), "T": Color("#05060a"), "L": Color("#05060a")}
+	_draw_pixel_sprite(core + Vector2(2, 3), rows, silhouette, 3)
 	_draw_pixel_sprite(core, rows, palette, 3)
 	if lance_active:
 		_draw_lance_launcher(core, forward, _lance_color())
@@ -8050,7 +8056,7 @@ func _handle_guide_pointer(pos: Vector2) -> void:
 func _draw_upgrade_pickup_toast() -> void:
 	var view := _board_view_rect()
 	var width := minf(view.size.x - 32.0, 560.0)
-	var rect := Rect2(view.position + Vector2(16, view.size.y - 76), Vector2(width, 60))
+	var rect := Rect2(view.position + Vector2(16, view.size.y - 94), Vector2(width, 78))
 	var duration := maxf(0.01, float(upgrade_pickup_toast.get("duration", 4.2)))
 	var time_left := clampf(float(upgrade_pickup_toast.get("time", 0.0)), 0.0, duration)
 	var ratio := time_left / duration
@@ -8059,8 +8065,8 @@ func _draw_upgrade_pickup_toast() -> void:
 	_draw_pixel_panel(rect, Color("#111820e6"), edge)
 	_draw_relic_icon(rect.position + Vector2(46, 31), upgrade_pickup_toast, 0.95)
 	_text(rect.position + Vector2(14, 21), "RELIC", 12, RUPTURE.lerp(Color("#f7df86"), 0.35))
-	_text(rect.position + Vector2(72, 25), _trim_text(String(upgrade_pickup_toast.get("name", "Upgrade")), 28), 18, Color("#f7df86"))
-	_text(rect.position + Vector2(72, 46), _trim_text(String(upgrade_pickup_toast.get("desc", "")), 52), 12, MUTED)
+	_text_fit(rect.position + Vector2(72, 25), String(upgrade_pickup_toast.get("name", "Upgrade")), 18, Color("#f7df86"), rect.size.x - 88.0, 14)
+	_draw_wrapped_text(rect.position + Vector2(72, 45), String(upgrade_pickup_toast.get("desc", "")), 12, MUTED, rect.size.x - 88.0, 2, 15.0)
 	_draw_pixel_bar(rect.position + Vector2(14, rect.size.y - 8), Vector2(rect.size.x - 28, 5), ratio, edge, Color("#2a202b"))
 
 
@@ -8070,10 +8076,10 @@ func _draw_tutorial_hint() -> void:
 		return
 	var view := _board_view_rect()
 	var width := minf(view.size.x - 32.0, 560.0)
-	var rect := Rect2(view.position + Vector2(16, view.size.y - 64), Vector2(width, 48))
+	var rect := Rect2(view.position + Vector2(16, view.size.y - 84), Vector2(width, 68))
 	_draw_pixel_panel(rect, Color("#111820dd"), PRESSURE.darkened(0.2))
 	_text(rect.position + Vector2(14, 21), "TIP", 12, PRESSURE)
-	_text(rect.position + Vector2(58, 30), _trim_text(hint, 58), 14, UI)
+	_draw_wrapped_text(rect.position + Vector2(58, 23), hint, 14, UI, rect.size.x - 74.0, 2, 18.0)
 
 
 func _tutorial_hint_text() -> String:
@@ -8084,9 +8090,9 @@ func _tutorial_hint_text() -> String:
 	if player_level > 1 and run_time < 35.0:
 		return "Level up pauses the cave. Pick one relic, then keep moving."
 	if run_time < 8.0:
-		return "Dig into dirt with the move keys. Blue gems feed XP and beacon charge."
+		return "Use the pad to dig. Blue gems feed XP and beacon charge." if show_touch_controls else "Use move keys to dig. Blue gems feed XP and beacon charge."
 	if run_time < 18.0:
-		return "Face an enemy and use the lance. Tap again to pump a pinned target."
+		return "Face an enemy, then hold PUMP until it bursts. Release to disengage." if show_touch_controls else "Face an enemy, then hold Space until it bursts. Release to disengage."
 	if run_time < 36.0:
 		return "Falling boulders crush enemies for big XP, but they can trap you too."
 	if _is_pressure_surge():
@@ -8103,7 +8109,7 @@ func _draw_meta_hub() -> void:
 	var pos := rect.position
 	_text(pos + Vector2(28, 52), "DIGGY", 36, UI)
 	_draw_title_sparks(pos + Vector2(148, 37))
-	_text(pos + Vector2(30, 78), "CAVERNS OF CHANCE", 14, MUTED)
+	_text(pos + Vector2(30, 78), "CAVERNS OF CHANCE", 18 if show_touch_controls else 14, MUTED)
 
 	_draw_meta_selector(_meta_map_rect(), "DIG SITE", _map_choice_text(), _map_choice_desc(), "Left / Right")
 	_draw_meta_selector(_meta_loadout_rect(), "LOADOUT", _loadout_choice_text(), _loadout_choice_desc(), "Up / Down")
@@ -8112,10 +8118,12 @@ func _draw_meta_hub() -> void:
 	_draw_touch_button(_meta_guide_rect(), "GUIDE", PRESSURE, false)
 	_draw_touch_button(_meta_start_rect(), "START RUN", BEACON_ARMED, false)
 
-	if meta_notice != "":
-		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(meta_notice, 54), 14, WARN)
+	var footer_text := meta_notice if meta_notice != "" else _meta_prompt_text()
+	var footer_color := WARN if meta_notice != "" else MUTED
+	if show_touch_controls:
+		_draw_wrapped_text(pos + Vector2(30, rect.size.y - 24), footer_text, 16, footer_color, rect.size.x - 60.0, 2, 19.0)
 	else:
-		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(_meta_prompt_text(), 54), 14, MUTED)
+		_text(pos + Vector2(30, rect.size.y - 28), _trim_text(footer_text, 54), 14, footer_color)
 
 
 func _draw_meta_backdrop(rect: Rect2) -> void:
@@ -8138,6 +8146,12 @@ func _draw_title_sparks(origin: Vector2) -> void:
 
 func _draw_meta_selector(rect: Rect2, label: String, value: String, desc: String, hint: String) -> void:
 	_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
+	if show_touch_controls:
+		_text(rect.position + Vector2(18, 28), label, 15, UI_PANEL_HILITE)
+		_text_fit(rect.position + Vector2(18, 60), value, 25, Color("#f7df86"), rect.size.x - 150.0, 18)
+		_draw_wrapped_text(rect.position + Vector2(18, 84), desc, 14, MUTED, rect.size.x - 36.0, 2, 17.0)
+		_text_fit(rect.position + Vector2(rect.size.x - 116, 28), hint, 13, MUTED, 98.0, 11)
+		return
 	_text(rect.position + Vector2(18, 22), label, 12, UI_PANEL_HILITE)
 	_text_fit(rect.position + Vector2(18, 47), value, 20, Color("#f7df86"), rect.size.x - 130.0, 14)
 	_text_fit(rect.position + Vector2(18, 68), desc, 12, MUTED, rect.size.x - 36.0, 9)
@@ -8150,10 +8164,16 @@ func _draw_meta_progress_panel(rect: Rect2) -> void:
 	var relics: Dictionary = meta.get("unlocked_relics", {})
 	var research := int(lifetime.get("relic_research", 0))
 	var runes := int(lifetime.get("runes", 0))
-	_text(rect.position + Vector2(18, 23), "RUNES %d" % runes, 17, RUPTURE)
-	_text(rect.position + Vector2(98, 23), "spendable currency", 11, MUTED)
-	_text_fit(rect.position + Vector2(244, 23), "Research %d | Relics %d | %s" % [research, _true_count(relics), _next_relic_research_text()], 12, MUTED, rect.size.x - 262.0, 9)
-	_text(rect.position + Vector2(18, 48), "PERMANENT UPGRADES", 12, UI_PANEL_HILITE)
+	if show_touch_controls:
+		_text(rect.position + Vector2(18, 29), "RUNES %d" % runes, 20, RUPTURE)
+		_text(rect.position + Vector2(126, 29), "RESEARCH %d  RELICS %d" % [research, _true_count(relics)], 15, MUTED)
+		_text_fit(rect.position + Vector2(368, 29), _next_relic_research_text(), 14, MUTED, rect.size.x - 386.0, 11)
+		_text(rect.position + Vector2(18, 63), "PERMANENT UPGRADES", 15, UI_PANEL_HILITE)
+	else:
+		_text(rect.position + Vector2(18, 23), "RUNES %d" % runes, 17, RUPTURE)
+		_text(rect.position + Vector2(98, 23), "spendable currency", 11, MUTED)
+		_text_fit(rect.position + Vector2(244, 23), "Research %d | Relics %d | %s" % [research, _true_count(relics), _next_relic_research_text()], 12, MUTED, rect.size.x - 262.0, 9)
+		_text(rect.position + Vector2(18, 48), "PERMANENT UPGRADES", 12, UI_PANEL_HILITE)
 	var defs := _meta_upgrade_defs()
 	for i in range(defs.size()):
 		var upgrade: Dictionary = defs[i]
@@ -8169,6 +8189,15 @@ func _draw_meta_upgrade_row(rect: Rect2, upgrade: Dictionary, index: int, runes:
 	var edge := BEACON_ARMED.darkened(0.12) if can_buy else UI_PANEL_EDGE
 	var fill := Color("#171823") if index % 2 == 0 else Color("#141620")
 	_draw_pixel_panel(rect, fill, edge)
+	if show_touch_controls:
+		_text(rect.position + Vector2(10, 24), "%d" % (index + 1), 13, MUTED)
+		_text_fit(rect.position + Vector2(34, 25), String(upgrade.get("name", "Upgrade")), 17, Color("#f7df86"), 154.0, 13)
+		_text_fit(rect.position + Vector2(198, 24), _meta_upgrade_short_text(id), 13, MUTED, rect.size.x - 350.0, 11)
+		_text(rect.position + Vector2(rect.size.x - 132, 24), "%d/%d" % [level, max_level], 14, UI)
+		var touch_state_text := "MAX" if level >= max_level else "%d rune%s" % [cost, "" if cost == 1 else "s"]
+		var touch_state_color := BEACON_ARMED if can_buy else (MUTED if level >= max_level else WARN)
+		_text_fit(rect.position + Vector2(rect.size.x - 78, 24), touch_state_text, 14, touch_state_color, 68.0, 11)
+		return
 	_text(rect.position + Vector2(10, 15), "%d" % (index + 1), 11, MUTED)
 	_text_fit(rect.position + Vector2(28, 16), String(upgrade.get("name", "Upgrade")), 14, Color("#f7df86"), 116.0, 10)
 	_text_fit(rect.position + Vector2(154, 16), _meta_upgrade_short_text(id), 11, MUTED, rect.size.x - 282.0, 9)
@@ -8287,6 +8316,10 @@ func _handle_pause_pointer(pos: Vector2) -> void:
 
 func _meta_panel_rect() -> Rect2:
 	var viewport := get_viewport_rect().size
+	if show_touch_controls:
+		var touch_width := minf(viewport.x - 24.0, 616.0)
+		var touch_height := minf(viewport.y - 48.0, 830.0)
+		return Rect2(Vector2((viewport.x - touch_width) * 0.5, (viewport.y - touch_height) * 0.5), Vector2(touch_width, touch_height))
 	var width := clampf(viewport.x - 48.0, 560.0, 760.0)
 	var height := clampf(viewport.y - 48.0, 540.0, 560.0)
 	return Rect2(Vector2((viewport.x - width) * 0.5, (viewport.y - height) * 0.5), Vector2(width, height))
@@ -8294,31 +8327,35 @@ func _meta_panel_rect() -> Rect2:
 
 func _meta_map_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 100), Vector2(rect.size.x - 56, 78))
+	return Rect2(rect.position + Vector2(28, 140 if show_touch_controls else 100), Vector2(rect.size.x - 56, 110 if show_touch_controls else 78))
 
 
 func _meta_loadout_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 188), Vector2(rect.size.x - 56, 78))
+	return Rect2(rect.position + Vector2(28, 260 if show_touch_controls else 188), Vector2(rect.size.x - 56, 110 if show_touch_controls else 78))
 
 
 func _meta_beacon_mod_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 276), Vector2(rect.size.x - 56, 78))
+	return Rect2(rect.position + Vector2(28, 380 if show_touch_controls else 276), Vector2(rect.size.x - 56, 110 if show_touch_controls else 78))
 
 
 func _meta_progress_rect() -> Rect2:
 	var rect := _meta_panel_rect()
-	return Rect2(rect.position + Vector2(28, 368), Vector2(rect.size.x - 56, 148))
+	return Rect2(rect.position + Vector2(28, 504 if show_touch_controls else 368), Vector2(rect.size.x - 56, 280 if show_touch_controls else 148))
 
 
 func _meta_start_rect() -> Rect2:
 	var rect := _meta_panel_rect()
+	if show_touch_controls:
+		return Rect2(rect.position + Vector2(rect.size.x - 196, 38), Vector2(168, 80))
 	return Rect2(rect.position + Vector2(rect.size.x - 196, 42), Vector2(168, 34))
 
 
 func _meta_guide_rect() -> Rect2:
 	var rect := _meta_panel_rect()
+	if show_touch_controls:
+		return Rect2(rect.position + Vector2(rect.size.x - 376, 38), Vector2(168, 80))
 	return Rect2(rect.position + Vector2(rect.size.x - 196, 80), Vector2(168, 24))
 
 
@@ -8329,6 +8366,8 @@ func _meta_buy_rect() -> Rect2:
 
 func _meta_upgrade_row_rect(index: int) -> Rect2:
 	var rect := _meta_progress_rect()
+	if show_touch_controls:
+		return Rect2(rect.position + Vector2(18, 76 + float(index) * 46.0), Vector2(rect.size.x - 36, 38))
 	return Rect2(rect.position + Vector2(18, 56 + float(index) * 23.0), Vector2(rect.size.x - 36, 20))
 
 
@@ -8345,7 +8384,7 @@ func _draw_portrait_hud() -> void:
 	_text(Vector2(left + 170, 36), "RUN", 13, UI_PANEL_HILITE)
 	_text(Vector2(left + 214, 38), "%s / %s" % [_format_time(run_time), _format_time(RUN_GOAL_TIME)], 17, UI)
 	_draw_pixel_bar(Vector2(left + 170, 50), Vector2(226, 8), clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0), BEACON_ARMED, Color("#29202b"))
-	_text(Vector2(left + 170, 68), "BCN %d/%d" % [beacon_charge, BEACON_CHARGE_GOAL], 13, BEACON_ARMED if beacon_armed else MUTED)
+	_text(Vector2(left + 170, 68), _objective_status_text(), 13, BEACON_ARMED if beacon_armed else MUTED)
 	_draw_pixel_bar(Vector2(left + 260, 60), Vector2(136, 7), _beacon_charge_ratio(), BEACON_ARMED, Color("#243020"))
 
 	var xp_ratio := clampf(float(xp) / float(maxi(1, xp_to_next)), 0.0, 1.0)
@@ -8361,36 +8400,36 @@ func _draw_portrait_status_panel() -> void:
 	var rect := _portrait_status_rect()
 	var left := rect.position.x
 	_draw_pixel_panel(rect, UI_PANEL, UI_PANEL_EDGE)
-	_text(Vector2(left + 16, rect.position.y + 28), "UPGRADES", 15, UI_PANEL_HILITE)
+	_text(Vector2(left + 16, rect.position.y + 27), "EVENT", 13, UI_PANEL_HILITE)
 	if message != "":
-		_text(Vector2(left + 104, rect.position.y + 30), _trim_text(message, 46), 16, WARN)
+		_draw_wrapped_text(Vector2(left + 82, rect.position.y + 20), message, 14, WARN, 326.0, 2, 17.0)
 	var detail := _status_detail_string()
 	if detail != "":
-		_text(Vector2(left + 16, rect.position.y + 54), _trim_text(detail, 52), 13, MUTED)
+		_text(Vector2(left + 16, rect.position.y + 69), "DANGER", 12, RUPTURE)
+		_draw_wrapped_text(Vector2(left + 82, rect.position.y + 66), detail, 12, MUTED, 326.0, 2, 15.0)
 
-	_draw_upgrade_summary(Vector2(left + 16, rect.position.y + 76), 390.0, 1)
-	_draw_touch_button(_inventory_button_rect(), "UPGRADES", PRESSURE, show_upgrade_inventory)
+	_draw_touch_button(_inventory_button_rect(), "INVENTORY", PRESSURE, show_upgrade_inventory)
 	_draw_crush_toast()
 
 
 func _draw_mobile_controls() -> void:
 	_draw_dpad()
-	_draw_touch_button(_mobile_lance_rect(), "LANCE", _lance_color(), lance_active)
+	_draw_touch_button(_mobile_lance_rect(), "PUMP", _lance_color(), lance_active)
 	if _contextual_interaction_available():
-		var action_label := "BEACON" if _can_use_beacon() else "KEY"
+		var action_label := "EXTRACT" if _can_use_beacon() else "OPEN"
 		var action_color := BEACON_ARMED if _can_use_beacon() else CAVE_KEY
 		_draw_touch_button(_mobile_interact_rect(), action_label, action_color, true)
 
 
 func _draw_desktop_ui() -> void:
-	_draw_pixel_panel(Rect2(Vector2(680, 52), Vector2(250, 344)), UI_PANEL, UI_PANEL_EDGE)
+	_draw_pixel_panel(Rect2(Vector2(680, 52), Vector2(250, 430)), UI_PANEL, UI_PANEL_EDGE)
 	_draw_pixel_panel(Rect2(Vector2(18, 18), Vector2(378, 34)), Color("#11121a"), UI_PANEL_EDGE)
 	_text(Vector2(32, 42), "DIGGY: CAVERNS OF CHANCE", 24, UI)
 
 	_text(Vector2(700, 78), "RUN", 15, UI_PANEL_HILITE)
 	_text(Vector2(746, 80), "%s / %s" % [_format_time(run_time), _format_time(RUN_GOAL_TIME)], 18, UI)
 	_draw_pixel_bar(Vector2(700, 96), Vector2(196, 8), clampf(run_time / RUN_GOAL_TIME, 0.0, 1.0), BEACON_ARMED, Color("#29202b"))
-	_text(Vector2(700, 120), "BEACON %d / %d" % [beacon_charge, BEACON_CHARGE_GOAL], 15, BEACON_ARMED if beacon_armed else MUTED)
+	_text(Vector2(700, 120), _objective_status_text(), 15, BEACON_ARMED if beacon_armed else MUTED)
 	_draw_pixel_bar(Vector2(700, 134), Vector2(196, 8), _beacon_charge_ratio(), BEACON_ARMED, Color("#243020"))
 
 	var xp_ratio := clampf(float(xp) / float(maxi(1, xp_to_next)), 0.0, 1.0)
@@ -8402,13 +8441,13 @@ func _draw_desktop_ui() -> void:
 	_text(Vector2(700, 246), "KEYS %d  VAULTS %d/%d" % [keys_held, vaults_opened, vault_rooms.size()], 13, CAVE_KEY)
 	var detail := _status_detail_string()
 	if detail != "":
-		_text(Vector2(700, 268), _trim_status_text(detail), 13, MUTED)
-	_text(Vector2(700, 288), "UPGRADES", 15, UI_PANEL_HILITE)
-	_draw_touch_button(_pause_button_rect(), "PAUSE", MUTED, paused)
-	_draw_upgrade_summary(Vector2(700, 314), 196.0, 1)
-	_draw_touch_button(_inventory_button_rect(), "UPGRADES", PRESSURE, show_upgrade_inventory)
+		_text(Vector2(700, 272), "DANGER", 12, RUPTURE)
+		_draw_wrapped_text(Vector2(700, 290), detail, 12, MUTED, 196.0, 2, 15.0)
 	if message != "":
-		_text(Vector2(24, 594), message, 18, WARN)
+		_text(Vector2(700, 334), "EVENT", 12, UI_PANEL_HILITE)
+		_draw_wrapped_text(Vector2(700, 352), message, 12, WARN, 196.0, 3, 15.0)
+	_draw_touch_button(_pause_button_rect(), "PAUSE", MUTED, paused)
+	_draw_touch_button(_inventory_button_rect(), "INVENTORY", PRESSURE, show_upgrade_inventory)
 
 
 func _draw_dpad() -> void:
@@ -8426,24 +8465,9 @@ func _draw_touch_button(rect: Rect2, label: String, color: Color, active: bool) 
 	var edge := color if active else UI_PANEL_EDGE
 	_draw_pixel_panel(rect, fill, edge)
 	var text_color := color.lightened(0.2) if not active else UI
-	var label_pos := rect.position + Vector2(16, rect.size.y * 0.58)
-	_text(label_pos, label, 18 if rect.size.x < 100.0 else 21, text_color)
-
-
-func _draw_upgrade_summary(pos: Vector2, _width: float, max_rows: int) -> void:
-	var upgrades := _current_upgrade_entries()
-	if upgrades.is_empty():
-		_text(pos, "None yet", 15, MUTED)
-		return
-	var rows := mini(max_rows, upgrades.size())
-	for i in range(rows):
-		var upgrade: Dictionary = upgrades[i]
-		var label := String(upgrade["name"])
-		if String(upgrade.get("source", "")) == "RUN":
-			label += " *"
-		_text(pos + Vector2(0, float(i) * 22.0), _trim_text(label, 22), 15, Color("#f7df86"))
-	if upgrades.size() > rows:
-		_text(pos + Vector2(0, float(rows) * 22.0), "+%d more" % (upgrades.size() - rows), 14, MUTED)
+	var text_size := 18 if rect.size.x < 100.0 else 21
+	var label_pos := rect.position + Vector2((rect.size.x - _text_width(label, text_size)) * 0.5, rect.size.y * 0.58)
+	_text(label_pos, label, text_size, text_color)
 
 
 func _draw_upgrade_inventory_panel() -> void:
@@ -8480,7 +8504,7 @@ func _draw_upgrade_inventory_panel() -> void:
 func _inventory_button_rect() -> Rect2:
 	if show_touch_controls:
 		var status_rect := _portrait_status_rect()
-		return Rect2(status_rect.position + Vector2(430, 42), Vector2(128, 42))
+		return Rect2(status_rect.position + Vector2(430, 80), Vector2(160, 42))
 	return DESKTOP_INVENTORY_BUTTON_RECT
 
 
@@ -8599,7 +8623,7 @@ func _portrait_hud_rect() -> Rect2:
 
 
 func _portrait_status_rect() -> Rect2:
-	var y := _portrait_board_origin_base().y + BOARD_VIEW_PX_H + 12.0
+	var y := _portrait_board_origin_base().y + _board_view_height_px() + 12.0
 	return Rect2(Vector2(_portrait_layout_left(), y), Vector2(STATUS_RECT.size.x, MOBILE_STATUS_H))
 
 
@@ -8607,11 +8631,21 @@ func _portrait_board_origin_base() -> Vector2:
 	return Vector2(_portrait_layout_left(), BOARD_ORIGIN.y)
 
 
+func _portrait_board_rows_for_height(viewport_height: float) -> int:
+	# Keep enough room for the status strip and 48px-at-390px-wide controls.
+	var available := viewport_height - BOARD_ORIGIN.y - MOBILE_STATUS_H - 276.0
+	return clampi(floori(available / float(CELL)), 16, mini(31, BOARD_H))
+
+
+func _board_view_height_px() -> float:
+	if not show_touch_controls or not is_inside_tree():
+		return float(BOARD_VIEW_PX_H)
+	return float(_portrait_board_rows_for_height(get_viewport_rect().size.y) * CELL)
+
+
 func _mobile_dpad_center() -> Vector2:
 	var status_bottom := _portrait_status_rect().position.y + _portrait_status_rect().size.y
-	var min_center_y := status_bottom + 124.0
-	var bottom_center_y := get_viewport_rect().size.y - 128.0
-	return Vector2(_portrait_layout_left() + MOBILE_DPAD_CENTER.x - BOARD_ORIGIN.x, maxf(min_center_y, bottom_center_y))
+	return Vector2(_portrait_layout_left() + MOBILE_DPAD_CENTER.x - BOARD_ORIGIN.x, status_bottom + 132.0)
 
 
 func _mobile_lance_rect() -> Rect2:
@@ -8692,13 +8726,13 @@ func _draw_choice_modal() -> void:
 		var choice: Dictionary = upgrade_choices[i]
 		var rect := _choice_rect(i)
 		_draw_pixel_panel(rect, Color("#161520"), UI_PANEL_EDGE)
-		_text(rect.position + Vector2(18, 25), choice["name"], 18, Color("#f7df86"))
-		_text(rect.position + Vector2(18, 49), choice["desc"], 13, MUTED)
+		_text_fit(rect.position + Vector2(18, 24), choice["name"], 18, Color("#f7df86"), rect.size.x - 36.0, 14)
+		_draw_wrapped_text(rect.position + Vector2(18, 45), choice["desc"], 12, MUTED, rect.size.x - 36.0, 2, 15.0)
 	_draw_touch_button(_choice_skip_rect(), "SKIP", MUTED, false)
 
 
 func _choice_rect(index: int) -> Rect2:
-	return Rect2(Vector2(54, 274 + index * 68), Vector2(532, 58))
+	return Rect2(Vector2(54, 274 + index * 84), Vector2(532, 76))
 
 
 func _choice_skip_rect() -> Rect2:
@@ -8720,37 +8754,30 @@ func _run_result_detail(include_unlocks: bool) -> String:
 	return _trim_text(_join_strings(parts, " | "), 72)
 
 
+func _objective_status_text() -> String:
+	if beacon_armed:
+		return "RETURN TO HATCH"
+	return "CHARGE %d/%d" % [beacon_charge, BEACON_CHARGE_GOAL]
+
+
 func _status_detail_string() -> String:
 	var parts := []
-	if beacon_armed:
-		parts.append("Beacon armed")
+	if _is_pressure_surge():
+		parts.append("SURGE %s" % _format_time(pressure_surge_timer))
 	else:
-		parts.append("Beacon %d/%d" % [beacon_charge, BEACON_CHARGE_GOAL])
-		var scanner_text := _beacon_scanner_text()
-		if scanner_text != "":
-			parts.append(scanner_text)
-		if _is_pressure_surge():
-			parts.append("Surge %s" % _format_time(pressure_surge_timer))
-		else:
-			parts.append("Surge in %s" % _format_time(pressure_surge_cooldown))
+		parts.append("Surge in %s" % _format_time(pressure_surge_cooldown))
 	var bounty_text := _bounty_status_text()
 	if bounty_text != "":
 		parts.append(bounty_text)
-	parts.append("Keys %d" % keys_held)
-	if vaults_opened > 0:
-		parts.append("Vaults %d/%d" % [vaults_opened, vault_rooms.size()])
+	var scanner_text := _beacon_scanner_text()
+	if scanner_text != "":
+		parts.append(scanner_text)
 	var treasure_text := _treasure_compass_text()
 	if treasure_text != "":
 		parts.append(treasure_text)
-	parts.append("Enemies %d/%d" % [enemies.size(), _spawn_cap()])
-	if crystal_charge > 0:
-		parts.append("Charge %d" % crystal_charge)
-	if _synergy_string() != "":
-		parts.append(_synergy_string())
+	parts.append("Threats %d" % enemies.size())
 	if combo_count >= 2 and combo_timer > 0.0:
 		parts.append("Combo x%d" % combo_count)
-	if not family_points.is_empty():
-		parts.append(_family_string())
 	return _join_strings(parts, " | ")
 
 
@@ -8777,12 +8804,6 @@ func _treasure_compass_text() -> String:
 	return "Chest %d" % best_distance
 
 
-func _trim_status_text(value: String) -> String:
-	if value.length() <= 35:
-		return value
-	return value.substr(0, 33) + ".."
-
-
 func _draw_center_modal(title: String, line: String, prompt: String, detail := "") -> void:
 	var viewport := get_viewport_rect().size
 	var width := minf(viewport.x - 56.0, 552.0)
@@ -8791,9 +8812,9 @@ func _draw_center_modal(title: String, line: String, prompt: String, detail := "
 	_draw_pixel_panel(rect, Color("#111820ee"), Color("#d8c27a"))
 	var left := rect.position.x + 38.0
 	_text(Vector2(left, rect.position.y + 64.0), title, 32, UI)
-	_text(Vector2(left + 2.0, rect.position.y + 114.0), _trim_text(line, 50), 18, WARN)
+	_draw_wrapped_text(Vector2(left + 2.0, rect.position.y + 104.0), line, 17, WARN, rect.size.x - 76.0, 2, 21.0)
 	if detail != "":
-		_text(Vector2(left + 2.0, rect.position.y + 150.0), _trim_text(detail, 56), 14, Color("#f7df86"))
+		_draw_wrapped_text(Vector2(left + 2.0, rect.position.y + 154.0), detail, 13, Color("#f7df86"), rect.size.x - 76.0, 2, 17.0)
 	_text(Vector2(left + 2.0, rect.position.y + rect.size.y - 58.0), prompt, 16, MUTED)
 
 
@@ -8868,13 +8889,13 @@ func _draw_dig_feedback() -> void:
 		var center: Vector2 = effect.get("center", _cell_center(pos))
 		var glow := PRESSURE
 		glow.a = 0.22 * (1.0 - progress)
-		_draw_pixel_ring(center, 7.0 + progress * 7.0, glow, 2)
+		_draw_world_pixel_ring(center, 7.0 + progress * 7.0, glow, 2)
 		var dust := DIRT.lerp(RUPTURE, 0.35)
 		dust.a = 0.7 * (1.0 - progress)
 		for i in range(4):
 			var angle := float(i) * TAU / 4.0 + float(pos.x * 19 + pos.y * 7) * 0.03
 			var offset := Vector2(cos(angle), sin(angle)) * (4.0 + progress * 8.0)
-			draw_rect(Rect2(_snap_px(center + offset) - Vector2(2, 2), Vector2(4, 4)), dust)
+			_draw_world_rect(Rect2(_snap_px(center + offset) - Vector2(2, 2), Vector2(4, 4)), dust)
 
 
 func _draw_pulse_feedback() -> void:
@@ -8888,7 +8909,7 @@ func _draw_pulse_feedback() -> void:
 		var color: Color = effect["color"]
 		color.a = float(effect["alpha"]) * (1.0 - progress)
 		var radius := CELL * (0.18 + float(effect["radius"]) * progress)
-		_draw_pixel_ring(center, radius, color, 3)
+		_draw_world_pixel_ring(center, radius, color, 3)
 		if effect.get("burst", false):
 			var shard_color := RUPTURE
 			shard_color.a = 0.75 * (1.0 - progress)
@@ -8896,7 +8917,7 @@ func _draw_pulse_feedback() -> void:
 				var angle := float(i) * TAU / 9.0 + float(pos.x - pos.y) * 0.11
 				var dir := Vector2(cos(angle), sin(angle))
 				var shard_pos := _snap_px(center + dir * (8.0 + progress * 18.0))
-				draw_rect(Rect2(shard_pos - Vector2(2, 2), Vector2(4, 4)), shard_color)
+				_draw_world_rect(Rect2(shard_pos - Vector2(2, 2), Vector2(4, 4)), shard_color)
 
 
 func _draw_crush_feedback() -> void:
@@ -8918,12 +8939,12 @@ func _draw_crush_feedback() -> void:
 		var text_pos := _cell_center(pos) + Vector2(-22.0 - float(tier) * 2.0, -20.0 - progress * 14.0)
 		var text_color := _crush_tier_color(tier, alpha)
 		var label := "x%d" % tier if tier >= 2 else "+%d" % xp_award
-		_text(text_pos, label, 18 if tier >= 3 else 15, text_color)
+		_draw_world_text(text_pos, label, 18 if tier >= 3 else 15, text_color)
 		if tier < 2:
 			continue
 		var xp_color := PRESSURE
 		xp_color.a = 0.78 * alpha
-		_text(text_pos + Vector2(28, 0), "+%d XP" % xp_award, 14, xp_color)
+		_draw_world_text(text_pos + Vector2(28, 0), "+%d XP" % xp_award, 14, xp_color)
 		_draw_crush_fanfare(_cell_center(pos), progress, tier, seed)
 
 
@@ -8963,11 +8984,11 @@ func _draw_crush_impact_cell(center: Vector2, progress: float, tier: int, seed: 
 	var hot := _crush_tier_color(tier, (0.48 + float(tier) * 0.08) * alpha)
 	var width := 18.0 + float(tier) * 3.0
 	var flash_on := (floori(progress * float(5 + tier)) % 2) == 0
-	draw_rect(Rect2(_snap_px(p + Vector2(-width * 0.5, -3)), Vector2(width, 6)), shadow)
-	draw_rect(Rect2(_snap_px(p + Vector2(-5, -14)), Vector2(10, 28)), shadow.darkened(0.18))
+	_draw_world_rect(Rect2(_snap_px(p + Vector2(-width * 0.5, -3)), Vector2(width, 6)), shadow)
+	_draw_world_rect(Rect2(_snap_px(p + Vector2(-5, -14)), Vector2(10, 28)), shadow.darkened(0.18))
 	if flash_on:
-		draw_rect(Rect2(_snap_px(p + Vector2(-width * 0.5 + 3.0, -1)), Vector2(width - 6.0, 2)), hot)
-		draw_rect(Rect2(_snap_px(p + Vector2(-2, -12)), Vector2(4, 24)), hot)
+		_draw_world_rect(Rect2(_snap_px(p + Vector2(-width * 0.5 + 3.0, -1)), Vector2(width - 6.0, 2)), hot)
+		_draw_world_rect(Rect2(_snap_px(p + Vector2(-2, -12)), Vector2(4, 24)), hot)
 	for i in range(6 + tier * 2):
 		var dir := _eight_bit_dir((i * 3 + seed) % 8)
 		var drift := 5.0 + progress * (10.0 + float(tier) * 3.0) + float((i + seed) % 3) * 3.0
@@ -8976,7 +8997,7 @@ func _draw_crush_impact_cell(center: Vector2, progress: float, tier: int, seed: 
 		if i % 4 == 0:
 			chip_color = shadow
 		var chip_pos := _snap_px(center + dir * drift + Vector2(float((seed + i * 5) % 5) - 2.0, float((seed + i * 7) % 5) - 2.0))
-		draw_rect(Rect2(chip_pos, Vector2(size, size)), chip_color)
+		_draw_world_rect(Rect2(chip_pos, Vector2(size, size)), chip_color)
 
 
 func _draw_crush_fanfare(center: Vector2, progress: float, tier: int, seed: int) -> void:
@@ -8986,17 +9007,43 @@ func _draw_crush_fanfare(center: Vector2, progress: float, tier: int, seed: int)
 	bright.a = 0.72 * alpha
 	var banner_pos := _snap_px(center + Vector2(-34.0 - float(tier) * 3.0, -40.0 - progress * 12.0))
 	var label := "COMBO x%d!" % tier
-	_text(banner_pos, label, 15 + mini(tier, 4), color)
+	_draw_world_text(banner_pos, label, 15 + mini(tier, 4), color)
 	for i in range(tier):
 		var step_pos := banner_pos + Vector2(float(i * 11), -10.0 - float((i + seed) % 2) * 4.0)
-		draw_rect(Rect2(_snap_px(step_pos), Vector2(7, 4)), bright)
-		draw_rect(Rect2(_snap_px(step_pos + Vector2(2, -4)), Vector2(3, 3)), color)
+		_draw_world_rect(Rect2(_snap_px(step_pos), Vector2(7, 4)), bright)
+		_draw_world_rect(Rect2(_snap_px(step_pos + Vector2(2, -4)), Vector2(3, 3)), color)
 	for i in range(tier + 2):
 		var dir := _eight_bit_dir((seed + i * 2) % 8)
 		var sparkle_pos := _snap_px(center + dir * (18.0 + progress * (12.0 + float(tier) * 2.0)))
-		draw_rect(Rect2(sparkle_pos, Vector2(5, 5)), bright)
-		draw_rect(Rect2(sparkle_pos + Vector2(1, -3), Vector2(3, 11)), bright)
-		draw_rect(Rect2(sparkle_pos + Vector2(-3, 1), Vector2(11, 3)), bright)
+		_draw_world_rect(Rect2(sparkle_pos, Vector2(5, 5)), bright)
+		_draw_world_rect(Rect2(sparkle_pos + Vector2(1, -3), Vector2(3, 11)), bright)
+		_draw_world_rect(Rect2(sparkle_pos + Vector2(-3, 1), Vector2(11, 3)), bright)
+
+
+func _draw_world_rect(rect: Rect2, color: Color) -> void:
+	var clipped := rect.intersection(_board_view_rect())
+	if clipped.size.x > 0.0 and clipped.size.y > 0.0:
+		draw_rect(clipped, color)
+
+
+func _draw_world_pixel_ring(center: Vector2, radius: float, color: Color, thickness: int) -> void:
+	var r := maxi(4, roundi(radius))
+	var c := _snap_px(center)
+	var side := r * 2
+	_draw_world_rect(Rect2(c + Vector2(-r, -r), Vector2(side, thickness)), color)
+	_draw_world_rect(Rect2(c + Vector2(-r, r - thickness), Vector2(side, thickness)), color)
+	_draw_world_rect(Rect2(c + Vector2(-r, -r), Vector2(thickness, side)), color)
+	_draw_world_rect(Rect2(c + Vector2(r - thickness, -r), Vector2(thickness, side)), color)
+
+
+func _draw_world_text(pos: Vector2, value: String, size: int, color: Color) -> void:
+	var view := _board_view_rect().grow(-3.0)
+	var width := _text_width(value, size) + 2.0
+	var safe_pos := Vector2(
+		clampf(pos.x, view.position.x, maxf(view.position.x, view.end.x - width)),
+		clampf(pos.y, view.position.y + float(size), view.end.y - 4.0)
+	)
+	_text(safe_pos, value, size, color)
 
 
 func _eight_bit_dir(index: int) -> Vector2:
@@ -9201,7 +9248,7 @@ func _draw_tunnel_tiles() -> void:
 				draw_rect(Rect2(cell_rect.position + Vector2(19, 17), Vector2(4, 2)), CRYSTAL_SHALE_HIGHLIGHT.lerp(TUNNEL, 0.35))
 
 
-func _draw_rock_sprite(center: Vector2) -> void:
+func _draw_rock_sprite(center: Vector2, rock: Dictionary) -> void:
 	var rows := [
 		".SSS.",
 		"SRRRS",
@@ -9213,9 +9260,54 @@ func _draw_rock_sprite(center: Vector2) -> void:
 	_draw_pixel_sprite(center + Vector2(3, 3), rows, shadow_palette, 4)
 	var palette := {"S": Color("#c9d0d8"), "R": ROCK, "D": ROCK_SHADOW}
 	_draw_pixel_sprite(center, rows, palette, 4)
+	if not bool(rock.get("falling", false)):
+		return
+	if int(rock.get("fall_distance", 0)) == 0:
+		var warning := WARN
+		warning.a = 0.55 + sin(anim_time * 18.0) * 0.22
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-9, 14)), Vector2(18, 3)), warning)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-5, 19)), Vector2(4, 4)), warning)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(3, 19)), Vector2(4, 4)), warning)
+	else:
+		var streak := ROCK_SHADOW
+		streak.a = 0.72
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-8, -24)), Vector2(3, 9)), streak)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(5, -20)), Vector2(3, 7)), streak)
 
 
-func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool, hit_phase: float) -> void:
+func _enemy_pressure_pose(enemy: Dictionary) -> String:
+	if not bool(enemy.get("inflated", false)):
+		return "neutral"
+	var max_enemy_hp := maxi(1, int(enemy.get("max_hp", enemy.get("hp", 1))))
+	if int(enemy.get("hp", max_enemy_hp)) <= maxi(1, floori(float(max_enemy_hp) * 0.34)):
+		return "critical"
+	if _is_enemy_lance_target(enemy):
+		return "pumping"
+	return "recovering"
+
+
+func _draw_enemy_pressure_pose(center: Vector2, radius: float, pose: String) -> void:
+	if pose == "neutral":
+		return
+	var color := PRESSURE
+	if pose == "critical":
+		color = RUPTURE.lerp(Color.WHITE, 0.25)
+		color.a = 0.7 + sin(anim_time * 16.0) * 0.2
+		for dir in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			var mark := _snap_px(center + dir * (radius + 7.0))
+			_draw_world_rect(Rect2(mark - Vector2(3, 3), Vector2(6, 6)), color)
+	elif pose == "pumping":
+		color.a = 0.72
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-radius - 6.0, -5)), Vector2(3, 10)), color)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(radius + 3.0, -5)), Vector2(3, 10)), color)
+	else:
+		color = color.darkened(0.3)
+		color.a = 0.5
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(-7, radius + 5.0)), Vector2(5, 3)), color)
+		_draw_world_rect(Rect2(_snap_px(center + Vector2(3, radius + 8.0)), Vector2(4, 3)), color)
+
+
+func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool, hit_phase: float, pressure_pose := "neutral") -> void:
 	var rows := [
 		".XXX.",
 		"XXXXX",
@@ -9290,7 +9382,7 @@ func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool
 			"..X.X..",
 			".A...A."
 		]
-	var px := 4 if inflated else 3
+	var px := 4 if pressure_pose == "pumping" or pressure_pose == "critical" else 3
 	if kind == ENEMY_BOSS_KIND or kind == ENEMY_REAPER_KIND:
 		px = 4
 	if hit_phase > 0.35:
@@ -9308,6 +9400,8 @@ func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool
 		"A": accent,
 		"F": Color("#fff2b5")
 	}
+	var silhouette := {"X": Color("#05060a"), "E": Color("#05060a"), "A": Color("#05060a"), "F": Color("#05060a")}
+	_draw_pixel_sprite(center + Vector2(2, 3), rows, silhouette, px)
 	_draw_pixel_sprite(center, rows, palette, px)
 
 
@@ -9322,7 +9416,7 @@ func _draw_pixel_sprite(center: Vector2, rows: Array, palette: Dictionary, pixel
 			var key := row.substr(x, 1)
 			if key == "." or key == " " or not palette.has(key):
 				continue
-			draw_rect(Rect2(top_left + Vector2(x * pixel_size, y * pixel_size), Vector2(pixel_size, pixel_size)), palette[key])
+			_draw_world_rect(Rect2(top_left + Vector2(x * pixel_size, y * pixel_size), Vector2(pixel_size, pixel_size)), palette[key])
 
 
 func _flip_rows(rows: Array) -> Array:
@@ -10548,9 +10642,9 @@ func _soil_color_at(x: int, y: int) -> Color:
 	var shadows: Array = CRYSTAL_DIRT_LAYER_SHADOWS if crystal_map else DIRT_LAYER_SHADOWS
 	var color: Color = colors[layer]
 	if grain <= 1:
-		color = highlights[layer].lerp(colors[layer], 0.35)
+		color = highlights[layer].lerp(colors[layer], 0.72)
 	elif grain >= 8:
-		color = colors[layer].lerp(shadows[layer], 0.58)
+		color = colors[layer].lerp(shadows[layer], 0.28)
 	var cell := Vector2i(clampi(floori(float(x) / float(CELL)), 0, BOARD_W - 1), clampi(cell_row, 0, BOARD_H - 1))
 	var terrain := _terrain_at(cell)
 	if terrain == TERRAIN_CRYSTAL_SHALE:
@@ -10909,11 +11003,11 @@ func _board_origin() -> Vector2:
 
 
 func _board_view_rect() -> Rect2:
-	return Rect2(_board_origin(), Vector2(BOARD_PX_W, BOARD_VIEW_PX_H))
+	return Rect2(_board_origin(), Vector2(BOARD_PX_W, _board_view_height_px()))
 
 
 func _board_view_source_rect() -> Rect2:
-	return Rect2(Vector2(0, camera_y_px), Vector2(BOARD_PX_W, BOARD_VIEW_PX_H))
+	return Rect2(Vector2(0, camera_y_px), Vector2(BOARD_PX_W, _board_view_height_px()))
 
 
 func _cell_intersects_board_view(pos: Vector2i, margin_px := 16.0) -> bool:

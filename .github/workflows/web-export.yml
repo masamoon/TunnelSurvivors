@@ -78,6 +78,19 @@ jobs:
           path: dist/web
           if-no-files-found: error
 
+      - name: Capture desktop and portrait visual QA
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright-core@1.55.0
+          node tests/capture_visual_qa.mjs
+
+      - name: Upload visual QA captures
+        uses: actions/upload-artifact@v4
+        with:
+          name: diggy-visual-qa
+          path: artifacts/visual-qa
+          if-no-files-found: error
+
       - name: Configure GitHub Pages
         if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
