@@ -63,6 +63,7 @@ jobs:
           set -euo pipefail
           python3 tools/balance_check.py
           godot --headless --path . --script res://tests/run_regressions.gd
+          godot --headless --path . --script res://tests/run_combat_counterplay.gd
 
       - name: Export Web build
         run: |
