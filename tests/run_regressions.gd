@@ -24,6 +24,7 @@ func _run() -> void:
 	_test_boulder_kill_attribution()
 	_test_movement_and_impact_contracts()
 	_test_run_identity_and_progression()
+	_test_exploration_reward_payoffs()
 	if failures.is_empty():
 		print("OK: control, encounter, movement, impact, run identity, and progression regressions")
 		quit(0)
@@ -460,3 +461,79 @@ func _test_run_identity_and_progression() -> void:
 	_expect(String(result_rows[3]["label"]) == "NEXT" and "Permanent" in String(result_rows[3]["value"]), "run summary does not distinguish the next permanent unlock")
 	build.free()
 
+
+func _test_exploration_reward_payoffs() -> void:
+	var mixed := _game()
+	_prepare_open_board(mixed)
+	mixed._apply_upgrade(mixed._upgrade_by_id("ice_tip"), "starter")
+	var field_relic: Dictionary = mixed._upgrade_by_id("ice_wall").duplicate()
+	field_relic["pos"] = mixed.player_pos
+	mixed.run_relics.append(field_relic)
+	mixed._collect_relic_at(mixed.player_pos)
+	mixed.treasure_chests.append({"pos": mixed.player_pos, "reward": {"kind": mixed.TREASURE_KIND_UPGRADE, "upgrade": mixed._upgrade_by_id("ice_front")}})
+	mixed._collect_treasure_chest_at(mixed.player_pos)
+	_expect(int(mixed.family_points.get("ice", 0)) == 3, "starter, field, and chest relics did not share Ice set progress")
+	_expect(is_equal_approx(mixed._effective_freeze_duration_bonus(), 1.70), "mixed-source Ice set did not award its three-piece bonus")
+	for id in ["ice_shatter", "ice_brittle", "ice_lock"]:
+		mixed._apply_upgrade(mixed._upgrade_by_id(id), "level")
+	_expect(int(mixed.family_points.get("ice", 0)) == 6 and mixed._effective_frost_front() == 2, "exploration pickups prevented the six-piece Ice capstone")
+	var freeze_before: float = mixed._effective_freeze_duration_bonus()
+	mixed._apply_temp_upgrade(mixed._upgrade_by_id("ice_wall"))
+	mixed._apply_upgrade(mixed._upgrade_by_id("ice_front"), "level")
+	_expect(int(mixed.family_points.get("ice", 0)) == 6 and is_equal_approx(mixed._effective_freeze_duration_bonus(), freeze_before), "duplicate relics farmed family points or stats")
+	mixed.free()
+
+	var stale := _game()
+	_prepare_open_board(stale)
+	stale.meta["unlocked_relics"] = {"range": true, "magnet": true}
+	stale._apply_upgrade(stale._upgrade_by_id("range"), "level")
+	var stale_relic: Dictionary = stale._upgrade_by_id("range").duplicate()
+	stale_relic["pos"] = stale.player_pos
+	stale.run_relics.append(stale_relic)
+	stale._collect_relic_at(stale.player_pos)
+	_expect(stale._effective_lance_range() == 4 and stale._effective_xp_magnet_bonus() == 1, "preplaced relic already drafted was duplicated instead of replaced")
+	_expect(String(stale.upgrade_pickup_toast.get("id", "")) == "magnet", "replacement field relic displayed the stale reward")
+	stale.run_relics.append(stale_relic)
+	stale._collect_relic_at(stale.player_pos)
+	_expect(stale.gems_collected > 0 and int(stale.family_points.get("lance", 0)) == 1, "exhausted field relic pool did not pay gems without duplicate build credit")
+	stale.free()
+
+	var kit := _game()
+	kit.meta["unlocked_loadouts"]["field_kit"] = true
+	kit.meta["selected_loadout"] = "field_kit"
+	kit.rng.seed = 2718
+	kit._new_run()
+	_expect(kit.max_hp == 4 and kit.hp == 4, "Field Kit did not deliver its advertised starting heart")
+	_expect(int(kit.family_points.get("cave", 0)) == 1, "starting loadout did not contribute to its build")
+	kit._new_run()
+	_expect(kit.max_hp == 4 and int(kit.family_points.get("cave", 0)) == 1, "rerun carried over Field Kit hearts or family points")
+	kit.free()
+
+	var healing := _game()
+	_prepare_open_board(healing)
+	healing.hp = 2
+	healing.treasure_chests.append({"pos": healing.player_pos, "reward": {"kind": healing.TREASURE_KIND_UPGRADE, "upgrade": healing._upgrade_by_id("field_dressing")}})
+	healing._collect_treasure_chest_at(healing.player_pos)
+	_expect(healing.max_hp == 4 and healing.hp == 4, "chest Field Dressing healed without adding its advertised heart")
+	healing.free()
+
+	for source in ["level", "field"]:
+		var prospect := _game()
+		_prepare_open_board(prospect)
+		prospect.depth_tier = 2
+		for x in range(prospect.BOARD_W):
+			for y in range(prospect.BOARD_H):
+				prospect.encounter_reserved_cells[Vector2i(x, y)] = true
+		_expect(not prospect._upgrade_is_available("prospector"), "Prospector offered an unavailable gem reward")
+		var reward_pos := Vector2i(7, 5)
+		prospect.encounter_reserved_cells.erase(reward_pos)
+		prospect.key_pickups.append(reward_pos)
+		_expect(not prospect._upgrade_is_available("prospector"), "Prospector could overwrite another pickup")
+		prospect.key_pickups.clear()
+		_expect(prospect._upgrade_is_available("prospector"), "Prospector failed to find a reachable gem opportunity")
+		prospect._apply_upgrade(prospect._upgrade_by_id("prospector"), source)
+		_expect(prospect.super_gems.size() == 1 and prospect.super_gems.has(reward_pos) and prospect.run_super_gems_available == 1, "%s Prospector did not add a super gem in this cavern" % source)
+		_expect(prospect.xp == 0 and prospect.beacon_charge == 0, "Prospector awarded collection value without visiting its gem")
+		prospect._apply_temp_upgrade(prospect._upgrade_by_id("prospector"))
+		_expect(prospect.super_gems.size() == 1 and int(prospect.family_points.get("gem", 0)) == 1, "duplicate Prospector farmed gems or family credit")
+		prospect.free()

@@ -1,4 +1,4 @@
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright-core";
 
@@ -47,16 +47,46 @@ for (let attempt = 0; attempt < 50; attempt += 1) {
 async function capture(name, options) {
   const context = await browser.newContext(options);
   const page = await context.newPage();
-  await page.goto("http://127.0.0.1:8060", { waitUntil: "networkidle" });
-  const canvas = page.locator("canvas");
-  await canvas.waitFor({ state: "visible", timeout: 30_000 });
-  await page.waitForTimeout(1_500);
-  await page.screenshot({ path: `artifacts/visual-qa/${name}-hub.png` });
-  await canvas.click({ position: { x: 16, y: 16 } });
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(1_500);
-  await page.screenshot({ path: `artifacts/visual-qa/${name}-gameplay.png` });
-  await context.close();
+  const diagnostics = [];
+  page.on("pageerror", (error) => diagnostics.push({ kind: "pageerror", text: error.message }));
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      diagnostics.push({ kind: "console", text: message.text() });
+    }
+  });
+
+  try {
+    await page.goto("http://127.0.0.1:8060", { waitUntil: "networkidle" });
+    const canvas = page.locator("canvas");
+    await canvas.waitFor({ state: "visible", timeout: 30_000 });
+    await page.waitForTimeout(1_500);
+    await page.screenshot({ path: `artifacts/visual-qa/${name}-hub.png` });
+    await canvas.click({ position: { x: 16, y: 16 } });
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(1_500);
+    await page.screenshot({ path: `artifacts/visual-qa/${name}-starter.png` });
+
+    // Enter now opens the starter draft. Choose a plan before capturing play.
+    await page.keyboard.press("Digit1");
+    await page.keyboard.down("ArrowDown");
+    await page.waitForTimeout(800);
+    await page.keyboard.up("ArrowDown");
+    await page.keyboard.down("Space");
+    await page.waitForTimeout(500);
+    await page.keyboard.up("Space");
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `artifacts/visual-qa/${name}-gameplay.png` });
+
+    const fatalErrors = diagnostics.filter(({ kind, text }) =>
+      kind === "pageerror" || /SCRIPT ERROR|Parse Error|ERROR:|RuntimeError|Aborted\(/.test(text),
+    );
+    if (fatalErrors.length) {
+      throw new Error(`${name} runtime errors: ${fatalErrors.map(({ text }) => text).join("; ")}`);
+    }
+  } finally {
+    await writeFile(`artifacts/visual-qa/${name}-diagnostics.json`, `${JSON.stringify(diagnostics, null, 2)}\n`);
+    await context.close();
+  }
 }
 
 try {

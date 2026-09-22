@@ -26,6 +26,8 @@ Every run opens with a choice between Ice, Fire, Thunder, and Boulder Lance. Thi
 
 Level-up cards show numerical before/after effects and how each relic compounds the current build. Full Heart only appears when healing would restore missing health. Run relics reset on rerun; research milestones permanently add relics to future rotations, while runes buy hub upgrades and alternate starts. Achievements can also unlock maps, loadouts, elements, and special relics early.
 
+Relics from the field, chests, and starting loadouts contribute to the same family bonuses as drafted relics. Each relic counts once; an already-owned field relic becomes another available relic, or a gem cache when the pool is exhausted. Field Dressing always adds its advertised heart, including in the Field Kit loadout. Prospector reveals one super gem near explored tunnels immediately, so its reward can be collected during the current cavern.
+
 Restarting or returning to the hub abandons the current run and awards no research or runes. A short defeat remains eligible once the player has meaningfully participated by digging, collecting, opening a vault, or landing a successful pump.
 
 The boulder upgrade branch includes Boulder Lance, a shorter weaker lance that can create boulders where lance-killed enemies fall. Later ranks improve its boulder chance, and those ranks can appear in chests once unlocked. Your first boulder crush also unlocks the Stonecaller starting build, which begins runs with Boulder Lance.
