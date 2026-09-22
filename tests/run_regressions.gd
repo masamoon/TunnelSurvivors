@@ -20,6 +20,7 @@ func _run() -> void:
 	_test_reward_eligibility()
 	_test_presentation_contracts()
 	_test_cave_encounter_grammar()
+	_test_encounter_regrowth_lifecycle()
 	_test_boulder_kill_attribution()
 	_test_movement_and_impact_contracts()
 	_test_run_identity_and_progression()
@@ -285,7 +286,63 @@ func _test_cave_encounter_grammar() -> void:
 		_expect(ids.has(game.ENCOUNTER_FLANK_LOOP), "seed %d is missing the flank loop" % seed_value)
 		_expect(ids.has(game.ENCOUNTER_GUARDED_VEIN), "seed %d is missing the guarded vein" % seed_value)
 		_expect(game._active_special_enemy_kinds().size() <= 1, "seed %d introduced multiple unfamiliar enemy types together" % seed_value)
+		for rock in game.rocks:
+			var rock_pos: Vector2i = rock["pos"]
+			if not game._is_encounter_reserved(rock_pos):
+				_expect(not game._is_encounter_reserved(rock_pos + Vector2i.DOWN), "seed %d placed an ambient rock directly above an encounter" % seed_value)
 		game.free()
+
+
+func _test_encounter_regrowth_lifecycle() -> void:
+	var game := _game()
+	game.player_pos = Vector2i(int(game.BOARD_W * 0.5), 1)
+	game.player_target_cell = game.player_pos
+	game.player_step_from = game.player_pos
+	game.current_map_def = {}
+	game.depth_tier = 1
+	game.rng.seed = 1200
+	game._build_cavern()
+	# Stand away from the first room too; some seeds put it in view of spawn.
+	game.player_pos = Vector2i(0, 1)
+	game.player_target_cell = game.player_pos
+	game.player_step_from = game.player_pos
+	for tick in range(90):
+		game._update_tunnel_regrowth(1.0)
+	for encounter in game.cave_encounters:
+		_expect(not bool(encounter.get("approached", false)), "distant encounter counted as discovered")
+		for cell in encounter["open_cells"]:
+			_expect(game._is_open_tile(cell), "unvisited %s regrew before the player arrived" % encounter["id"])
+		var connected: Array = game._connected_tunnel_cells(encounter["approach"])
+		_expect(connected.has(encounter["escape"]) and connected.has(encounter["reward_cell"]), "unvisited encounter lost its tactical routes")
+
+	var discovered: Dictionary = game.cave_encounters[2]
+	game.player_pos = discovered["approach"]
+	game.player_target_cell = game.player_pos
+	game.player_step_from = game.player_pos
+	game._update_tunnel_regrowth(0.0)
+	_expect(bool(discovered.get("approached", false)), "approaching an encounter did not release its regrowth protection")
+	for cell in discovered["open_cells"]:
+		_expect(is_zero_approx(float(game.tunnel_age.get(cell, -1.0))), "newly discovered encounter retained stale off-screen age")
+
+	game.player_pos = Vector2i(int(game.BOARD_W * 0.5), 1)
+	game.player_target_cell = game.player_pos
+	game.player_step_from = game.player_pos
+	game._update_tunnel_regrowth(game.REGROW_CELL_AGE - 1.0)
+	for cell in discovered["open_cells"]:
+		_expect(game._is_open_tile(cell), "encounter regrew before its fresh lifetime elapsed")
+	for tick in range(90):
+		game._update_tunnel_regrowth(1.0)
+	var regrown_cells := 0
+	for cell in discovered["open_cells"]:
+		if not game._is_open_tile(cell):
+			regrown_cells += 1
+	_expect(regrown_cells > 0, "visited encounter became a permanent regrowth refuge")
+	_expect(bool(discovered.get("approached", false)), "leaving an encounter restored first-visit protection")
+
+	game._build_cavern()
+	for encounter in game.cave_encounters:
+		_expect(not bool(encounter.get("approached", false)), "new cavern inherited prior encounter discovery")
+	game.free()
 
 
 func _test_boulder_kill_attribution() -> void:

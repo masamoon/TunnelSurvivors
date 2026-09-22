@@ -2209,6 +2209,7 @@ func _can_place_cave_encounter(encounter: Dictionary) -> bool:
 
 
 func _commit_cave_encounter(encounter: Dictionary) -> void:
+	encounter["approached"] = false
 	for cell_value in encounter["footprint"]:
 		encounter_reserved_cells[cell_value] = String(encounter["id"])
 	for cell_value in encounter["open_cells"]:
@@ -2276,6 +2277,33 @@ func _encounter_validation_errors() -> Array[String]:
 
 func _is_encounter_reserved(pos: Vector2i) -> bool:
 	return encounter_reserved_cells.has(pos)
+
+
+func _update_encounter_discovery() -> void:
+	for encounter in cave_encounters:
+		if bool(encounter.get("approached", false)):
+			continue
+		for cell_value in encounter["footprint"]:
+			var cell: Vector2i = cell_value
+			if cell.distance_squared_to(player_pos) > REGROW_PLAYER_SAFE_RADIUS * REGROW_PLAYER_SAFE_RADIUS:
+				continue
+			encounter["approached"] = true
+			# Give the newly discovered setup its normal lifetime. Old off-screen
+			# age must not close its escape route as soon as the player leaves.
+			for open_cell in encounter["open_cells"]:
+				if tunnel_age.has(open_cell):
+					tunnel_age[open_cell] = 0.0
+			break
+
+
+func _is_unvisited_encounter_cell(pos: Vector2i) -> bool:
+	var encounter_id := String(encounter_reserved_cells.get(pos, ""))
+	if encounter_id == "":
+		return false
+	for encounter in cave_encounters:
+		if String(encounter["id"]) == encounter_id:
+			return not bool(encounter.get("approached", false))
+	return false
 
 
 func _carve_enemy_patrols(count: int) -> Array:
@@ -2418,7 +2446,7 @@ func _place_rocks(count: int) -> void:
 		var pos := Vector2i(rng.randi_range(1, BOARD_W - 2), rng.randi_range(3, BOARD_H - 3))
 		if _cell_open_mask(pos) != 0:
 			continue
-		if _is_encounter_reserved(pos) or _has_rock(pos) or pos.distance_squared_to(player_pos) < 25:
+		if _is_encounter_reserved(pos) or _is_encounter_reserved(pos + Vector2i.DOWN) or _has_rock(pos) or pos.distance_squared_to(player_pos) < 25:
 			continue
 		if rng.randf() < 0.62 and _cell_open_mask(pos + Vector2i.DOWN) == 0:
 			continue
@@ -7581,6 +7609,7 @@ func _update_feedback(delta: float) -> void:
 
 
 func _update_tunnel_regrowth(delta: float) -> void:
+	_update_encounter_discovery()
 	for pos in tunnel_age.keys():
 		tunnel_age[pos] = float(tunnel_age[pos]) + delta
 
@@ -7625,6 +7654,8 @@ func _update_tunnel_regrowth(delta: float) -> void:
 
 func _can_regrow_cell(pos: Vector2i) -> bool:
 	if not _in_bounds(pos) or _tile(pos) != TILE_TUNNEL:
+		return false
+	if _is_unvisited_encounter_cell(pos):
 		return false
 	if _is_crystal_cell(pos):
 		return false
