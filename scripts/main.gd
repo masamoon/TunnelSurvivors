@@ -2480,6 +2480,41 @@ func _place_super_gems(count: int) -> void:
 		super_gems.append(pos)
 
 
+func _prospector_reward_cell() -> Vector2i:
+	if grid.size() != BOARD_W:
+		return Vector2i.ZERO
+	var best := Vector2i.ZERO
+	var best_distance := INF
+	var visited := {}
+	for tunnel in _connected_tunnel_cells(player_pos):
+		for dir in DIRS:
+			var pos: Vector2i = tunnel + dir
+			if visited.has(pos):
+				continue
+			visited[pos] = true
+			if not _can_spawn_underground_at(pos) or _is_encounter_reserved(pos) or _vault_contains_cell(pos):
+				continue
+			if _tile(pos) not in [TILE_DIRT, TILE_TUNNEL] or _terrain_at(pos) != "":
+				continue
+			if pos == player_target_cell or pos == player_step_from or _has_any_pickup_or_actor(pos) or _has_loose_boulder_threat(pos, true):
+				continue
+			var distance := float(pos.distance_squared_to(player_pos))
+			if distance < 4.0 or distance >= best_distance:
+				continue
+			best = pos
+			best_distance = distance
+	return best
+
+
+func _reveal_prospector_gem() -> void:
+	var pos := _prospector_reward_cell()
+	if pos == Vector2i.ZERO:
+		return
+	super_gems.append(pos)
+	run_super_gems_available += 1
+	_add_cell_pulse(pos, SUPER_GEM, PULSE_FEEDBACK_TIME + 0.28, 1.25, true)
+
+
 func _place_crystal_terrain() -> void:
 	var shale_target := 24 + depth_tier * 4
 	var seal_target := 6 + depth_tier
@@ -6670,14 +6705,19 @@ func _collect_relic_at(pos: Vector2i) -> void:
 		if run_relics[i]["pos"] == pos:
 			var relic: Dictionary = run_relics[i]
 			run_relics.remove_at(i)
-			run_relics_found += 1
-			_apply_upgrade(relic, "field")
-			_show_upgrade_pickup_toast(relic)
-			_award_score(60 + depth_tier * 10, true, "Relic")
+			# A relic placed at generation may have been drafted before we reach it.
+			var upgrade := _resolve_treasure_upgrade({"upgrade": relic})
+			if not upgrade.is_empty():
+				run_relics_found += 1
+				_apply_upgrade(upgrade, "field")
+				_show_upgrade_pickup_toast(upgrade)
+				_award_score(60 + depth_tier * 10, true, "Relic")
+				_add_beacon_charge(BEACON_RELIC_CHARGE, "Relic")
+			else:
+				_award_treasure_gems(pos, 5 + depth_tier)
 			_add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.12, 1.15, true)
 			_shake(0.12)
 			_play_sfx("relic")
-			_add_beacon_charge(BEACON_RELIC_CHARGE, "Relic")
 			return
 
 
@@ -6802,7 +6842,7 @@ func _upgrade_pool() -> Array:
 		{"id": "stun", "name": "Steady Grip", "desc": "Lance control effects last longer."},
 			{"id": "field_dressing", "name": "Field Dressing", "desc": "+1 max heart and heal."},
 			{"id": "gem_xp", "name": "Gem Appetite", "desc": "Gems give even more XP."},
-			{"id": "prospector", "name": "Prospector", "desc": "More super gems appear, with nearby hints."},
+			{"id": "prospector", "name": "Prospector", "desc": "Reveal a nearby super gem now; hint at hidden super gems."},
 			{"id": "gem_vein", "name": "Gem Vein", "desc": "More gems appear now."},
 			{"id": "magnet", "name": "Amber Magnet", "desc": "XP pickups pull from farther away."},
 			{"id": "boulder_lance", "name": "Boulder Lance", "desc": "Shorter weaker lance. Lance kills can leave boulders."},
@@ -6956,7 +6996,9 @@ func _upgrade_is_available(id: String) -> bool:
 		if active_element == LANCE_ELEMENT_BASE:
 			return id.ends_with("_tip") and player_level >= ELEMENT_TIP_MIN_LEVEL and run_time >= ELEMENT_TIP_MIN_TIME
 	match id:
-		"prospector", "gem_vein", "boulder_lance", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger":
+		"prospector":
+			return depth_tier >= 2 and _prospector_reward_cell() != Vector2i.ZERO
+		"gem_vein", "boulder_lance", "rock_whistle", "gravity_snare", "chute_drill", "rock_ledger":
 			return depth_tier >= 2
 		"boulder_lance_2":
 			return _effective_boulder_lance_level() >= 1
@@ -6979,6 +7021,8 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
 	if id == "damage":
 		lance_damage += 1
 		message = "Lance hits harder."
+		return
+	if owned_upgrades.has(id) or temp_upgrades.has(id):
 		return
 	owned_upgrades[id] = true
 	_commit_upgrade_element(id, false)
@@ -7048,6 +7092,7 @@ func _apply_upgrade(choice: Dictionary, source: String) -> void:
 			gem_xp_bonus += 2
 		"prospector":
 			super_gem_bonus += 1
+			_reveal_prospector_gem()
 		"gem_vein":
 			extra_gems_bonus += 2
 			_sprout_extra_gems(3)
@@ -7079,6 +7124,8 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 	if id == "damage":
 		temp_lance_damage += 1
 		message = "Found Heavy Head for this run."
+		return
+	if owned_upgrades.has(id) or temp_upgrades.has(id):
 		return
 	temp_upgrades[id] = true
 	_commit_upgrade_element(id, true)
@@ -7142,11 +7189,13 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 		"stun":
 			temp_stun_bonus += 0.30
 		"field_dressing":
+			max_hp += 1
 			hp = mini(max_hp, hp + 2)
 		"gem_xp":
 			temp_gem_xp_bonus += 2
 		"prospector":
 			temp_super_gem_bonus += 1
+			_reveal_prospector_gem()
 		"gem_vein":
 			temp_extra_gems_bonus += 2
 			_sprout_extra_gems(3)
@@ -7166,7 +7215,7 @@ func _apply_temp_upgrade(choice: Dictionary) -> void:
 			temp_boulder_chute += 1
 		"rock_ledger":
 			temp_boulder_xp_bonus += 2
-	message = "Found %s for this run." % _upgrade_name(id)
+	_register_family_upgrade(id, "field")
 
 
 func _register_family_upgrade(id: String, source: String) -> void:
@@ -7310,7 +7359,7 @@ func _upgrade_effect_preview(id: String) -> String:
 		"gem_xp":
 			return "Gem XP bonus +%d -> +%d" % [_effective_gem_xp_bonus(), _effective_gem_xp_bonus() + 2]
 		"prospector":
-			return "Extra super gems %d -> %d" % [_effective_super_gem_bonus(), _effective_super_gem_bonus() + 1]
+			return "Super gems %d -> %d now | nearby hints" % [super_gems.size(), super_gems.size() + 1]
 		"gem_vein":
 			return "Extra-gem tier %d -> %d | sprouts 3 now" % [_effective_extra_gems_bonus(), _effective_extra_gems_bonus() + 2]
 		"magnet":
