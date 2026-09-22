@@ -224,6 +224,7 @@ const BOSS_FREEZE_DURATION_MULT := 0.22
 const BOSS_FREEZE_DURATION_MAX := 0.55
 const BOSS_CHILL_DURATION_MULT := 0.18
 const BOSS_LANCE_PUMP_LIMIT := 3
+const BOSS_LANCE_RESIST_DURATION := 0.85
 const UBER_START_TIME := RUN_GOAL_TIME * 0.5
 const UBER_CHANCE_BASE := 0.18
 const UBER_CHANCE_MAX := 0.46
@@ -3051,6 +3052,8 @@ func _add_enemy(pos: Vector2i, forced_kind := -1, boss_variant := 0) -> void:
 		"stolen_loot": 0,
 		"bounty": false,
 		"boss_hurt_flash": 0.0,
+		"boss_pressure_beats": 0,
+		"lance_resist_timer": 0.0,
 		"attack_windup": 0.0,
 		"attack_dir": Vector2i.ZERO
 	})
@@ -4183,6 +4186,10 @@ func _start_lance() -> void:
 			break
 		var enemy_i := _lance_enemy_index_at(pos)
 		if enemy_i != -1:
+			var rejection := _lance_rejection_message(enemies[enemy_i])
+			if rejection != "":
+				_deflect_lance(pos, rejection)
+				return
 			lance_attached_enemy = enemy_i
 			lance_blocking_cell = pos
 			lance_has_blocker = true
@@ -5012,6 +5019,8 @@ func _pin_lance_target() -> bool:
 	if lance_attached_enemy < 0 or lance_attached_enemy >= enemies.size():
 		return false
 	var enemy: Dictionary = enemies[lance_attached_enemy]
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_REAPER_KIND or float(enemy.get("lance_resist_timer", 0.0)) > 0.0:
+		return false
 	if lance_has_blocker:
 		enemy["pos"] = lance_blocking_cell
 		enemy["visual_pos"] = _visual_from_pos(lance_blocking_cell)
@@ -5046,8 +5055,10 @@ func _pump_lance_target() -> void:
 	if not alive:
 		_trigger_pierce_from(enemy_pos, facing, maxi(1, lance_pump_damage - 1))
 		_release_lance()
-	elif lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and _should_brood_queen_break_lance(enemies[lance_attached_enemy]):
-		_break_brood_queen_lance_lock(lance_attached_enemy)
+	elif lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and bool(enemies[lance_attached_enemy].get("blocked_lance", false)):
+		_deflect_lance(enemy_pos, "Plate held. Flank it or catch its lunge.")
+	elif lance_attached_enemy >= 0 and lance_attached_enemy < enemies.size() and _should_boss_break_lance(enemies[lance_attached_enemy]):
+		_break_boss_lance_lock(lance_attached_enemy)
 	else:
 		message = _pump_pressure_message()
 
@@ -5060,12 +5071,29 @@ func _pump_pressure_message() -> String:
 	return "Critical pressure!"
 
 
-func _should_brood_queen_break_lance(enemy: Dictionary) -> bool:
-	return _is_brood_queen(enemy) and lance_pump_count >= BOSS_LANCE_PUMP_LIMIT
+func _lance_rejection_message(enemy: Dictionary) -> String:
+	var kind := int(enemy.get("kind", ENEMY_GRUB_KIND))
+	if kind == ENEMY_REAPER_KIND:
+		return "The Reaper cannot be hooked. Run!"
+	if float(enemy.get("lance_resist_timer", 0.0)) > 0.0:
+		return "Boss resisting the hook. Reposition!"
+	if kind == ENEMY_SHIELDBUG_KIND:
+		var face_dir: Vector2i = enemy.get("face_dir", Vector2i.LEFT)
+		var riposte := float(enemy.get("attack_windup", 0.0)) > 0.0
+		if face_dir != Vector2i.ZERO and facing == -face_dir and not riposte:
+			return "Plate held. Flank it or catch its lunge."
+	return ""
 
 
-func _is_brood_queen(enemy: Dictionary) -> bool:
-	return int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND and int(enemy.get("boss_variant", 0)) == 0
+func _deflect_lance(pos: Vector2i, text: String) -> void:
+	_add_cell_pulse(pos, WARN, PULSE_FEEDBACK_TIME, 1.0, true)
+	_play_sfx("ui")
+	_release_lance()
+	message = text
+
+
+func _should_boss_break_lance(enemy: Dictionary) -> bool:
+	return int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND and int(enemy.get("boss_pressure_beats", 0)) >= BOSS_LANCE_PUMP_LIMIT
 
 
 func _award_boss_defeat_reward(enemy: Dictionary) -> void:
@@ -5076,13 +5104,16 @@ func _award_boss_defeat_reward(enemy: Dictionary) -> void:
 	_complete_achievement("first_boss_kill")
 
 
-func _break_brood_queen_lance_lock(enemy_i: int) -> void:
+func _break_boss_lance_lock(enemy_i: int) -> void:
 	if enemy_i < 0 or enemy_i >= enemies.size():
 		return
 	var enemy: Dictionary = enemies[enemy_i]
-	if not _is_brood_queen(enemy):
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) != ENEMY_BOSS_KIND:
 		return
 	var pos: Vector2i = enemy["pos"]
+	# Count pressure on the boss, so manual releases cannot skip its response.
+	enemy["boss_pressure_beats"] = 0
+	enemy["lance_resist_timer"] = BOSS_LANCE_RESIST_DURATION
 	enemy["inflated"] = false
 	enemy["recover_timer"] = ENEMY_INFLATE_RECOVER_DELAY
 	enemy["stun"] = 0.0
@@ -5094,7 +5125,7 @@ func _break_brood_queen_lance_lock(enemy_i: int) -> void:
 	enemy["timer"] = minf(float(enemy.get("timer", 0.0)), 0.12)
 	_add_cell_pulse(pos, ENEMY_BOSS, PULSE_FEEDBACK_TIME + 0.1, 1.25, true)
 	_shake(0.14)
-	message = "Queen broke free."
+	message = "%s broke free. Reposition!" % _boss_name(int(enemy.get("boss_variant", 0)))
 	_release_lance()
 
 
@@ -5177,6 +5208,8 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
 		_shake(0.05)
 		return true
 	run_lance_hits += 1
+	if int(enemy.get("kind", ENEMY_GRUB_KIND)) == ENEMY_BOSS_KIND:
+		enemy["boss_pressure_beats"] = int(enemy.get("boss_pressure_beats", 0)) + 1
 	_trace_combat("damage", "lance_pump", enemy["pos"], damage, int(enemy.get("kind", ENEMY_GRUB_KIND)))
 	enemy["hp"] -= damage
 	_boss_hit_feedback(enemy, enemy["pos"], damage)
@@ -5208,6 +5241,7 @@ func _update_enemies(delta: float) -> void:
 		var enemy: Dictionary = enemies[i]
 		if _closed_vault_contains_cell(enemy["pos"]):
 			continue
+		enemy["lance_resist_timer"] = maxf(0.0, float(enemy.get("lance_resist_timer", 0.0)) - delta)
 		enemy["hit_flash"] = maxf(0.0, float(enemy.get("hit_flash", 0.0)) - delta)
 		enemy["boss_hurt_flash"] = maxf(0.0, float(enemy.get("boss_hurt_flash", 0.0)) - delta)
 		if _update_enemy_elemental_status(i, delta):
@@ -8102,6 +8136,10 @@ func _draw_actors() -> void:
 			_draw_pixel_ring(center, body_radius + 4.0, pod_glow, 3)
 		elif enemy["kind"] == ENEMY_BOSS_KIND:
 			_draw_boss_health_bar(center, enemy)
+			if float(enemy.get("lance_resist_timer", 0.0)) > 0.0:
+				var resist_glow := WARN
+				resist_glow.a = 0.65 + sin(anim_time * 18.0) * 0.2
+				_draw_pixel_ring(center, body_radius + 9.0, resist_glow, 3)
 		elif enemy["kind"] == ENEMY_REAPER_KIND:
 			var aura := ENEMY_REAPER
 			aura.a = 0.42 + sin(anim_time * 6.0) * 0.12

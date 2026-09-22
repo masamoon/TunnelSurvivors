@@ -36,6 +36,8 @@ Prepared tunnels move at 3.2 cells per second while fresh digging moves at 2.5; 
 
 The base lance branch uses standalone upgrades such as Anchor Chain, Snap Reel, Piston Head, Rupture Wave, and Beacon Coupler. These do not require elemental status setups to pay off.
 
+Shieldbugs deflect frontal hooks until they expose a lunge; flank them or catch that opening. Every boss breaks free after three successful pump beats, including beats split across separate hooks. Its amber ring marks a brief hook-resistance window: reposition, evade the counterattack, or use a boulder while it can still take damage. The Reaper cannot be hooked, so keep moving toward extraction.
+
 The pause settings include master audio, music, SFX volume, music volume, screen shake, pump input mode, first-run hints, and a double-confirm wipe-save button.
 
 Boss kills unlock the harder Obsidian Rift site, the Field Kit alternate start, and the Treasure Compass beacon mod. End-of-run results identify the cause, best tactical moment, run build, and next permanent unlock, with direct rerun and hub actions.
@@ -45,6 +47,8 @@ Boss kills unlock the harder Obsidian Rift site, the Field Kit alternate start, 
 Run `python3 tools/balance_check.py` to validate upgrade, research, and unlock table references.
 
 Run `godot --headless --path . --script res://tests/run_regressions.gd` to check controls, encounter connectivity, movement and impact contracts, starter plans, useful healing, build-aware drafts, result summaries, and boulder-kill attribution.
+
+Run `godot --headless --path . --script res://tests/run_combat_counterplay.gd` to check Reaper pursuit, Shieldbug flanks and ripostes, boss retaliation and escape, and damage during hook resistance.
 
 ## Release Build
 
