@@ -53,7 +53,7 @@ const TERRAIN_CRYSTAL_SEAL := "crystal_seal"
 
 const ENEMY_GRUB_KIND := 0
 const ENEMY_BURROWER_KIND := 1
-const ENEMY_FYGAR_KIND := 2
+const ENEMY_KILN_KIND := 2
 const ENEMY_SPITTER_KIND := 3
 const ENEMY_SHIELDBUG_KIND := 4
 const ENEMY_LEECH_KIND := 5
@@ -182,16 +182,16 @@ const ENEMY_PHASE_DIRS := [
 	Vector2i(-1, 1),
 	Vector2i(-1, -1)
 ]
-const FYGAR_MIN_DEPTH_TIER := 2
-const FYGAR_FIRE_WARN := 0.52
-const FYGAR_FIRE_ACTIVE := 0.42
-const FYGAR_FIRE_COOLDOWN_MIN := 2.2
-const FYGAR_FIRE_COOLDOWN_MAX := 4.2
-const FYGAR_FIRE_RANGE := 6
-const FYGAR_THIN_DIRT_PENETRATION := 1
+const KILN_MIN_DEPTH_TIER := 2
+const KILN_FIRE_WARN := 0.52
+const KILN_FIRE_ACTIVE := 0.42
+const KILN_FIRE_COOLDOWN_MIN := 2.2
+const KILN_FIRE_COOLDOWN_MAX := 4.2
+const KILN_FIRE_RANGE := 6
+const KILN_THIN_DIRT_PENETRATION := 0
 const ENEMY_GRUB_SPEED_RATIO := 1.0
 const ENEMY_BURROWER_SPEED_RATIO := 1.0
-const ENEMY_FYGAR_SPEED_RATIO := 1.0
+const ENEMY_KILN_SPEED_RATIO := 1.0
 const ENEMY_SPITTER_SPEED_RATIO := 0.88
 const ENEMY_SHIELDBUG_SPEED_RATIO := 0.78
 const ENEMY_LEECH_SPEED_RATIO := 1.18
@@ -282,30 +282,30 @@ const COMBO_WINDOW := 2.2
 const RUN_OUTCOME_DEFEAT := "defeat"
 const RUN_OUTCOME_EXTRACTION := "extraction"
 const RUN_OUTCOME_ABANDONED := "abandoned"
-const BG := Color("#090b12")
-const DIRT := Color("#8a4d27")
-const DIRT_DARK := Color("#4f2a1a")
-const DIRT_LIGHT := Color("#b16b32")
-const SURFACE_GRASS := Color("#4fb866")
-const SURFACE_GRASS_DARK := Color("#267341")
-const SURFACE_SOIL := Color("#6f4427")
+const BG := Color("#0d0b0f")
+const DIRT := Color("#6a4b44")
+const DIRT_DARK := Color("#3a2a2a")
+const DIRT_LIGHT := Color("#8c6a58")
+const SURFACE_GRASS := Color("#7aa56a")
+const SURFACE_GRASS_DARK := Color("#40664a")
+const SURFACE_SOIL := Color("#4a3530")
 const DIRT_LAYER_COLORS := [
-	Color("#a45e2c"),
-	Color("#8b5630"),
-	Color("#6f4a35"),
-	Color("#553b32")
+	Color("#7b5846"),
+	Color("#6a4b44"),
+	Color("#58404a"),
+	Color("#433650")
 ]
 const DIRT_LAYER_HIGHLIGHTS := [
-	Color("#d0833f"),
-	Color("#ba7044"),
-	Color("#9b684c"),
-	Color("#755443")
+	Color("#a07660"),
+	Color("#8c655a"),
+	Color("#75586a"),
+	Color("#5e4e72")
 ]
 const DIRT_LAYER_SHADOWS := [
-	Color("#6f371e"),
-	Color("#603926"),
-	Color("#4d332c"),
-	Color("#3b2a28")
+	Color("#4e3428"),
+	Color("#43302c"),
+	Color("#372a33"),
+	Color("#2a2336")
 ]
 const CRYSTAL_SURFACE_SOIL := Color("#293747")
 const CRYSTAL_GRASS := Color("#63d0b0")
@@ -334,28 +334,28 @@ const CRYSTAL_SHALE_HIGHLIGHT := Color("#91d3df")
 const CRYSTAL_SEAL := Color("#7f65c9")
 const CRYSTAL_SEAL_DARK := Color("#211a3a")
 const DIRT_LAYER_SCORE_MULTIPLIERS := [1.0, 1.5, 2.0, 2.5]
-const TUNNEL := Color("#151420")
-const TUNNEL_EDGE := Color("#242133")
-const ROCK := Color("#99a3ad")
-const ROCK_SHADOW := Color("#48505b")
-const PLAYER := Color("#44f0c8")
-const PLAYER_DARK := Color("#12847b")
+const TUNNEL := Color("#110e12")
+const TUNNEL_EDGE := Color("#1d171b")
+const ROCK := Color("#948d96")
+const ROCK_SHADOW := Color("#4a4550")
+const PLAYER := Color("#e3a64b")
+const PLAYER_DARK := Color("#8a5a24")
 const PLAYER_SKIN := Color("#ffd29a")
-const ENEMY_GRUB := Color("#ff5c7c")
-const ENEMY_BURROWER := Color("#ffbd45")
-const ENEMY_FYGAR := Color("#77df4c")
-const ENEMY_SPITTER := Color("#7dd3ff")
-const ENEMY_SHIELDBUG := Color("#c2a66b")
-const ENEMY_LEECH := Color("#d675ff")
-const ENEMY_BROOD_POD := Color("#b36bff")
-const ENEMY_BOSS := Color("#ff3f5f")
+const ENEMY_GRUB := Color("#d77a8c")
+const ENEMY_BURROWER := Color("#d9a05a")
+const ENEMY_KILN := Color("#9a5a44")
+const ENEMY_SPITTER := Color("#6fb8d6")
+const ENEMY_SHIELDBUG := Color("#b39d70")
+const ENEMY_LEECH := Color("#b47ad0")
+const ENEMY_BROOD_POD := Color("#9068cf")
+const ENEMY_BOSS := Color("#c84a5a")
 const ENEMY_REAPER := Color("#e8ecff")
 const FIRE := Color("#ff6b39")
 const ICE := Color("#82e6ff")
 const THUNDER := Color("#ffe76a")
-const GEM := Color("#70d7ff")
-const SUPER_GEM := Color("#d675ff")
-const PRESSURE := Color("#ccfbff")
+const GEM := Color("#6ff2e0")
+const SUPER_GEM := Color("#e05aa8")
+const PRESSURE := Color("#c8fff6")
 const RUPTURE := Color("#ffd45a")
 const TREASURE_CHEST := Color("#c98b3a")
 const TREASURE_CHEST_DARK := Color("#6f3d1f")
@@ -372,6 +372,62 @@ const UI_PANEL_EDGE := Color("#3e3140")
 const UI_PANEL_HILITE := Color("#6b573e")
 const MUTED := Color("#9da2ae")
 const WARN := Color("#ffc95a")
+const GEO_INK := Color("#120d11")
+const GEO_LIGHT := Vector2(-0.6, -0.8)
+const LANTERN := Color("#ffb84d")
+const LANTERN_RADIUS := 160.0
+const LANTERN_AMBIENT := 0.42
+const SPIKE_BRASS := Color("#e0b35a")
+const SPIKE_BRASS_DARK := Color("#7a5a2e")
+const SOIL_SHADER_CODE := """
+shader_type canvas_item;
+
+uniform vec2 light_pos = vec2(0.0);
+uniform float light_radius = 190.0;
+uniform float ambient = 0.52;
+uniform vec4 lantern_tint : source_color = vec4(1.0, 0.72, 0.3, 1.0);
+
+varying vec2 local_pos;
+
+void vertex() {
+	local_pos = VERTEX;
+}
+
+void fragment() {
+	vec2 px = TEXTURE_PIXEL_SIZE;
+	vec4 here = texture(TEXTURE, UV);
+	float alpha_sum = here.a * 2.0;
+	float weight = 2.0;
+	vec3 color_sum = here.rgb * here.a;
+	float color_weight = here.a;
+	for (int i = 0; i < 16; i++) {
+		float angle = float(i) * 0.3926991;
+		vec2 dir = vec2(cos(angle), sin(angle));
+		vec4 far_ring = texture(TEXTURE, UV + dir * px * 8.0);
+		vec4 outer = texture(TEXTURE, UV + dir * px * 5.0);
+		vec4 inner = texture(TEXTURE, UV + dir * px * 2.2);
+		alpha_sum += far_ring.a + outer.a + inner.a;
+		weight += 3.0;
+		color_sum += outer.rgb * outer.a + inner.rgb * inner.a;
+		color_weight += outer.a + inner.a;
+	}
+	float coverage = alpha_sum / weight;
+	float solid = smoothstep(0.42, 0.58, coverage);
+	vec3 base = here.a > 0.5 ? here.rgb : color_sum / max(color_weight, 0.001);
+	float rim = 1.0 - smoothstep(0.55, 0.95, coverage);
+	base *= 1.0 - rim * 0.38;
+	float ceiling = texture(TEXTURE, UV + vec2(0.0, px.y * 3.0)).a;
+	base += vec3(0.05, 0.035, 0.02) * rim * (1.0 - ceiling);
+	float dist = distance(local_pos, light_pos);
+	float lit = 1.0 - smoothstep(light_radius * 0.3, light_radius, dist);
+	base *= mix(ambient, 1.0, lit);
+	base += lantern_tint.rgb * 0.07 * lit * lit;
+	float shadow = texture(TEXTURE, UV + vec2(-px.x * 2.0, -px.y * 5.0)).a;
+	vec4 soil = vec4(base, 1.0);
+	vec4 shade = vec4(0.0, 0.0, 0.0, shadow * 0.5);
+	COLOR = mix(shade, soil, solid);
+}
+"""
 
 var rng := RandomNumberGenerator.new()
 var font: Font
@@ -380,6 +436,13 @@ var grid := []
 var soil_image: Image
 var soil_texture: ImageTexture
 var soil_dirty := false
+var soil_facet_bytes := PackedByteArray()
+var soil_crack_bytes := PackedByteArray()
+var soil_noise_size := Vector2i.ZERO
+var soil_wave_table := PackedFloat32Array()
+var backdrop_base: Node2D
+var backdrop_soil: Node2D
+var soil_material: ShaderMaterial
 var tunnel_edges := {}
 var rocks := []
 var gems := []
@@ -599,6 +662,7 @@ var run_meta_recorded := false
 
 func _ready() -> void:
 	font = ThemeDB.get_fallback_font()
+	_setup_backdrop_layers()
 	rng.randomize()
 	_load_meta()
 	_setup_audio()
@@ -721,16 +785,19 @@ func _build_sfx_stream(id: String) -> AudioStreamWAV:
 				{"freq": 420.0, "duration": 0.045, "volume": 0.17, "wave": "square"}
 			]
 		"pump_1":
-			notes = [{"freq": 116.0, "duration": 0.065, "volume": 0.19, "wave": "square"}]
+			notes = [
+				{"freq": 523.25, "duration": 0.03, "volume": 0.16, "wave": "sine"},
+				{"freq": 1046.5, "duration": 0.09, "volume": 0.10, "wave": "sine"}
+			]
 		"pump_2":
 			notes = [
-				{"freq": 128.0, "duration": 0.055, "volume": 0.20, "wave": "square"},
-				{"freq": 192.0, "duration": 0.035, "volume": 0.12, "wave": "sine"}
+				{"freq": 659.25, "duration": 0.03, "volume": 0.17, "wave": "sine"},
+				{"freq": 1318.5, "duration": 0.10, "volume": 0.11, "wave": "sine"}
 			]
 		"pump_3":
 			notes = [
-				{"freq": 142.0, "duration": 0.06, "volume": 0.22, "wave": "square"},
-				{"freq": 284.0, "duration": 0.045, "volume": 0.15, "wave": "saw"}
+				{"freq": 783.99, "duration": 0.03, "volume": 0.18, "wave": "sine"},
+				{"freq": 1567.98, "duration": 0.12, "volume": 0.13, "wave": "sine"}
 			]
 		"rock_impact":
 			notes = [
@@ -739,9 +806,9 @@ func _build_sfx_stream(id: String) -> AudioStreamWAV:
 			]
 		"kill":
 			notes = [
-				{"freq": 124.0, "duration": 0.035, "volume": 0.22, "wave": "noise"},
-				{"freq": 246.94, "duration": 0.045, "volume": 0.18, "wave": "square"},
-				{"freq": 493.88, "duration": 0.055, "volume": 0.16, "wave": "sine"}
+				{"freq": 2400.0, "duration": 0.03, "volume": 0.14, "wave": "noise"},
+				{"freq": 1760.0, "duration": 0.04, "volume": 0.14, "wave": "sine"},
+				{"freq": 2349.32, "duration": 0.07, "volume": 0.12, "wave": "sine"}
 			]
 		"gem":
 			notes = [
@@ -977,7 +1044,7 @@ func _default_meta() -> Dictionary:
 			"boss_kills": 0,
 			"boulder_kills": 0,
 			"super_gems": 0,
-			"fygar_kills": 0,
+			"kiln_kills": 0,
 			"map_clears": {}
 		}
 	}
@@ -1009,6 +1076,7 @@ func _load_meta() -> void:
 
 
 func _merge_meta(saved: Dictionary) -> void:
+	_migrate_legacy_meta_keys(saved)
 	for key in saved.keys():
 		if not meta.has(key):
 			continue
@@ -1030,6 +1098,19 @@ func _merge_meta(saved: Dictionary) -> void:
 		else:
 			meta[key] = saved[key]
 	meta["version"] = META_SAVE_VERSION
+
+
+func _migrate_legacy_meta_keys(saved: Dictionary) -> void:
+	# Older saves used the retired enemy name for these keys.
+	var lifetime = saved.get("lifetime", null)
+	if typeof(lifetime) == TYPE_DICTIONARY and lifetime.has("fygar_kills"):
+		lifetime["kiln_kills"] = maxi(int(lifetime.get("kiln_kills", 0)), int(lifetime["fygar_kills"]))
+		lifetime.erase("fygar_kills")
+	var achievements = saved.get("achievements", null)
+	if typeof(achievements) == TYPE_DICTIONARY and achievements.has("fygar_hunter_10"):
+		if not achievements.has("kiln_hunter_10"):
+			achievements["kiln_hunter_10"] = achievements["fygar_hunter_10"]
+		achievements.erase("fygar_hunter_10")
 
 
 func _save_meta() -> void:
@@ -1343,9 +1424,9 @@ func _achievement_defs() -> Dictionary:
 			"desc": "Collect 10 super gems.",
 			"rewards": [{"kind": "element", "id": LANCE_ELEMENT_THUNDER}]
 		},
-		"fygar_hunter_10": {
+		"kiln_hunter_10": {
 			"name": "Fire Research",
-			"desc": "Kill 10 Fygars.",
+			"desc": "Kill 10 Kiln Beetles.",
 			"rewards": [{"kind": "element", "id": LANCE_ELEMENT_FIRE}]
 		}
 	}
@@ -1505,7 +1586,7 @@ func _record_run_meta_progress(outcome: String) -> void:
 	elif outcome == RUN_OUTCOME_ABANDONED:
 		meta_notice = "Run abandoned. No research awarded."
 	elif not reward_eligible:
-		meta_notice = "No research: explore, collect, or land a pump first."
+		meta_notice = "No research: explore, collect, or land a tap first."
 	_check_lifetime_achievements()
 	_save_meta()
 
@@ -1583,8 +1664,8 @@ func _increment_map_clear(map_id: String) -> void:
 
 
 func _record_enemy_defeat(kind: int) -> void:
-	if kind == ENEMY_FYGAR_KIND:
-		_increment_lifetime("fygar_kills")
+	if kind == ENEMY_KILN_KIND:
+		_increment_lifetime("kiln_kills")
 
 
 func _active_beacon_mod_id() -> String:
@@ -1633,8 +1714,8 @@ func _check_lifetime_achievements() -> void:
 	var lifetime: Dictionary = meta.get("lifetime", {})
 	if int(lifetime.get("super_gems", 0)) >= 10:
 		_complete_achievement("super_gem_collector_10")
-	if int(lifetime.get("fygar_kills", 0)) >= 10:
-		_complete_achievement("fygar_hunter_10")
+	if int(lifetime.get("kiln_kills", 0)) >= 10:
+		_complete_achievement("kiln_hunter_10")
 
 
 func _selected_map_def() -> Dictionary:
@@ -2243,9 +2324,9 @@ func _commit_cave_encounter(encounter: Dictionary) -> void:
 
 
 func _encounter_featured_enemy_kind() -> int:
-	if depth_tier < FYGAR_MIN_DEPTH_TIER:
+	if depth_tier < KILN_MIN_DEPTH_TIER:
 		return ENEMY_GRUB_KIND
-	var choices := [ENEMY_FYGAR_KIND]
+	var choices := [ENEMY_KILN_KIND]
 	if depth_tier >= 3:
 		choices.append(ENEMY_BURROWER_KIND)
 	return int(choices[rng.randi_range(0, choices.size() - 1)])
@@ -3102,7 +3183,7 @@ func _add_enemy(pos: Vector2i, forced_kind := -1, boss_variant := 0) -> void:
 		"phase_cooldown": rng.randf_range(PHASE_COOLDOWN_MIN, PHASE_COOLDOWN_MAX),
 		"phase_steps": 0,
 		"stuck_steps": 0,
-		"fire_cooldown": rng.randf_range(FYGAR_FIRE_COOLDOWN_MIN, FYGAR_FIRE_COOLDOWN_MAX),
+		"fire_cooldown": rng.randf_range(KILN_FIRE_COOLDOWN_MIN, KILN_FIRE_COOLDOWN_MAX),
 		"fire_windup": 0.0,
 		"fire_active": 0.0,
 		"fire_dir": Vector2i.RIGHT,
@@ -3129,8 +3210,8 @@ func _choose_enemy_kind() -> int:
 	var weighted := [{"kind": ENEMY_GRUB_KIND, "weight": 100}]
 	if depth_tier >= 3:
 		weighted.append({"kind": ENEMY_BURROWER_KIND, "weight": 36})
-	if depth_tier >= FYGAR_MIN_DEPTH_TIER:
-		weighted.append({"kind": ENEMY_FYGAR_KIND, "weight": 22 + mini(depth_tier * 3, 18)})
+	if depth_tier >= KILN_MIN_DEPTH_TIER:
+		weighted.append({"kind": ENEMY_KILN_KIND, "weight": 22 + mini(depth_tier * 3, 18)})
 	if run_time >= SPITTER_MIN_TIME and player_level >= SPITTER_MIN_LEVEL:
 		weighted.append({"kind": ENEMY_SPITTER_KIND, "weight": 32 + floori(run_time / 90.0) * 4 + int(current_map_def.get("spitter_weight_bonus", 0))})
 	if run_time >= SHIELDBUG_MIN_TIME and player_level >= SHIELDBUG_MIN_LEVEL:
@@ -3174,7 +3255,7 @@ func _enemy_max_hp_for_kind(kind: int) -> int:
 	match kind:
 		ENEMY_GRUB_KIND:
 			return 3
-		ENEMY_BURROWER_KIND, ENEMY_FYGAR_KIND:
+		ENEMY_BURROWER_KIND, ENEMY_KILN_KIND:
 			return 3 + scaling
 		ENEMY_SPITTER_KIND:
 			return 3 + scaling
@@ -3219,6 +3300,7 @@ func _should_spawn_uber(kind: int, forced_kind: int) -> bool:
 
 func _process(delta: float) -> void:
 	anim_time += delta
+	_queue_backdrop_redraw()
 	_update_music_audio()
 	hurt_flash = maxf(0.0, hurt_flash - delta)
 	attack_flash = maxf(0.0, attack_flash - delta)
@@ -5128,10 +5210,10 @@ func _pump_lance_target() -> void:
 
 func _pump_pressure_message() -> String:
 	if lance_pump_count <= 1:
-		return "Pressure locked."
+		return "Resonance locked."
 	if lance_pump_count == 2:
-		return "Pressure rising!"
-	return "Critical pressure!"
+		return "Crystal spreading!"
+	return "About to shatter!"
 
 
 func _lance_rejection_message(enemy: Dictionary) -> String:
@@ -5293,7 +5375,7 @@ func _inflate_lance_target(enemy_i: int, amount: int) -> bool:
 		message = lance_kill_message
 		return false
 	_shake(0.06)
-	message = "Pumping."
+	message = "Resonating."
 	return true
 
 
@@ -5599,24 +5681,24 @@ func _repel_phasing_enemy_after_player_hit(enemy: Dictionary) -> void:
 
 
 func _update_enemy_fire(enemy: Dictionary, delta: float) -> bool:
-	if int(enemy.get("kind", 0)) != ENEMY_FYGAR_KIND:
+	if int(enemy.get("kind", 0)) != ENEMY_KILN_KIND:
 		return false
 	enemy["fire_cooldown"] = maxf(0.0, float(enemy.get("fire_cooldown", 0.0)) - delta)
 	if float(enemy.get("fire_windup", 0.0)) > 0.0:
 		enemy["fire_windup"] = maxf(0.0, float(enemy["fire_windup"]) - delta)
 		if float(enemy["fire_windup"]) <= 0.0:
-			enemy["fire_active"] = FYGAR_FIRE_ACTIVE
+			enemy["fire_active"] = KILN_FIRE_ACTIVE
 			_shake(0.14)
 		return true
 	if float(enemy.get("fire_active", 0.0)) > 0.0:
 		enemy["fire_active"] = maxf(0.0, float(enemy["fire_active"]) - delta)
 		if _player_in_fire_lane(enemy):
-			if _hurt_player(1, "Fygar fire got you."):
+			if _hurt_player(1, "Kiln Beetle heat got you."):
 				enemy["fire_active"] = 0.0
-				enemy["fire_cooldown"] = rng.randf_range(FYGAR_FIRE_COOLDOWN_MIN, FYGAR_FIRE_COOLDOWN_MAX)
+				enemy["fire_cooldown"] = rng.randf_range(KILN_FIRE_COOLDOWN_MIN, KILN_FIRE_COOLDOWN_MAX)
 				return true
 		if float(enemy["fire_active"]) <= 0.0:
-			enemy["fire_cooldown"] = rng.randf_range(FYGAR_FIRE_COOLDOWN_MIN, FYGAR_FIRE_COOLDOWN_MAX)
+			enemy["fire_cooldown"] = rng.randf_range(KILN_FIRE_COOLDOWN_MIN, KILN_FIRE_COOLDOWN_MAX)
 		return true
 	return false
 
@@ -5661,15 +5743,15 @@ func _try_begin_fire(enemy: Dictionary) -> bool:
 	if player_pos.y != pos.y:
 		return false
 	var dx := player_pos.x - pos.x
-	if dx == 0 or abs(dx) > FYGAR_FIRE_RANGE:
+	if dx == 0 or abs(dx) > KILN_FIRE_RANGE:
 		return false
 	var dir := Vector2i(signi(dx), 0)
 	if not _line_clear_for_fire(pos, dir, abs(dx)):
 		return false
 	enemy["fire_dir"] = dir
-	enemy["fire_windup"] = FYGAR_FIRE_WARN
-	enemy["timer"] = FYGAR_FIRE_WARN + FYGAR_FIRE_ACTIVE
-	message = "Fire lane!"
+	enemy["fire_windup"] = KILN_FIRE_WARN
+	enemy["timer"] = KILN_FIRE_WARN + KILN_FIRE_ACTIVE
+	message = "Heat seam!"
 	return true
 
 
@@ -5682,7 +5764,7 @@ func _line_clear_for_fire(start: Vector2i, dir: Vector2i, distance: int) -> bool
 			return false
 		if not _is_open_tile(pos):
 			dirt_crossed += 1
-			if dirt_crossed > FYGAR_THIN_DIRT_PENETRATION:
+			if dirt_crossed > KILN_THIN_DIRT_PENETRATION:
 				return false
 		elif not _open_line_between_cells(previous, pos) and dirt_crossed == 0:
 			return false
@@ -5696,7 +5778,7 @@ func _player_in_fire_lane(enemy: Dictionary) -> bool:
 	if player_pos.y != pos.y:
 		return false
 	var dx := player_pos.x - pos.x
-	if dx == 0 or signi(dx) != dir.x or abs(dx) > FYGAR_FIRE_RANGE:
+	if dx == 0 or signi(dx) != dir.x or abs(dx) > KILN_FIRE_RANGE:
 		return false
 	return _line_clear_for_fire(pos, dir, abs(dx))
 
@@ -5782,20 +5864,20 @@ func _player_in_spit_lane(enemy: Dictionary) -> bool:
 
 func _enemy_fire_cells(enemy: Dictionary) -> Array:
 	var cells := []
-	if int(enemy.get("kind", 0)) != ENEMY_FYGAR_KIND:
+	if int(enemy.get("kind", 0)) != ENEMY_KILN_KIND:
 		return cells
 	if float(enemy.get("fire_windup", 0.0)) <= 0.0 and float(enemy.get("fire_active", 0.0)) <= 0.0:
 		return cells
 	var pos: Vector2i = enemy["pos"]
 	var dir: Vector2i = enemy.get("fire_dir", Vector2i.RIGHT)
 	var dirt_crossed := 0
-	for step in range(1, FYGAR_FIRE_RANGE + 1):
+	for step in range(1, KILN_FIRE_RANGE + 1):
 		var cell := pos + dir * step
 		if not _in_bounds(cell) or _has_rock(cell):
 			break
 		if not _is_open_tile(cell):
 			dirt_crossed += 1
-			if dirt_crossed > FYGAR_THIN_DIRT_PENETRATION:
+			if dirt_crossed > KILN_THIN_DIRT_PENETRATION:
 				break
 		elif dirt_crossed == 0 and not _open_line_between_cells(cell - dir, cell):
 			break
@@ -5996,7 +6078,7 @@ func _choose_boss_summon_kind(variant: int) -> int:
 		0:
 			choices = [ENEMY_GRUB_KIND, ENEMY_GRUB_KIND, ENEMY_SPITTER_KIND, ENEMY_BROOD_POD_KIND]
 		1:
-			choices = [ENEMY_SPITTER_KIND, ENEMY_LEECH_KIND, ENEMY_LEECH_KIND, ENEMY_FYGAR_KIND]
+			choices = [ENEMY_SPITTER_KIND, ENEMY_LEECH_KIND, ENEMY_LEECH_KIND, ENEMY_KILN_KIND]
 		2:
 			choices = [ENEMY_SHIELDBUG_KIND, ENEMY_SHIELDBUG_KIND, ENEMY_BURROWER_KIND, ENEMY_LEECH_KIND, ENEMY_BROOD_POD_KIND]
 		_:
@@ -6048,7 +6130,7 @@ func _step_enemy(enemy: Dictionary) -> void:
 		return
 	if kind == ENEMY_SPITTER_KIND and _try_begin_spit(enemy):
 		return
-	if kind == ENEMY_FYGAR_KIND and _try_begin_fire(enemy):
+	if kind == ENEMY_KILN_KIND and _try_begin_fire(enemy):
 		return
 
 	var pos: Vector2i = enemy["pos"]
@@ -6325,8 +6407,8 @@ func _enemy_move_speed_for_kind(kind: int) -> float:
 	var ratio := ENEMY_GRUB_SPEED_RATIO
 	if kind == ENEMY_BURROWER_KIND:
 		ratio = ENEMY_BURROWER_SPEED_RATIO
-	elif kind == ENEMY_FYGAR_KIND:
-		ratio = ENEMY_FYGAR_SPEED_RATIO
+	elif kind == ENEMY_KILN_KIND:
+		ratio = ENEMY_KILN_SPEED_RATIO
 	elif kind == ENEMY_SPITTER_KIND:
 		ratio = ENEMY_SPITTER_SPEED_RATIO
 	elif kind == ENEMY_SHIELDBUG_KIND:
@@ -7582,7 +7664,8 @@ func _commit_upgrade_element(id: String, temporary: bool) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), BG)
+	if backdrop_base == null:
+		draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), BG)
 	if state == STATE_META:
 		_draw_meta_hub()
 		if show_guide:
@@ -7728,14 +7811,69 @@ func _has_xp_pickup(pos: Vector2i) -> bool:
 	return false
 
 
-func _draw_board() -> void:
+func _setup_backdrop_layers() -> void:
+	# Tunnel floor and soil draw behind this node so the soil can use its own shader.
+	backdrop_base = Node2D.new()
+	backdrop_base.name = "BackdropBase"
+	backdrop_base.show_behind_parent = true
+	add_child(backdrop_base)
+	backdrop_base.draw.connect(_draw_backdrop_base)
+	backdrop_soil = Node2D.new()
+	backdrop_soil.name = "BackdropSoil"
+	backdrop_soil.show_behind_parent = true
+	backdrop_soil.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	var shader := Shader.new()
+	shader.code = SOIL_SHADER_CODE
+	soil_material = ShaderMaterial.new()
+	soil_material.shader = shader
+	backdrop_soil.material = soil_material
+	add_child(backdrop_soil)
+	backdrop_soil.draw.connect(_draw_backdrop_soil)
+
+
+func _queue_backdrop_redraw() -> void:
+	if backdrop_base != null:
+		backdrop_base.queue_redraw()
+	if backdrop_soil != null:
+		backdrop_soil.queue_redraw()
+
+
+func _draw_backdrop_base() -> void:
+	backdrop_base.draw_rect(Rect2(Vector2.ZERO, get_viewport_rect().size), BG)
+	if state == STATE_META:
+		return
+	_draw_board_backdrop(backdrop_base)
+
+
+func _draw_board_backdrop(target: CanvasItem) -> void:
 	var board_rect := Rect2(_board_origin() - Vector2(4, 4), Vector2(BOARD_W * CELL + 8, _board_view_height_px() + 8.0))
-	draw_rect(board_rect, Color("#05060a"))
-	draw_rect(board_rect.grow(-2), TUNNEL_EDGE)
-	draw_rect(_board_view_rect(), TUNNEL)
+	target.draw_rect(board_rect, Color("#05040a"))
+	target.draw_rect(board_rect.grow(-2), TUNNEL_EDGE)
+	target.draw_rect(_board_view_rect(), TUNNEL)
+	var lantern_center := _visual_to_center(player_visual_pos)
+	var glow := LANTERN
+	for i in range(6):
+		var t := float(i) / 6.0
+		glow.a = 0.035 + t * 0.012
+		target.draw_circle(lantern_center, LANTERN_RADIUS * (1.0 - t * 0.8), glow)
+
+
+func _draw_backdrop_soil() -> void:
+	if state == STATE_META or soil_texture == null:
+		return
+	if soil_material != null:
+		soil_material.set_shader_parameter("light_pos", _visual_to_center(player_visual_pos))
+		soil_material.set_shader_parameter("light_radius", LANTERN_RADIUS)
+		soil_material.set_shader_parameter("ambient", LANTERN_AMBIENT)
+	backdrop_soil.draw_texture_rect_region(soil_texture, _board_view_rect(), _board_view_source_rect())
+
+
+func _draw_board() -> void:
 	_flush_soil_texture()
-	if soil_texture != null:
-		draw_texture_rect_region(soil_texture, _board_view_rect(), _board_view_source_rect())
+	if backdrop_base == null:
+		_draw_board_backdrop(self)
+		if soil_texture != null:
+			draw_texture_rect_region(soil_texture, _board_view_rect(), _board_view_source_rect())
 	_draw_surface_layer()
 	_draw_crystal_hints()
 
@@ -7985,16 +8123,9 @@ func _draw_treasure_reward_icon(center: Vector2, reward: Dictionary) -> void:
 
 
 func _draw_mini_heart(center: Vector2, color: Color) -> void:
-	var origin := _snap_px(center + Vector2(-5, -4))
-	var rows := [
-		".X.X.",
-		"XXXXX",
-		"XXXXX",
-		".XXX.",
-        "..X.."
-	]
-	var palette := {"X": color}
-	_draw_pixel_sprite(origin + Vector2(5, 4), rows, palette, 2)
+	draw_circle(center + Vector2(-2.6, -1.6), 3.0, color)
+	draw_circle(center + Vector2(2.6, -1.6), 3.0, color)
+	draw_colored_polygon(PackedVector2Array([center + Vector2(-5.4, -0.8), center + Vector2(5.4, -0.8), center + Vector2(0, 5.4)]), color)
 
 
 func _draw_relic_icon(center: Vector2, upgrade: Dictionary, alpha := 1.0) -> void:
@@ -8088,12 +8219,20 @@ func _draw_actors() -> void:
 			var fire_color := FIRE
 			var active := float(enemy.get("fire_active", 0.0)) > 0.0
 			fire_color.a = 0.78 if active else 0.28 + sin(anim_time * 12.0) * 0.08
-			var fire_rect := Rect2(_cell_to_px(cell) + Vector2(2, 8), Vector2(CELL - 4, CELL - 16))
-			draw_rect(fire_rect, Color("#5d1f19aa"))
-			for i in range(3):
-				var x := fire_rect.position.x + 4.0 + float(i) * 7.0
-				var flame_h := 8.0 + sin(anim_time * 10.0 + float(i)) * 3.0
-				draw_rect(Rect2(Vector2(x, fire_rect.position.y + fire_rect.size.y - flame_h), Vector2(5, flame_h)), fire_color)
+			var seam_center := _cell_center(cell) + Vector2(0, CELL * 0.28)
+			var seam_half := Vector2(CELL * 0.5, 0)
+			var under := Color("#5d1f19")
+			under.a = 0.55
+			draw_line(seam_center - seam_half, seam_center + seam_half, under, 7.0, true)
+			var jag := PackedVector2Array()
+			for i in range(5):
+				var t := float(i) / 4.0
+				jag.append(seam_center - seam_half + Vector2(CELL * t, sin(anim_time * 14.0 + float(i + cell.x) * 1.7) * (3.0 if active else 1.5)))
+			draw_polyline(jag, fire_color, 2.5 if active else 1.5, true)
+			if active:
+				var shimmer := FIRE.lerp(Color.WHITE, 0.3)
+				shimmer.a = 0.3
+				draw_rect(Rect2(_cell_to_px(cell) + Vector2(2, 6), Vector2(CELL - 4, CELL - 12)), shimmer)
 		for cell in _enemy_spit_cells(enemy):
 			if not _cell_intersects_board_view(cell):
 				continue
@@ -8165,48 +8304,37 @@ func _draw_actors() -> void:
 			color = color.lerp(DIRT, 0.32)
 			var dust := DIRT
 			dust.a = 0.48
-			draw_rect(Rect2(_snap_px(center + Vector2(-10, 5)), Vector2(5, 5)), dust)
-			draw_rect(Rect2(_snap_px(center + Vector2(7, 4)), Vector2(5, 5)), dust)
-			draw_rect(Rect2(_snap_px(center + Vector2(-11, 11)), Vector2(22, 3)), DIRT_DARK)
-		var body_radius := 10.5 + pressure_ratio * 5.0 + hit_phase * 2.8
+			draw_circle(center + Vector2(-8, 7), 3.0, dust)
+			draw_circle(center + Vector2(9, 6), 2.5, dust)
+			draw_circle(center + Vector2(0, 12), 4.0, dust)
+		var body_radius := 12.0
 		if int(enemy["kind"]) == ENEMY_BOSS_KIND:
-			body_radius = 17.0 + pressure_ratio * 7.0 + hit_phase * 4.0
+			body_radius = 18.0
 			if float(enemy.get("boss_hurt_flash", 0.0)) > 0.0:
 				color = color.lerp(Color.WHITE, 0.55)
 		elif int(enemy["kind"]) == ENEMY_REAPER_KIND:
-			body_radius = 20.0 + sin(anim_time * 5.0) * 1.5
-		if pressure_ratio > 0.0 or inflated:
-			var glow := PRESSURE
-			glow.a = 0.14 + pressure_ratio * 0.24
-			draw_rect(Rect2(_snap_px(center) - Vector2(body_radius, body_radius), Vector2(body_radius * 2.0, body_radius * 2.0)), glow)
+			body_radius = 20.0
 		if _enemy_is_bounty(enemy):
 			var bounty_glow := RUPTURE
 			bounty_glow.a = 0.55 + sin(anim_time * 10.0) * 0.14
 			_draw_pixel_ring(center, body_radius + 8.0, bounty_glow, 3)
 			_draw_pixel_diamond(center + Vector2(0, -body_radius - 15.0), 3, bounty_glow)
 		var sprite_center := center + (Vector2(0, 2) if pressure_pose == "recovering" else Vector2.ZERO)
-		_draw_enemy_sprite(sprite_center, color, int(enemy["kind"]), inflated, hit_phase, pressure_pose)
+		_draw_enemy_sprite(sprite_center, color, int(enemy["kind"]), inflated, hit_phase, pressure_pose, enemy.get("face_dir", Vector2i.LEFT))
+		var crystal_level := pressure_ratio
+		if pressure_pose == "pumping" or pressure_pose == "critical":
+			crystal_level = maxf(crystal_level, float(mini(lance_pump_count, 3)) / 3.0)
+		if inflated or pressure_ratio > 0.0:
+			var contact := -Vector2(facing) if _is_enemy_lance_target(enemy) else Vector2.LEFT
+			_draw_resonance_crystal(sprite_center, _enemy_sprite_radius(int(enemy["kind"])), crystal_level, contact, pressure_pose == "critical")
 		_draw_enemy_pressure_pose(center, body_radius, pressure_pose)
-		for ring in range(mini(3, missing_hp)):
-			var ring_color := PRESSURE.lerp(RUPTURE, float(ring) / 3.0)
-			ring_color.a = 0.65
-			_draw_pixel_ring(center, body_radius + 3.0 + ring * 3.0, ring_color, 2)
-		if pressure_ratio >= 0.34:
-			_draw_enemy_cracks(center, body_radius, pressure_ratio)
+		if pressure_ratio >= 0.34 and not inflated:
+			_draw_enemy_cracks(center, body_radius * 0.8, pressure_ratio)
 		_draw_enemy_status_overlays(center, enemy, body_radius, pressure_ratio, hit_phase)
-		if enemy["kind"] == ENEMY_BURROWER_KIND:
-			var stripe := Color("#5b3518")
-			draw_rect(Rect2(_snap_px(center) + Vector2(-9, 6), Vector2(18, 3)), stripe)
-		elif enemy["kind"] == ENEMY_FYGAR_KIND:
-			var flame := FIRE
-			flame.a = 0.85 if float(enemy.get("fire_active", 0.0)) > 0.0 else 0.45
-			draw_rect(Rect2(_snap_px(center) + Vector2(-3, 7), Vector2(6, 5)), flame)
-		elif enemy["kind"] == ENEMY_SPITTER_KIND:
-			draw_rect(Rect2(_snap_px(center) + Vector2(-2, -13), Vector2(4, 7)), ENEMY_SPITTER.lerp(PRESSURE, 0.4))
-		elif enemy["kind"] == ENEMY_SHIELDBUG_KIND:
-			var shield := ENEMY_SHIELDBUG.darkened(0.35)
-			var dir: Vector2i = enemy.get("face_dir", Vector2i.LEFT)
-			draw_rect(Rect2(_snap_px(center + Vector2(dir) * 8.0 - Vector2(4, 5)), Vector2(8, 10)), shield)
+		if enemy["kind"] == ENEMY_KILN_KIND and float(enemy.get("fire_active", 0.0)) > 0.0:
+			var heat := FIRE
+			heat.a = 0.35
+			draw_circle(center, body_radius * 1.2, heat)
 		elif enemy["kind"] == ENEMY_LEECH_KIND:
 			if int(enemy.get("stolen_loot", 0)) > 0:
 				_draw_pixel_diamond(center + Vector2(0, -15), 2, GEM.lerp(ENEMY_LEECH, 0.35))
@@ -8279,8 +8407,6 @@ func _draw_enemy_lunge_telegraph(enemy: Dictionary) -> void:
 
 func _draw_lance_cells() -> void:
 	var lance_color := _lance_color()
-	var dark := lance_color.darkened(0.55)
-	dark.a = 0.68
 	var hot := lance_color.lerp(Color.WHITE, 0.45)
 	hot.a = 0.82
 	var flicker := 0.5 + sin(anim_time * 22.0) * 0.5
@@ -8288,91 +8414,48 @@ func _draw_lance_cells() -> void:
 	if dir == Vector2.ZERO:
 		dir = Vector2.RIGHT
 	dir = dir.normalized()
-	var horizontal := absf(dir.x) >= absf(dir.y)
-	var muzzle := _visual_to_center(player_visual_pos) + dir * 13.0
+	var normal := Vector2(-dir.y, dir.x)
+	var muzzle := _visual_to_center(player_visual_pos) + dir * 16.0
 	var tip_cell: Vector2i = last_attack_cells[last_attack_cells.size() - 1]
 	var tip_center := _cell_center(tip_cell)
-	var cable := Color("#07121a")
-	cable.a = 0.72
-	var inner := lance_color.lerp(Color.WHITE, 0.2)
-	inner.a = 0.9
-	_draw_pixel_segment(muzzle, tip_center - dir * 6.0, cable, 8)
-	_draw_pixel_segment(muzzle + Vector2(-dir.y, dir.x) * 2.0, tip_center - dir * 7.0 + Vector2(-dir.y, dir.x) * 2.0, dark, 3)
-	_draw_pixel_segment(muzzle, tip_center - dir * 8.0, inner, 3)
-	for i in range(last_attack_cells.size()):
-		var pos: Vector2i = last_attack_cells[i]
-		if not _cell_intersects_board_view(pos):
-			continue
-		var cell_px := _cell_to_px(pos)
-		var core_rect := Rect2(cell_px + Vector2(4, 12), Vector2(CELL - 8, 4))
-		var edge_rect := Rect2(cell_px + Vector2(6, 9), Vector2(CELL - 12, 10))
-		var brace_rect := Rect2(cell_px + Vector2(12, 7), Vector2(4, 14))
-		if not horizontal:
-			core_rect = Rect2(cell_px + Vector2(12, 4), Vector2(4, CELL - 8))
-			edge_rect = Rect2(cell_px + Vector2(9, 6), Vector2(10, CELL - 12))
-			brace_rect = Rect2(cell_px + Vector2(7, 12), Vector2(14, 4))
-		draw_rect(edge_rect, dark)
-		draw_rect(core_rect, lance_color)
+	var chain_end := tip_center - dir * 8.0
+	var length := muzzle.distance_to(chain_end)
+	# Chain links alternate edge-on and face-on.
+	var links := maxi(1, floori(length / 6.0))
+	for i in range(links):
+		var p := muzzle + dir * (float(i) + 0.5) * (length / float(links))
 		if i % 2 == 0:
-			draw_rect(brace_rect, cable)
-			draw_rect(brace_rect.grow(-1), hot.darkened(0.2))
-		if ((i + floori(anim_time * 14.0)) % 2) == 0:
-			var spark_pos := cell_px + Vector2(6 + ((i * 7) % 15), 6 + ((i * 5) % 15))
-			draw_rect(Rect2(_snap_px(spark_pos), Vector2(4, 4)), hot)
-		if i == last_attack_cells.size() - 1:
-			var center := _cell_center(pos)
-			hot.a = 0.50 + flicker * 0.32
-			_draw_pixel_ring(center, 9.0 + flicker * 4.0, hot, 2)
-			_draw_lance_harpoon_head(center, dir, lance_color, hot, flicker)
+			draw_line(p - dir * 3.0, p + dir * 3.0, SPIKE_BRASS_DARK, 3.0, true)
+		else:
+			draw_arc(p, 2.6, 0.0, TAU, 10, SPIKE_BRASS, 1.4, true)
+	var hum := lance_color
+	hum.a = 0.28 + flicker * 0.18
+	draw_line(muzzle + normal * 0.5, chain_end + normal * 0.5, hum, 1.0, true)
+	_draw_lance_harpoon_head(tip_center, dir, lance_color, hot, flicker)
 
 
 func _draw_lance_harpoon_head(center: Vector2, dir: Vector2, color: Color, hot: Color, flicker: float) -> void:
-	var p := _snap_px(center)
-	var dark := color.darkened(0.6)
-	dark.a = 0.86
-	var point := hot.lerp(Color.WHITE, 0.28)
-	point.a = 0.86 + flicker * 0.14
-	if absf(dir.x) >= absf(dir.y):
-		var sign := 1 if dir.x >= 0.0 else -1
-		draw_rect(Rect2(p + Vector2(-7 if sign > 0 else -5, -4), Vector2(12, 8)), dark)
-		draw_rect(Rect2(p + Vector2(-5 if sign > 0 else -7, -2), Vector2(12, 4)), color)
-		draw_rect(Rect2(p + Vector2(5 if sign > 0 else -10, -6), Vector2(5, 12)), point)
-		draw_rect(Rect2(p + Vector2(0 if sign > 0 else -4, -9), Vector2(4, 6)), dark)
-		draw_rect(Rect2(p + Vector2(0 if sign > 0 else -4, 3), Vector2(4, 6)), dark)
-	else:
-		var sign := 1 if dir.y >= 0.0 else -1
-		draw_rect(Rect2(p + Vector2(-4, -7 if sign > 0 else -5), Vector2(8, 12)), dark)
-		draw_rect(Rect2(p + Vector2(-2, -5 if sign > 0 else -7), Vector2(4, 12)), color)
-		draw_rect(Rect2(p + Vector2(-6, 5 if sign > 0 else -10), Vector2(12, 5)), point)
-		draw_rect(Rect2(p + Vector2(-9, 0 if sign > 0 else -4), Vector2(6, 4)), dark)
-		draw_rect(Rect2(p + Vector2(3, 0 if sign > 0 else -4), Vector2(6, 4)), dark)
+	var spike := [Vector2(1.0, 0.0), Vector2(-0.35, -0.55), Vector2(-0.15, 0.0), Vector2(-0.35, 0.55)]
+	_draw_faceted(center - dir * 3.0, spike, Vector2(10, 10), SPIKE_BRASS, false, Vector2(0.1, -0.15), dir.angle(), false)
+	var ring := hot
+	for i in range(3):
+		var t := fmod(anim_time * 2.4 + float(i) / 3.0, 1.0)
+		ring.a = (0.55 + flicker * 0.2) * (1.0 - t)
+		draw_arc(center + dir * 4.0, 6.0 + t * 12.0, dir.angle() - 1.1, dir.angle() + 1.1, 12, ring, 1.6, true)
 
 
 func _draw_lance_launcher(center: Vector2, dir: Vector2, color: Color) -> void:
-	var p := _snap_px(center)
-	var dark := Color("#09131a")
-	var metal := color.lerp(Color.WHITE, 0.34)
-	var grip := Color("#12333a")
-	if absf(dir.x) >= absf(dir.y):
-		var sign := 1 if dir.x >= 0.0 else -1
-		var body_pos := p + Vector2(-5 if sign > 0 else -13, -8)
-		var barrel_pos := p + Vector2(8 if sign > 0 else -22, -5)
-		draw_rect(Rect2(body_pos + Vector2(-1, 1), Vector2(18, 12)), dark)
-		draw_rect(Rect2(body_pos, Vector2(15, 9)), color.darkened(0.25))
-		draw_rect(Rect2(barrel_pos, Vector2(18, 5)), dark)
-		draw_rect(Rect2(barrel_pos + Vector2(2, 1), Vector2(14, 3)), metal)
-		draw_rect(Rect2(p + Vector2(0 if sign > 0 else -5, 2), Vector2(5, 9)), grip)
-		draw_rect(Rect2(p + Vector2(-12 if sign > 0 else 7, -4), Vector2(8, 5)), dark)
-	else:
-		var sign := 1 if dir.y >= 0.0 else -1
-		var body_pos := p + Vector2(-8, -5 if sign > 0 else -13)
-		var barrel_pos := p + Vector2(-5, 8 if sign > 0 else -22)
-		draw_rect(Rect2(body_pos + Vector2(1, -1), Vector2(12, 18)), dark)
-		draw_rect(Rect2(body_pos, Vector2(9, 15)), color.darkened(0.25))
-		draw_rect(Rect2(barrel_pos, Vector2(5, 18)), dark)
-		draw_rect(Rect2(barrel_pos + Vector2(1, 2), Vector2(3, 14)), metal)
-		draw_rect(Rect2(p + Vector2(2, 0 if sign > 0 else -5), Vector2(9, 5)), grip)
-		draw_rect(Rect2(p + Vector2(-4, -12 if sign > 0 else 7), Vector2(5, 8)), dark)
+	# A brass tuning fork: two prongs ringing with the lance element colour.
+	var normal := Vector2(-dir.y, dir.x)
+	var base := center + dir * 7.0
+	draw_line(center + dir * 2.0, base, SPIKE_BRASS_DARK, 3.0, true)
+	for side in [-1.0, 1.0]:
+		var root: Vector2 = base + normal * 3.0 * side
+		draw_line(base, root, SPIKE_BRASS, 2.5, true)
+		draw_line(root, root + dir * 9.0, SPIKE_BRASS, 2.5, true)
+	var hum := color
+	hum.a = 0.35 + sin(anim_time * 30.0) * 0.2
+	draw_arc(base + dir * 10.0, 5.0, dir.angle() - 0.9, dir.angle() + 0.9, 10, hum, 1.5, true)
 
 
 func _draw_zap_feedback() -> void:
@@ -8412,11 +8495,7 @@ func _draw_pixel_zap(from: Vector2, to: Vector2, color: Color, seed: int) -> voi
 
 
 func _draw_pixel_segment(a: Vector2, b: Vector2, color: Color, thickness: int) -> void:
-	var delta := b - a
-	var steps := maxi(1, ceili(delta.length() / 4.0))
-	for i in range(steps + 1):
-		var p := _snap_px(a.lerp(b, float(i) / float(steps)))
-		_draw_world_rect(Rect2(p - Vector2(thickness * 0.5, thickness * 0.5), Vector2(thickness, thickness)), color)
+	draw_line(a, b, color, float(thickness), true)
 
 
 func _draw_player(pc: Vector2) -> void:
@@ -8427,53 +8506,40 @@ func _draw_player(pc: Vector2) -> void:
 	var moving := player_move_dir != Vector2i.ZERO
 	var stride := sin(anim_time * 16.0) * (1.0 if moving else 0.0)
 	var bob := absf(stride) * 1.2
-	var color := PLAYER.lerp(Color.WHITE, 0.55) if hurt_flash > 0.0 else PLAYER
+	var suit := PLAYER.lerp(Color.WHITE, 0.55) if hurt_flash > 0.0 else PLAYER
 	var core := pc + Vector2(0.0, -bob)
-	var rows := [
-		"..SSS..",
-		".SKKKS.",
-		".KFEKK.",
-		"TTKKKLL",
-		"TTKKK.L",
-		".DKKD..",
-		".D.D...",
-        ".B.B..."
-	]
-	if facing == Vector2i.LEFT:
-		rows = _flip_rows(rows)
-	elif facing == Vector2i.UP:
-		rows = [
-			"..SSS..",
-			".SKKKS.",
-			".KFEK.",
-			"LTKKKTL",
-			".TKKKT.",
-			".DKKD.",
-			".B.DB.",
-            "...."
-		]
+	var side := facing == Vector2i.LEFT or facing == Vector2i.RIGHT
+	var flip := facing == Vector2i.LEFT
+	var fwd := -1.0 if flip else 1.0
+	var boot := Color("#2a1d17")
+	draw_line(core + Vector2(-3, 6), core + Vector2(-3 - stride * 2.0, 12), boot, 3.0, true)
+	draw_line(core + Vector2(3, 6), core + Vector2(3 + stride * 2.0, 12), boot, 3.0, true)
+	var body := [Vector2(0.55, -0.35), Vector2(0.62, 0.35), Vector2(0.3, 0.7), Vector2(-0.3, 0.7), Vector2(-0.62, 0.35), Vector2(-0.55, -0.35)]
+	_draw_faceted(core + Vector2(0, 2), body, Vector2(13, 13), suit, flip)
+	var helmet := [Vector2(0.66, 0.08), Vector2(0.52, -0.45), Vector2(0.0, -0.7), Vector2(-0.52, -0.45), Vector2(-0.66, 0.08)]
+	_draw_faceted(core + Vector2(0, -4), helmet, Vector2(13, 13), Color("#5a6070"), flip, Vector2(-0.2, -0.4), 0.0, false)
+	var brim := Color("#2c2f38")
+	draw_line(core + Vector2(-9, -3), core + Vector2(9, -3), brim, 2.0, true)
+	var skin := PLAYER_SKIN.lerp(Color.WHITE, 0.35 if hurt_flash > 0.0 else 0.0)
+	var lamp_pos := core + Vector2(0, -9)
+	if side:
+		draw_circle(core + Vector2(3.5 * fwd, -2), 3.0, skin)
+		draw_circle(core + Vector2(5.0 * fwd, -2.5), 0.9, GEO_INK)
+		lamp_pos = core + Vector2(5.5 * fwd, -7.5)
 	elif facing == Vector2i.DOWN:
-		rows = [
-			".KFEK.",
-			".SKKKS.",
-			"TTKKKTT",
-			".TKKKT.",
-			".DKKD.",
-            ".B.DB."
-		]
-	var palette := {
-		"K": color,
-		"D": PLAYER_DARK,
-		"S": PLAYER_SKIN.lerp(Color.WHITE, 0.35 if hurt_flash > 0.0 else 0.0),
-		"F": Color("#101018"),
-		"E": Color("#ffffff"),
-		"B": Color("#0b3835"),
-		"T": Color("#0c3a37"),
-		"L": PRESSURE
-	}
-	var silhouette := {"K": Color("#05060a"), "D": Color("#05060a"), "S": Color("#05060a"), "F": Color("#05060a"), "E": Color("#05060a"), "B": Color("#05060a"), "T": Color("#05060a"), "L": Color("#05060a")}
-	_draw_pixel_sprite(core + Vector2(2, 3), rows, silhouette, 3)
-	_draw_pixel_sprite(core, rows, palette, 3)
+		draw_circle(core + Vector2(0, -1.5), 3.4, skin)
+		draw_circle(core + Vector2(-1.4, -2), 0.8, GEO_INK)
+		draw_circle(core + Vector2(1.4, -2), 0.8, GEO_INK)
+		lamp_pos = core + Vector2(0, -8)
+	var beam := LANTERN
+	var beam_dir := forward if forward.y <= 0.0 or side else Vector2(0, 1)
+	for i in range(3):
+		beam.a = 0.06
+		var spread := 5.0 + float(i) * 4.0
+		var reach := 18.0 + float(i) * 8.0
+		var beam_normal := Vector2(-beam_dir.y, beam_dir.x)
+		_draw_tri(lamp_pos, lamp_pos + beam_dir * reach + beam_normal * spread, lamp_pos + beam_dir * reach - beam_normal * spread, beam)
+	_draw_glow_eye(lamp_pos, 2.4, LANTERN.lightened(0.3))
 	if lance_active:
 		_draw_lance_launcher(core, forward, _lance_color())
 
@@ -8563,7 +8629,7 @@ func _draw_pause_overlay() -> void:
 	_draw_volume_row(_pause_music_volume_rect(), "Music volume", _music_volume_step())
 	_draw_setting_row(_pause_shake_rect(), "Screen shake", _screen_shake_enabled())
 	_draw_setting_row(_pause_hit_stop_rect(), "Impact hit-stop", _hit_stop_enabled())
-	_draw_setting_row(_pause_pump_rect(), "Hold to pump", _hold_to_pump_enabled())
+	_draw_setting_row(_pause_pump_rect(), "Hold to ring", _hold_to_pump_enabled())
 	_draw_setting_row(_pause_tutorial_rect(), "First-run hints", _tutorial_enabled())
 	_draw_wipe_save_row(_pause_wipe_rect())
 	var prompt := "Esc / P resumes." if not show_touch_controls else "Tap RESUME to continue."
@@ -8618,7 +8684,7 @@ func _guide_pages() -> Array:
 		{
 			"title": "Combat",
 			"lines": [
-				"Face an enemy and fire the lance. Pump pinned targets to rupture them.",
+				"Face an enemy and fire the spike. Hold to ring pinned targets until they shatter.",
 				"Boulders are dangerous tools: lure enemies under falling rocks for big XP.",
 				"Crusher vaults are built for risky boulder kill chains and extraction bonuses."
 			]
@@ -8734,7 +8800,7 @@ func _tutorial_hint_text() -> String:
 	if run_time < 8.0:
 		return "Use the pad to dig. Blue gems feed XP and beacon charge." if show_touch_controls else "Use move keys to dig. Blue gems feed XP and beacon charge."
 	if run_time < 18.0:
-		return "Face an enemy, then hold PUMP until it bursts. Release to disengage." if show_touch_controls else "Face an enemy, then hold Space until it bursts. Release to disengage."
+		return "Face an enemy, then hold TAP until it shatters. Release to disengage." if show_touch_controls else "Face an enemy, then hold Space until it shatters. Release to disengage."
 	if run_time < 36.0:
 		return "Falling boulders crush enemies for big XP, but they can trap you too."
 	if _is_pressure_surge():
@@ -9057,7 +9123,7 @@ func _draw_portrait_status_panel() -> void:
 
 func _draw_mobile_controls() -> void:
 	_draw_dpad()
-	_draw_touch_button(_mobile_lance_rect(), "PUMP", _lance_color(), lance_active)
+	_draw_touch_button(_mobile_lance_rect(), "TAP", _lance_color(), lance_active)
 	if _contextual_interaction_available():
 		var action_label := "EXTRACT" if _can_use_beacon() else "OPEN"
 		var action_color := BEACON_ARMED if _can_use_beacon() else CAVE_KEY
@@ -9642,23 +9708,31 @@ func _draw_pulse_feedback() -> void:
 		color.a = float(effect["alpha"]) * (1.0 - progress)
 		var radius := CELL * (0.18 + float(effect["radius"]) * progress)
 		var pressure_beat := int(effect.get("pressure_beat", 0))
-		_draw_world_pixel_ring(center, radius, color, 4 if pressure_beat != 0 else 3)
-		if pressure_beat != 0:
+		_draw_world_pixel_ring(center, radius, color, 2 if pressure_beat != 0 else 3)
+		if pressure_beat < 0:
 			var marker_count := 4 if pressure_beat < 0 else 4 + mini(pressure_beat, 3) * 2
 			var marker_color := color.lerp(Color.WHITE, 0.28)
 			for marker_i in range(marker_count):
 				var angle := float(marker_i) * TAU / float(marker_count)
 				var marker_dir := Vector2(cos(angle), sin(angle))
 				var marker_pos := _snap_px(center + marker_dir * (radius + 5.0))
-				_draw_world_rect(Rect2(marker_pos - Vector2(2, 2), Vector2(5, 5)), marker_color)
+				draw_circle(marker_pos, 2.2, marker_color)
 		if effect.get("burst", false):
-			var shard_color := RUPTURE
-			shard_color.a = 0.75 * (1.0 - progress)
-			for i in range(9):
-				var angle := float(i) * TAU / 9.0 + float(pos.x - pos.y) * 0.11
+			# The creature shatters into crystal shards.
+			for i in range(12):
+				var angle := float(i) * TAU / 12.0 + float(pos.x - pos.y) * 0.11
 				var dir := Vector2(cos(angle), sin(angle))
-				var shard_pos := _snap_px(center + dir * (8.0 + progress * 18.0))
-				_draw_world_rect(Rect2(shard_pos - Vector2(2, 2), Vector2(4, 4)), shard_color)
+				var travel := 6.0 + progress * (16.0 + float(i % 3) * 7.0)
+				var shard_pos := center + dir * travel + Vector2(0, progress * progress * 10.0)
+				var size := 3.5 + float(i % 3) * 1.2
+				var spin := angle + progress * 6.0
+				var shard_color := GEM if i % 4 != 0 else Color.WHITE
+				if i % 5 == 0:
+					shard_color = SUPER_GEM
+				shard_color.a = 0.9 * (1.0 - progress)
+				var sd := Vector2(cos(spin), sin(spin))
+				var sn := Vector2(-sd.y, sd.x)
+				draw_colored_polygon(PackedVector2Array([shard_pos + sd * size, shard_pos + sn * size * 0.45, shard_pos - sd * size * 0.8, shard_pos - sn * size * 0.45]), shard_color)
 
 
 func _draw_crush_feedback() -> void:
@@ -9768,13 +9842,7 @@ func _draw_world_rect(rect: Rect2, color: Color) -> void:
 
 
 func _draw_world_pixel_ring(center: Vector2, radius: float, color: Color, thickness: int) -> void:
-	var r := maxi(4, roundi(radius))
-	var c := _snap_px(center)
-	var side := r * 2
-	_draw_world_rect(Rect2(c + Vector2(-r, -r), Vector2(side, thickness)), color)
-	_draw_world_rect(Rect2(c + Vector2(-r, r - thickness), Vector2(side, thickness)), color)
-	_draw_world_rect(Rect2(c + Vector2(-r, -r), Vector2(thickness, side)), color)
-	_draw_world_rect(Rect2(c + Vector2(r - thickness, -r), Vector2(thickness, side)), color)
+	_draw_pixel_ring(center, radius, color, thickness)
 
 
 func _draw_world_text(pos: Vector2, value: String, size: int, color: Color) -> void:
@@ -9827,8 +9895,8 @@ func _enemy_color_for_kind(kind: int) -> Color:
 	match kind:
 		ENEMY_BURROWER_KIND:
 			return ENEMY_BURROWER
-		ENEMY_FYGAR_KIND:
-			return ENEMY_FYGAR
+		ENEMY_KILN_KIND:
+			return ENEMY_KILN
 		ENEMY_SPITTER_KIND:
 			return ENEMY_SPITTER
 		ENEMY_SHIELDBUG_KIND:
@@ -9849,8 +9917,8 @@ func _enemy_kind_name(kind: int) -> String:
 	match kind:
 		ENEMY_BURROWER_KIND:
 			return "Burrower"
-		ENEMY_FYGAR_KIND:
-			return "Fygar"
+		ENEMY_KILN_KIND:
+			return "Kiln Beetle"
 		ENEMY_SPITTER_KIND:
 			return "Spitter"
 		ENEMY_SHIELDBUG_KIND:
@@ -9889,9 +9957,9 @@ func _draw_enemy_status_overlays(center: Vector2, enemy: Dictionary, radius: flo
 		var shard_count := 2 + ceili(freeze_ratio * 4.0)
 		for i in range(shard_count):
 			var angle := float(i) * TAU / float(shard_count) + anim_time * 0.12
-			var shard_pos := _snap_px(center + Vector2(cos(angle), sin(angle)) * (radius * 0.58))
-			draw_rect(Rect2(shard_pos, Vector2(5, 3)), ice_color)
-			draw_rect(Rect2(shard_pos + Vector2(2, -3), Vector2(3, 3)), Color("#ddfbffcc"))
+			var shard_dir := Vector2(cos(angle), sin(angle))
+			var shard_pos := center + shard_dir * (radius * 0.95)
+			_draw_tri(shard_pos - shard_dir.orthogonal() * 2.5, shard_pos + shard_dir * 6.0, shard_pos + shard_dir.orthogonal() * 2.5, ice_color)
 
 	var burn_time := float(enemy.get("burning", 0.0))
 	if burn_time > 0.0:
@@ -9903,9 +9971,10 @@ func _draw_enemy_status_overlays(center: Vector2, enemy: Dictionary, radius: flo
 		for i in range(4):
 			var x := -9.0 + float(i) * 6.0
 			var flame_h := 5.0 + burn_ratio * 7.0 + sin(anim_time * 11.0 + float(i)) * 2.0
-			draw_rect(Rect2(_snap_px(center + Vector2(x, -radius - 1.0)), Vector2(4, flame_h)), ember)
-		draw_rect(Rect2(_snap_px(center + Vector2(-10, -radius - 10.0)), Vector2(5, 4)), smoke)
-		draw_rect(Rect2(_snap_px(center + Vector2(5, -radius - 13.0)), Vector2(6, 4)), smoke)
+			var flame_base := center + Vector2(x, -radius * 0.6)
+			_draw_tri(flame_base + Vector2(-2.5, 0), flame_base + Vector2(0.5, -flame_h), flame_base + Vector2(2.5, 0), ember)
+		draw_circle(center + Vector2(-8, -radius - 8.0), 2.5, smoke)
+		draw_circle(center + Vector2(7, -radius - 11.0), 3.0, smoke)
 
 	var shock_time := float(enemy.get("shocked", 0.0))
 	if shock_time > 0.0:
@@ -9919,8 +9988,7 @@ func _draw_enemy_status_overlays(center: Vector2, enemy: Dictionary, radius: flo
 			var a := center + Vector2(cos(angle), sin(angle)) * (radius + 3.0)
 			var b := center + Vector2(cos(angle + 0.34), sin(angle + 0.34)) * (radius + 9.0)
 			_draw_pixel_segment(a, b, spark, 3)
-		draw_rect(Rect2(_snap_px(center + Vector2(-3, -radius - 8.0)), Vector2(4, 6)), bright)
-		draw_rect(Rect2(_snap_px(center + Vector2(0, -radius - 3.0)), Vector2(4, 4)), spark)
+		draw_polyline(PackedVector2Array([center + Vector2(-2, -radius - 9.0), center + Vector2(2, -radius - 5.0), center + Vector2(-1, -radius - 4.0), center + Vector2(3, -radius)]), bright, 1.5, true)
 
 	var lunge_windup := float(enemy.get("attack_windup", 0.0))
 	if lunge_windup > 0.0:
@@ -9928,8 +9996,8 @@ func _draw_enemy_status_overlays(center: Vector2, enemy: Dictionary, radius: flo
 		var riposte := PRESSURE.lerp(RUPTURE, 0.35 + lunge_ratio * 0.45)
 		riposte.a = 0.62 + lunge_ratio * 0.26
 		_draw_pixel_ring(center, radius + 7.0 + lunge_ratio * 4.0, riposte, 3)
-		draw_rect(Rect2(_snap_px(center + Vector2(-3, -radius - 13.0)), Vector2(6, 8)), riposte)
-		draw_rect(Rect2(_snap_px(center + Vector2(-3, -radius - 3.0)), Vector2(6, 4)), riposte)
+		draw_line(center + Vector2(0, -radius - 14.0), center + Vector2(0, -radius - 7.0), riposte, 3.0, true)
+		draw_circle(center + Vector2(0, -radius - 3.0), 1.8, riposte)
 
 	if pressure_ratio > 0.0:
 		var wound := RUPTURE
@@ -9937,21 +10005,18 @@ func _draw_enemy_status_overlays(center: Vector2, enemy: Dictionary, radius: flo
 		var chips := 1 + ceili(pressure_ratio * 4.0)
 		for i in range(chips):
 			var angle := float(i * 5) * TAU / 11.0
-			var chip_pos := _snap_px(center + Vector2(cos(angle), sin(angle)) * (radius * 0.78))
-			draw_rect(Rect2(chip_pos, Vector2(4, 4)), wound)
+			var chip_pos := center + Vector2(cos(angle), sin(angle)) * (radius * 0.78)
+			draw_circle(chip_pos, 1.6, wound)
 
 
 func _draw_enemy_cracks(center: Vector2, radius: float, pressure_ratio: float) -> void:
-	var crack_color := Color("#fff0c2")
-	crack_color.a = 0.4 + pressure_ratio * 0.35
+	var crack_color := Color(1, 1, 1, 0.3 + pressure_ratio * 0.4)
 	for i in range(3):
-		var angle := anim_time * 0.4 + float(i) * TAU / 3.0
-		var start := center + Vector2(cos(angle), sin(angle)) * (radius * 0.2)
+		var angle := float(i) * TAU / 3.0 + 0.4
+		var start := center + Vector2(cos(angle), sin(angle)) * (radius * 0.15)
 		var mid := center + Vector2(cos(angle + 0.35), sin(angle + 0.35)) * (radius * 0.55)
 		var end := center + Vector2(cos(angle + 0.1), sin(angle + 0.1)) * (radius * 0.9)
-		draw_rect(Rect2(_snap_px(start), Vector2(3, 3)), crack_color)
-		draw_rect(Rect2(_snap_px(mid), Vector2(3, 3)), crack_color)
-		draw_rect(Rect2(_snap_px(end), Vector2(3, 3)), crack_color)
+		draw_polyline(PackedVector2Array([start, mid, end]), crack_color, 1.2, true)
 
 
 func _enemy_melee_visual_offset(enemy: Dictionary) -> Vector2:
@@ -9990,30 +10055,27 @@ func _draw_tunnel_tiles() -> void:
 
 
 func _draw_rock_sprite(center: Vector2, rock: Dictionary) -> void:
-	var rows := [
-		".SSS.",
-		"SRRRS",
-		"SRRRS",
-		"RRRRR",
-        ".DDD."
-	]
-	var shadow_palette := {"S": ROCK_SHADOW, "R": ROCK_SHADOW, "D": Color("#303641")}
-	_draw_pixel_sprite(center + Vector2(3, 3), rows, shadow_palette, 4)
-	var palette := {"S": Color("#c9d0d8"), "R": ROCK, "D": ROCK_SHADOW}
-	_draw_pixel_sprite(center, rows, palette, 4)
+	var rp: Vector2i = rock.get("pos", Vector2i.ZERO)
+	var seed_value := (rp.x * 73 + int(rock.get("id", rp.y)) * 31) % 7
+	var shape := []
+	for i in range(8):
+		var angle := float(i) * TAU / 8.0 + 0.2
+		var r := 1.0 - 0.12 * float((seed_value + i * 3) % 3)
+		shape.append(Vector2(cos(angle) * r * 1.05, sin(angle) * r * 0.92))
+	_draw_faceted(center, shape, Vector2(12, 12), ROCK, false, Vector2(-0.25, -0.32))
 	if not bool(rock.get("falling", false)):
 		return
 	if int(rock.get("fall_distance", 0)) == 0:
 		var warning := WARN
 		warning.a = 0.55 + sin(anim_time * 18.0) * 0.22
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(-9, 14)), Vector2(18, 3)), warning)
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(-5, 19)), Vector2(4, 4)), warning)
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(3, 19)), Vector2(4, 4)), warning)
+		draw_line(center + Vector2(-9, 15), center + Vector2(9, 15), warning, 2.5, true)
+		draw_circle(center + Vector2(-4, 20), 1.8, warning)
+		draw_circle(center + Vector2(4, 20), 1.8, warning)
 	else:
 		var streak := ROCK_SHADOW
 		streak.a = 0.72
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(-8, -24)), Vector2(3, 9)), streak)
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(5, -20)), Vector2(3, 7)), streak)
+		draw_line(center + Vector2(-7, -24), center + Vector2(-7, -15), streak, 2.0, true)
+		draw_line(center + Vector2(6, -20), center + Vector2(6, -13), streak, 2.0, true)
 
 
 func _enemy_pressure_pose(enemy: Dictionary) -> String:
@@ -10030,163 +10092,265 @@ func _enemy_pressure_pose(enemy: Dictionary) -> String:
 func _draw_enemy_pressure_pose(center: Vector2, radius: float, pose: String) -> void:
 	if pose == "neutral":
 		return
-	var color := PRESSURE
 	if pose == "critical":
-		color = RUPTURE.lerp(Color.WHITE, 0.25)
-		color.a = 0.7 + sin(anim_time * 16.0) * 0.2
-		for dir in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
-			var mark := _snap_px(center + dir * (radius + 7.0))
-			_draw_world_rect(Rect2(mark - Vector2(3, 3), Vector2(6, 6)), color)
+		var glint := Color(1, 1, 1, 0.7 + sin(anim_time * 16.0) * 0.2)
+		for i in range(4):
+			var angle := float(i) * TAU / 4.0 + PI / 4.0 + anim_time * 1.5
+			var p := center + Vector2(cos(angle), sin(angle)) * (radius + 6.0)
+			draw_line(p - Vector2(3, 0), p + Vector2(3, 0), glint, 1.5, true)
+			draw_line(p - Vector2(0, 3), p + Vector2(0, 3), glint, 1.5, true)
 	elif pose == "pumping":
-		color.a = 0.72
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(-radius - 6.0, -5)), Vector2(3, 10)), color)
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(radius + 3.0, -5)), Vector2(3, 10)), color)
+		var ring := PRESSURE
+		ring.a = 0.55
+		var wobble := fmod(anim_time * 3.0, 1.0)
+		ring.a *= 1.0 - wobble
+		draw_arc(center, radius + 4.0 + wobble * 8.0, 0.0, TAU, 32, ring, 1.5, true)
 	else:
-		color = color.darkened(0.3)
-		color.a = 0.5
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(-7, radius + 5.0)), Vector2(5, 3)), color)
-		_draw_world_rect(Rect2(_snap_px(center + Vector2(3, radius + 8.0)), Vector2(4, 3)), color)
+		# Crystal flakes falling away as the creature shakes loose.
+		var flake := PRESSURE
+		flake.a = 0.55
+		for i in range(3):
+			var fall := fmod(anim_time * 1.6 + float(i) * 0.33, 1.0)
+			var p := center + Vector2(-6.0 + float(i) * 6.0, radius * 0.4 + fall * 12.0)
+			flake.a = 0.55 * (1.0 - fall)
+			draw_colored_polygon(PackedVector2Array([p + Vector2(0, -2.5), p + Vector2(1.8, 0), p + Vector2(0, 2.5), p + Vector2(-1.8, 0)]), flake)
 
 
-func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool, hit_phase: float, pressure_pose := "neutral") -> void:
-	var rows := [
-		".XXX.",
-		"XXXXX",
-		"XEXEX",
-		"XXXXX",
-		".XAX."
-	]
-	if kind == ENEMY_BURROWER_KIND:
-		rows = [
-			".XXX.",
-			"XXXXX",
-			"XEXEX",
-			"AAAAA",
-			".XXX."
-		]
-	elif kind == ENEMY_FYGAR_KIND:
-		rows = [
-			".XXX.",
-			"XXXXX",
-			"XEXEX",
-			"XXXXX",
-			".AFA."
-		]
-	elif kind == ENEMY_SPITTER_KIND:
-		rows = [
-			"..A..",
-			".XXX.",
-			"XXEXX",
-			"XXXXX",
-			".XAX."
-		]
-	elif kind == ENEMY_SHIELDBUG_KIND:
-		rows = [
-			".AAA.",
-			"AXXXA",
-			"AXEXA",
-			"AXXXA",
-			".AAA."
-		]
-	elif kind == ENEMY_LEECH_KIND:
-		rows = [
-			".XXX.",
-			"XXXXX",
-			"XEXEX",
-			".XXX.",
-			"..A.."
-		]
-	elif kind == ENEMY_BROOD_POD_KIND:
-		rows = [
-			".AAA.",
-			"AXXXA",
-			"XXEXX",
-			"AXXXA",
-			".AAA."
-		]
-	elif kind == ENEMY_BOSS_KIND:
-		rows = [
-			"..AAA..",
-			".XXXXX.",
-			"XXEXEXX",
-			"XXXXXXX",
-			"AXXXXA.",
-			".AFAF."
-		]
-	elif kind == ENEMY_REAPER_KIND:
-		rows = [
-			"..AAA..",
-			".XXXXX.",
-			"XXEXEXX",
-			"XXXXXXX",
-			".XXXXX.",
-			"..X.X..",
-			".A...A."
-		]
-	var px := 4 if pressure_pose == "pumping" or pressure_pose == "critical" else 3
-	if kind == ENEMY_BOSS_KIND or kind == ENEMY_REAPER_KIND:
-		px = 4
-	if hit_phase > 0.35:
-		px += 1
-	var accent := color.darkened(0.35)
-	if kind == ENEMY_FYGAR_KIND:
-		accent = FIRE
-	elif kind == ENEMY_BOSS_KIND:
-		accent = RUPTURE
-	elif kind == ENEMY_REAPER_KIND:
-		accent = Color("#69708c")
-	var palette := {
-		"X": color,
-		"E": Color("#101018"),
-		"A": accent,
-		"F": Color("#fff2b5")
-	}
-	var silhouette := {"X": Color("#05060a"), "E": Color("#05060a"), "A": Color("#05060a"), "F": Color("#05060a")}
-	_draw_pixel_sprite(center + Vector2(2, 3), rows, silhouette, px)
-	_draw_pixel_sprite(center, rows, palette, px)
+func _draw_enemy_sprite(center: Vector2, color: Color, kind: int, inflated: bool, hit_phase: float, pressure_pose := "neutral", face_dir := Vector2i.LEFT) -> void:
+	var radius := _enemy_sprite_radius(kind)
+	var flip := face_dir.x < 0
+	var body := center
+	if pressure_pose == "pumping" or pressure_pose == "critical":
+		# Held in resonance: a fixed-size shiver, never a swelling body.
+		body += Vector2(sin(anim_time * 47.0) * 0.9, cos(anim_time * 39.0) * 0.5)
+	var base := color.lerp(Color.WHITE, hit_phase * 0.5)
+	var scale := Vector2(radius, radius)
+	if kind == ENEMY_REAPER_KIND:
+		flip = false
+	# Legs for crawlers.
+	if kind in [ENEMY_GRUB_KIND, ENEMY_BURROWER_KIND, ENEMY_KILN_KIND, ENEMY_SHIELDBUG_KIND, ENEMY_BOSS_KIND]:
+		var leg_color := GEO_INK
+		leg_color.a = 0.9
+		for i in range(3):
+			var lx := (-0.55 + float(i) * 0.55) * radius
+			var step := sin(anim_time * 12.0 + float(i) * 2.1) * 2.0
+			draw_line(body + Vector2(lx, radius * 0.55), body + Vector2(lx - 2.0 + step, radius * 0.95), leg_color, 2.0, true)
+	_draw_faceted(body, _enemy_shape(kind), scale, base, flip)
+	var fwd := -1.0 if flip else 1.0
+	var eye := _enemy_eye_color(kind)
+	match kind:
+		ENEMY_GRUB_KIND:
+			var seg := GEO_INK
+			seg.a = 0.45
+			for i in range(3):
+				var sx := (-0.5 + float(i) * 0.42) * radius * fwd
+				draw_arc(body + Vector2(sx, 0), radius * 0.62, -1.1, 1.1, 8, seg, 1.2, true)
+			_draw_glow_eye(body + Vector2(0.62 * radius * fwd, -0.2 * radius), 1.8, eye)
+			_draw_glow_eye(body + Vector2(0.8 * radius * fwd, 0.06 * radius), 1.4, eye)
+		ENEMY_BURROWER_KIND:
+			var drill := [Vector2(0.62, -0.42), Vector2(1.4, 0.0), Vector2(0.62, 0.42)]
+			_draw_faceted(body, drill, scale, base.darkened(0.2).lerp(Color("#c9c1b0"), 0.4), flip, Vector2(0.8, -0.1), 0.0, false)
+			var groove := GEO_INK
+			groove.a = 0.6
+			for i in range(3):
+				var gx := (0.78 + float(i) * 0.18) * radius * fwd
+				draw_line(body + Vector2(gx, -0.3 * radius + float(i) * 2.0), body + Vector2(gx + 2.0 * fwd, 0.3 * radius - float(i) * 2.0), groove, 1.0, true)
+			_draw_glow_eye(body + Vector2(0.3 * radius * fwd, -0.4 * radius), 1.5, eye)
+		ENEMY_KILN_KIND:
+			var seam := GEO_INK
+			seam.a = 0.6
+			draw_line(body + Vector2(-0.2 * radius * fwd, -0.9 * radius), body + Vector2(-0.35 * radius * fwd, 0.6 * radius), seam, 1.4, true)
+			var vent := FIRE
+			vent.a = 0.6 + sin(anim_time * 9.0) * 0.25
+			for i in range(3):
+				var vx := (-0.7 + float(i) * 0.28) * radius * fwd
+				draw_line(body + Vector2(vx, -0.4 * radius), body + Vector2(vx + 1.5 * fwd, -0.05 * radius), vent, 2.2, true)
+			_draw_glow_eye(body + Vector2(0.72 * radius * fwd, -0.02 * radius), 1.8, eye)
+		ENEMY_SPITTER_KIND:
+			_draw_glow_eye(body + Vector2(0.18 * radius * fwd, -0.1 * radius), 2.6, eye)
+		ENEMY_SHIELDBUG_KIND:
+			var plate := [Vector2(0.55, -0.98), Vector2(1.08, -0.52), Vector2(1.2, 0.0), Vector2(1.08, 0.52), Vector2(0.55, 0.98), Vector2(0.78, 0.0)]
+			_draw_faceted(body, plate, scale, ENEMY_SHIELDBUG.lightened(0.18), flip, Vector2(0.9, -0.2), 0.0, false)
+			_draw_glow_eye(body + Vector2(0.32 * radius * fwd, -0.28 * radius), 1.5, eye)
+		ENEMY_LEECH_KIND:
+			var mouth := SUPER_GEM.darkened(0.3)
+			draw_arc(body + Vector2(0.86 * radius * fwd, 0), radius * 0.2, 0.0, TAU, 12, mouth, 1.6, true)
+			_draw_glow_eye(body + Vector2(0.45 * radius * fwd, -0.35 * radius), 1.3, eye)
+		ENEMY_BROOD_POD_KIND:
+			var core := SUPER_GEM
+			core.a = 0.55 + sin(anim_time * 5.0) * 0.2
+			draw_circle(body, radius * 0.36, core)
+			_draw_glow_eye(body, 1.8, eye)
+		ENEMY_BOSS_KIND:
+			var mandible := RUPTURE.darkened(0.25)
+			draw_line(body + Vector2(0.85 * radius * fwd, 0.35 * radius), body + Vector2(1.25 * radius * fwd, 0.55 * radius), mandible, 3.0, true)
+			draw_line(body + Vector2(0.85 * radius * fwd, 0.55 * radius), body + Vector2(1.15 * radius * fwd, 0.85 * radius), mandible, 3.0, true)
+			_draw_glow_eye(body + Vector2(0.28 * radius * fwd, -0.25 * radius), 2.6, eye)
+			_draw_glow_eye(body + Vector2(0.62 * radius * fwd, -0.18 * radius), 2.2, eye)
+		ENEMY_REAPER_KIND:
+			draw_colored_polygon(_geo_points(body, [Vector2(0, -0.78), Vector2(0.5, -0.4), Vector2(0.42, 0.2), Vector2(0, 0.42), Vector2(-0.42, 0.2), Vector2(-0.5, -0.4)], scale), Color("#07060c"))
+			_draw_glow_eye(body + Vector2(-0.2 * radius, -0.18 * radius), 2.0, eye)
+			_draw_glow_eye(body + Vector2(0.2 * radius, -0.18 * radius), 2.0, eye)
 
 
-func _draw_pixel_sprite(center: Vector2, rows: Array, palette: Dictionary, pixel_size: int) -> void:
-	var width := 0
-	for raw_row in rows:
-		width = maxi(width, String(raw_row).length())
-	var top_left := _snap_px(center - Vector2(float(width * pixel_size), float(rows.size() * pixel_size)) * 0.5)
-	for y in range(rows.size()):
-		var row := String(rows[y])
-		for x in range(row.length()):
-			var key := row.substr(x, 1)
-			if key == "." or key == " " or not palette.has(key):
-				continue
-			_draw_world_rect(Rect2(top_left + Vector2(x * pixel_size, y * pixel_size), Vector2(pixel_size, pixel_size)), palette[key])
+func _geo_points(center: Vector2, shape: Array, scale: Vector2, flip_x := false, rotation := 0.0) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for raw in shape:
+		var p: Vector2 = raw
+		if flip_x:
+			p.x = -p.x
+		if rotation != 0.0:
+			p = p.rotated(rotation)
+		points.append(center + p * scale)
+	return points
 
 
-func _flip_rows(rows: Array) -> Array:
-	var flipped := []
-	for raw_row in rows:
-		var row := String(raw_row)
-		var reversed := ""
-		for i in range(row.length() - 1, -1, -1):
-			reversed += row.substr(i, 1)
-		flipped.append(reversed)
-	return flipped
+func _draw_faceted(center: Vector2, shape: Array, scale: Vector2, base: Color, flip_x := false, ridge := Vector2(-0.18, -0.24), rotation := 0.0, shadow := true) -> void:
+	# Fans triangles from an off-centre ridge and shades each by its facing to the lamp.
+	var points := _geo_points(center, shape, scale, flip_x, rotation)
+	if points.size() < 3:
+		return
+	if flip_x:
+		ridge.x = -ridge.x
+	if rotation != 0.0:
+		ridge = ridge.rotated(rotation)
+	var ridge_point := center + ridge * scale
+	if shadow:
+		var drop := PackedVector2Array()
+		for p in points:
+			drop.append(p + Vector2(2, 3))
+		draw_colored_polygon(drop, Color(0, 0, 0, 0.32 * base.a))
+	var light := GEO_LIGHT.normalized()
+	var dark := base.darkened(0.42)
+	var bright := base.lightened(0.26)
+	for i in range(points.size()):
+		var a := points[i]
+		var b := points[(i + 1) % points.size()]
+		var facing_dir := ((a + b) * 0.5 - ridge_point).normalized()
+		var shade := clampf(0.5 + 0.55 * facing_dir.dot(light), 0.0, 1.0)
+		var facet_color := dark.lerp(bright, shade)
+		facet_color.a = base.a
+		_draw_tri(ridge_point, a, b, facet_color)
+	var outline := points.duplicate()
+	outline.append(points[0])
+	var ink := GEO_INK
+	ink.a = 0.85 * base.a
+	draw_polyline(outline, ink, 1.4, true)
+
+
+func _draw_tri(a: Vector2, b: Vector2, c: Vector2, color: Color) -> void:
+	if absf((b - a).cross(c - a)) < 0.5:
+		return
+	draw_colored_polygon(PackedVector2Array([a, b, c]), color)
+
+
+func _draw_glow_eye(pos: Vector2, radius: float, color: Color) -> void:
+	var halo := color
+	halo.a = 0.22 * color.a
+	draw_circle(pos, radius * 2.3, halo)
+	draw_circle(pos, radius, color)
+	var spark := Color(1, 1, 1, 0.85 * color.a)
+	draw_circle(pos + Vector2(-radius * 0.35, -radius * 0.35), maxf(0.8, radius * 0.4), spark)
+
+
+func _draw_gem_facets(center: Vector2, radius: float, color: Color) -> void:
+	var shape := [Vector2(0, -1.1), Vector2(0.78, -0.32), Vector2(0.55, 0.45), Vector2(0, 1.0), Vector2(-0.55, 0.45), Vector2(-0.78, -0.32)]
+	var halo := color
+	halo.a = 0.16 * color.a
+	draw_circle(center, radius * 1.6, halo)
+	_draw_faceted(center, shape, Vector2(radius, radius), color, false, Vector2(-0.1, -0.3), 0.0, false)
+	var glint := Color(1, 1, 1, 0.8 * color.a)
+	draw_circle(center + Vector2(-radius * 0.3, -radius * 0.45), maxf(1.0, radius * 0.16), glint)
+
+
+func _enemy_shape(kind: int) -> Array:
+	match kind:
+		ENEMY_BURROWER_KIND:
+			return [Vector2(0.72, -0.4), Vector2(0.45, -0.75), Vector2(-0.2, -0.82), Vector2(-0.8, -0.55), Vector2(-1.02, 0.0), Vector2(-0.8, 0.55), Vector2(-0.2, 0.82), Vector2(0.45, 0.75), Vector2(0.72, 0.4)]
+		ENEMY_KILN_KIND:
+			return [Vector2(0.98, 0.28), Vector2(0.88, -0.28), Vector2(0.45, -0.8), Vector2(-0.2, -0.92), Vector2(-0.78, -0.62), Vector2(-1.02, 0.0), Vector2(-0.9, 0.48), Vector2(-0.4, 0.64), Vector2(0.4, 0.64)]
+		ENEMY_SPITTER_KIND:
+			return [Vector2(0.82, 0.32), Vector2(0.9, -0.2), Vector2(0.5, -0.56), Vector2(0.2, -0.62), Vector2(0.14, -1.12), Vector2(-0.14, -1.12), Vector2(-0.2, -0.62), Vector2(-0.5, -0.56), Vector2(-0.9, -0.2), Vector2(-0.82, 0.32), Vector2(-0.42, 0.72), Vector2(0.42, 0.72)]
+		ENEMY_SHIELDBUG_KIND:
+			return [Vector2(0.62, -0.5), Vector2(0.2, -0.78), Vector2(-0.4, -0.72), Vector2(-0.82, -0.3), Vector2(-0.82, 0.3), Vector2(-0.4, 0.72), Vector2(0.2, 0.78), Vector2(0.62, 0.5)]
+		ENEMY_LEECH_KIND:
+			return [Vector2(1.0, 0.0), Vector2(0.75, -0.5), Vector2(0.2, -0.64), Vector2(-0.4, -0.44), Vector2(-1.2, -0.1), Vector2(-1.25, 0.1), Vector2(-0.4, 0.44), Vector2(0.2, 0.64), Vector2(0.75, 0.5)]
+		ENEMY_BROOD_POD_KIND:
+			var pod := []
+			for i in range(12):
+				var angle := float(i) * TAU / 12.0
+				var r := 1.0 if i % 2 == 0 else 0.8
+				pod.append(Vector2(cos(angle), sin(angle)) * r)
+			return pod
+		ENEMY_BOSS_KIND:
+			return [Vector2(1.1, 0.2), Vector2(1.0, -0.4), Vector2(0.7, -0.7), Vector2(0.55, -1.1), Vector2(0.3, -0.75), Vector2(0.0, -1.2), Vector2(-0.3, -0.75), Vector2(-0.55, -1.1), Vector2(-0.7, -0.7), Vector2(-1.0, -0.4), Vector2(-1.1, 0.2), Vector2(-0.8, 0.75), Vector2(-0.3, 0.9), Vector2(0.3, 0.9), Vector2(0.8, 0.75)]
+		ENEMY_REAPER_KIND:
+			return [Vector2(0.0, -1.2), Vector2(0.6, -0.9), Vector2(0.85, -0.2), Vector2(0.9, 0.7), Vector2(0.5, 1.1), Vector2(0.25, 0.8), Vector2(0.0, 1.15), Vector2(-0.25, 0.8), Vector2(-0.5, 1.1), Vector2(-0.9, 0.7), Vector2(-0.85, -0.2), Vector2(-0.6, -0.9)]
+	# Cave larva
+	return [Vector2(1.05, 0.05), Vector2(0.85, -0.45), Vector2(0.35, -0.72), Vector2(-0.3, -0.7), Vector2(-0.85, -0.45), Vector2(-1.1, 0.0), Vector2(-0.85, 0.45), Vector2(-0.3, 0.66), Vector2(0.35, 0.66), Vector2(0.85, 0.45)]
+
+
+func _enemy_sprite_radius(kind: int) -> float:
+	if kind == ENEMY_BOSS_KIND:
+		return 17.0
+	if kind == ENEMY_REAPER_KIND:
+		return 18.0
+	return 11.0
+
+
+func _enemy_eye_color(kind: int) -> Color:
+	match kind:
+		ENEMY_KILN_KIND:
+			return FIRE
+		ENEMY_BOSS_KIND:
+			return RUPTURE
+		ENEMY_REAPER_KIND:
+			return Color("#dfe6ff")
+		ENEMY_SPITTER_KIND:
+			return GEM
+		ENEMY_LEECH_KIND, ENEMY_BROOD_POD_KIND:
+			return SUPER_GEM.lightened(0.2)
+	return LANTERN.lightened(0.15)
+
+
+func _draw_resonance_crystal(center: Vector2, radius: float, level: float, contact_dir: Vector2, critical: bool) -> void:
+	# Crystal spreads from where the spike struck instead of the body swelling.
+	if level <= 0.0:
+		return
+	var count := clampi(ceili(level * 9.0), 1, 9)
+	var base_angle := contact_dir.angle() if contact_dir != Vector2.ZERO else PI
+	for i in range(count):
+		var spread := (float(i) - 0.5) * 0.62 * (1.0 if i % 2 == 0 else -1.0) * (1.0 + float(i) * 0.08)
+		var angle := base_angle + spread
+		var dir := Vector2(cos(angle), sin(angle))
+		var normal := Vector2(-dir.y, dir.x)
+		var reach := radius * (0.55 + 0.45 * minf(1.0, level + 0.2))
+		var root := center + dir * radius * 0.15
+		var tip := center + dir * (reach + float(i % 3) * 2.0)
+		var width := radius * (0.22 + 0.06 * float(i % 2))
+		var mid := root + dir * (reach * 0.35)
+		var face := PRESSURE.lerp(GEM, 0.35 + 0.15 * float(i % 3))
+		face.a = 0.88
+		if critical:
+			face = face.lerp(Color.WHITE, 0.35 + sin(anim_time * 18.0 + float(i)) * 0.15)
+		_draw_tri(mid + normal * width * 0.5, tip, mid, face)
+		var shaded := face.darkened(0.25)
+		shaded.a = face.a
+		_draw_tri(mid, tip, mid - normal * width * 0.5, shaded)
+		var edge := Color(1, 1, 1, 0.55)
+		draw_line(root, tip, edge, 1.0, true)
+	if critical:
+		var glow := GEM
+		glow.a = 0.26 + sin(anim_time * 16.0) * 0.1
+		draw_circle(center, radius * 1.35, glow)
 
 
 func _draw_pixel_diamond(center: Vector2, size: int, color: Color, pixel_size := 2) -> void:
-	var origin := _snap_px(center)
-	for y in range(-size, size + 1):
-		var span := size - absi(y)
-		for x in range(-span, span + 1):
-			draw_rect(Rect2(origin + Vector2(x * pixel_size, y * pixel_size), Vector2(pixel_size, pixel_size)), color)
+	_draw_gem_facets(center, float(size * pixel_size) + 1.5, color)
 
 
 func _draw_pixel_ring(center: Vector2, radius: float, color: Color, thickness: int) -> void:
-	var r := maxi(4, roundi(radius))
-	var c := _snap_px(center)
-	var side := r * 2
-	draw_rect(Rect2(c + Vector2(-r, -r), Vector2(side, thickness)), color)
-	draw_rect(Rect2(c + Vector2(-r, r - thickness), Vector2(side, thickness)), color)
-	draw_rect(Rect2(c + Vector2(-r, -r), Vector2(thickness, side)), color)
-	draw_rect(Rect2(c + Vector2(r - thickness, -r), Vector2(thickness, side)), color)
+	draw_arc(center, maxf(3.0, radius - float(thickness) * 0.5), 0.0, TAU, 36, color, float(thickness), true)
 
 
 func _snap_px(value: Vector2) -> Vector2:
@@ -10983,8 +11147,8 @@ func _add_pressure_feedback(pos: Vector2i, radius: float, beat := 0) -> void:
 		"time": PULSE_FEEDBACK_TIME,
 		"duration": PULSE_FEEDBACK_TIME,
 		"radius": radius,
-		"color": PRESSURE.lerp(RUPTURE, clampf(float(maxi(0, beat)) / 4.0, 0.0, 0.72)),
-		"alpha": 0.82,
+		"color": PRESSURE.lerp(GEM, clampf(float(maxi(0, beat)) / 3.0, 0.0, 1.0)),
+		"alpha": 0.4,
 		"burst": beat >= 3,
 		"pressure_beat": beat
 	})
@@ -10992,7 +11156,7 @@ func _add_pressure_feedback(pos: Vector2i, radius: float, beat := 0) -> void:
 
 func _add_rupture_feedback(pos: Vector2i) -> void:
 	_play_enemy_kill_sfx()
-	_add_cell_pulse(pos, RUPTURE, PULSE_FEEDBACK_TIME + 0.16, 1.25, true)
+	_add_cell_pulse(pos, PRESSURE, PULSE_FEEDBACK_TIME + 0.16, 1.25, true)
 
 
 func _add_zap_feedback(from: Vector2i, to: Vector2i, jump: int) -> void:
@@ -11371,11 +11535,46 @@ func _bit_count(value: int) -> int:
 	return count
 
 
-func _rebuild_soil_mask_from_grid() -> void:
-	soil_image = Image.create_empty(BOARD_PX_W, BOARD_PX_H, false, Image.FORMAT_RGBA8)
-	for y in range(BOARD_PX_H):
+func _rebuild_soil_facet_images() -> void:
+	# Voronoi cells give the rock flat, faceted planes; the second pass marks their seams.
+	var facets := FastNoiseLite.new()
+	facets.seed = rng.randi()
+	facets.noise_type = FastNoiseLite.TYPE_CELLULAR
+	facets.frequency = 0.055
+	facets.cellular_distance_function = FastNoiseLite.DISTANCE_EUCLIDEAN
+	facets.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
+	var half_w := ceili(BOARD_PX_W / 2.0)
+	var half_h := ceili(BOARD_PX_H / 2.0)
+	soil_noise_size = Vector2i(half_w, half_h)
+	var facet_image := facets.get_image(half_w, half_h, false, false, true)
+	facet_image.convert(Image.FORMAT_L8)
+	soil_facet_bytes = facet_image.get_data()
+	facets.cellular_return_type = FastNoiseLite.RETURN_DISTANCE2_SUB
+	var crack_image := facets.get_image(half_w, half_h, false, false, true)
+	crack_image.convert(Image.FORMAT_L8)
+	soil_crack_bytes = crack_image.get_data()
+	# Strata boundaries wander within half a cell; scoring still uses rows.
+	soil_wave_table.resize(BOARD_PX_W * BOARD_H)
+	for row in range(BOARD_H):
 		for x in range(BOARD_PX_W):
-			soil_image.set_pixel(x, y, _soil_color_at(x, y))
+			soil_wave_table[row * BOARD_PX_W + x] = sin(float(x) * 0.031 + float(row) * 0.7) * 7.0 + sin(float(x) * 0.011 + 1.3) * 6.0
+
+
+func _soil_noise(bytes: PackedByteArray, x: int, y: int) -> float:
+	if bytes.is_empty():
+		return 0.5
+	var nx := clampi(x >> 1, 0, soil_noise_size.x - 1)
+	var ny := clampi(y >> 1, 0, soil_noise_size.y - 1)
+	return float(bytes[ny * soil_noise_size.x + nx]) / 255.0
+
+
+func _rebuild_soil_mask_from_grid() -> void:
+	_rebuild_soil_facet_images()
+	soil_image = Image.create_empty(BOARD_PX_W, BOARD_PX_H, false, Image.FORMAT_RGBA8)
+	# Facets are sampled at half resolution, so colour 2x2 blocks at a time.
+	for y in range(0, BOARD_PX_H, 2):
+		for x in range(0, BOARD_PX_W, 2):
+			soil_image.fill_rect(Rect2i(x, y, 2, 2), _soil_color_at(x, y))
 
 	var full_mask := DIG_FULL_MASK
 	for x in range(BOARD_W):
@@ -11397,32 +11596,40 @@ func _soil_color_at(x: int, y: int) -> Color:
 	var crystal_map := bool(current_map_def.get("crystal", false))
 	if cell_row <= SURFACE_ROW:
 		return CRYSTAL_SURFACE_SOIL if crystal_map else SURFACE_SOIL
-	var layer := _dirt_layer_index_for_row(cell_row)
-	var block_x := floori(float(x) / 4.0)
-	var block_y := floori(float(y) / 4.0)
-	var grain := (block_x * 17 + block_y * 31 + depth_tier * 43) % 11
+	var wave_index := clampi(cell_row, 0, BOARD_H - 1) * BOARD_PX_W + clampi(x, 0, BOARD_PX_W - 1)
+	var wave := soil_wave_table[wave_index] if wave_index < soil_wave_table.size() else 0.0
+	var visual_row := maxi(SURFACE_ROW + 1, floori((float(y) + wave) / float(CELL)))
+	var layer := _dirt_layer_index_for_row(visual_row)
 	var colors: Array = CRYSTAL_DIRT_LAYER_COLORS if crystal_map else DIRT_LAYER_COLORS
 	var highlights: Array = CRYSTAL_DIRT_LAYER_HIGHLIGHTS if crystal_map else DIRT_LAYER_HIGHLIGHTS
 	var shadows: Array = CRYSTAL_DIRT_LAYER_SHADOWS if crystal_map else DIRT_LAYER_SHADOWS
+	var facet := _soil_noise(soil_facet_bytes, x, y)
+	var seam := _soil_noise(soil_crack_bytes, x, y)
 	var color: Color = colors[layer]
-	if grain <= 1:
-		color = highlights[layer].lerp(colors[layer], 0.72)
-	elif grain >= 8:
-		color = colors[layer].lerp(shadows[layer], 0.28)
+	if facet > 0.5:
+		color = color.lerp(highlights[layer], (facet - 0.5) * 1.3)
+	else:
+		color = color.lerp(shadows[layer], (0.5 - facet) * 1.3)
+	if seam < 0.035:
+		color = color.lerp(shadows[layer].darkened(0.3), 0.7)
+	elif seam < 0.08:
+		color = color.lerp(highlights[layer], 0.22)
+	var block_x := floori(float(x) / 4.0)
+	var block_y := floori(float(y) / 4.0)
 	var cell := Vector2i(clampi(floori(float(x) / float(CELL)), 0, BOARD_W - 1), clampi(cell_row, 0, BOARD_H - 1))
 	var terrain := _terrain_at(cell)
 	if terrain == TERRAIN_CRYSTAL_SHALE:
 		color = color.lerp(CRYSTAL_SHALE, 0.55)
-		if (block_x * 3 + block_y + depth_tier) % 6 == 0:
+		if facet > 0.72:
 			color = color.lerp(CRYSTAL_SHALE_HIGHLIGHT, 0.36)
 	elif terrain == TERRAIN_CRYSTAL_SEAL:
-		color = CRYSTAL_SEAL_DARK.lerp(CRYSTAL_SEAL, 0.58)
-		if (block_x + block_y * 2 + depth_tier) % 4 == 0:
+		color = CRYSTAL_SEAL_DARK.lerp(CRYSTAL_SEAL, 0.4 + facet * 0.35)
+		if seam < 0.08:
 			color = color.lerp(ICE, 0.32)
 	elif _is_crystal_cell(cell):
-		color = color.lerp(SUPER_GEM, 0.22)
+		color = color.lerp(SUPER_GEM, 0.18 + facet * 0.12)
 		if (block_x + block_y + depth_tier) % 5 == 0:
-			color = color.lerp(ICE, 0.22)
+			color = color.lerp(GEM, 0.2)
 	return color
 
 
