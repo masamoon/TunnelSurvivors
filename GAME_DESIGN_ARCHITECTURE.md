@@ -44,7 +44,7 @@ The main design tension is extraction versus greed: digging creates routes and a
 The script uses numeric constants for tiles, enemy kinds, and game states:
 
 - Tiles: dirt, tunnel, beacon, vault gate.
-- Enemies: grub, burrower, Fygar, spitter, shieldbug, leech, brood pod, boss, Reaper.
+- Enemies: grub, burrower, Kiln Beetle, spitter, shieldbug, leech, brood pod, boss, Reaper.
 - States: meta hub, playing, choosing upgrade, game over, win.
 
 ## Main Loop
@@ -114,7 +114,7 @@ Enemies are dictionaries in the `enemies` array. Each stores position, visual po
 Enemy selection is weighted by depth tier, run time, player level, and map bonuses:
 
 - Grubs are the baseline.
-- Burrowers, Fygars, spitters, shieldbugs, leeches, and brood pods join as time/level/depth thresholds are met.
+- Burrowers, Kiln Beetles, spitters, shieldbugs, leeches, and brood pods join as time/level/depth thresholds are met.
 - Bosses spawn at 120, 240, and 360 seconds.
 - A Reaper spawns near the end of the eight-minute run and can force the beacon to arm.
 - Late-run regular enemies can become "uber" variants with extra HP and speed.
@@ -163,7 +163,7 @@ Meta upgrades currently include:
 - Field Notes: extra relic research.
 - Cache Sense: higher upgrade-chest odds.
 
-Important achievements include first extraction, first boulder kill, first boss kill, 10 super gems, and 10 Fygar kills.
+Important achievements include first extraction, first boulder kill, first boss kill, 10 super gems, and 10 Kiln Beetle kills.
 
 ## Data Tables and Balance Touchpoints
 

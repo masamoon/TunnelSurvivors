@@ -25,6 +25,7 @@ func _run() -> void:
 	_test_movement_and_impact_contracts()
 	_test_run_identity_and_progression()
 	_test_exploration_reward_payoffs()
+	_test_legacy_enemy_save_migration()
 	if failures.is_empty():
 		print("OK: control, encounter, movement, impact, run identity, and progression regressions")
 		quit(0)
@@ -537,3 +538,19 @@ func _test_exploration_reward_payoffs() -> void:
 		prospect._apply_temp_upgrade(prospect._upgrade_by_id("prospector"))
 		_expect(prospect.super_gems.size() == 1 and int(prospect.family_points.get("gem", 0)) == 1, "duplicate Prospector farmed gems or family credit")
 		prospect.free()
+
+
+func _test_legacy_enemy_save_migration() -> void:
+	var game := TestGame.new()
+	game.meta = game._default_meta()
+	game._merge_meta({
+		"lifetime": {"fygar_kills": 7},
+		"achievements": {"fygar_hunter_10": true}
+	})
+	var lifetime: Dictionary = game.meta["lifetime"]
+	var achievements: Dictionary = game.meta["achievements"]
+	_expect(int(lifetime.get("kiln_kills", 0)) == 7, "legacy enemy kill count was not migrated")
+	_expect(not lifetime.has("fygar_kills"), "legacy enemy kill key was kept")
+	_expect(bool(achievements.get("kiln_hunter_10", false)), "legacy enemy achievement was not migrated")
+	_expect(not achievements.has("fygar_hunter_10"), "legacy enemy achievement key was kept")
+	game.free()
