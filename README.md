@@ -5,16 +5,22 @@ Diggy is a compact arcade mining extraction game built in Godot 4. Dig through t
 ## Controls
 
 - Move: `WASD` or arrow keys
-- Lance / pump: hold `Space`, release to disengage
+- Resonance spike: hold `Space` to ring a pinned creature until it shatters, release to disengage
 - Interact with armed beacon / vault gate: `E` or `Enter`
 - Upgrade inventory: `I`
 - Guide / codex: `H`
 - Pause / settings: `Esc` or `P`
 - Hub / rerun after a run: `Enter` for hub, `R` to rerun
 
-When multiple movement keys are held, the most recently pressed direction wins; releasing it restores the previous held direction. Pumping can be changed to toggle mode in pause settings, where impact hit-stop can also be reduced or disabled.
+When multiple movement keys are held, the most recently pressed direction wins; releasing it restores the previous held direction. Holding the spike can be changed to toggle mode in pause settings, where impact hit-stop can also be reduced or disabled.
 
-On touch devices, use the on-screen directional pad, `LANCE` button, contextual `KEY` / `BEACON` interaction button, and pause button. Combat and interaction remain separate, so standing beside a gate never consumes an attack. Hub panels can be tapped to cycle unlocked setup options.
+On touch devices, use the on-screen directional pad, `TAP` button, contextual `KEY` / `BEACON` interaction button, and pause button. Combat and interaction remain separate, so standing beside a gate never consumes an attack. Hub panels can be tapped to cycle unlocked setup options.
+
+## Look and feel
+
+The cave is drawn as a faceted geode: flat-shaded rock planes, wandering strata, smooth tunnels, and a miner's lantern that lights the soil around you. The lance is a brass tuning spike on a chain. Each held beat rings it higher and spreads crystal through the pinned creature, which shatters into gem shards on the kill. Creatures keep their size while held.
+
+Everything is drawn in code with vector shapes. The soil uses a small canvas shader (`SOIL_SHADER_CODE` in `scripts/main.gd`) to round tunnel edges and apply the lantern light.
 
 ## Keys and Vaults
 
@@ -40,13 +46,19 @@ The base lance branch uses standalone upgrades such as Anchor Chain, Snap Reel, 
 
 Shieldbugs deflect frontal hooks until they expose a lunge; flank them or catch that opening. Every boss breaks free after three successful pump beats, including beats split across separate hooks. Its amber ring marks a brief hook-resistance window: reposition, evade the counterattack, or use a boulder while it can still take damage. The Reaper cannot be hooked, so keep moving toward extraction.
 
-The pause settings include master audio, music, SFX volume, music volume, screen shake, pump input mode, first-run hints, and a double-confirm wipe-save button.
+The pause settings include master audio, music, SFX volume, music volume, screen shake, spike hold mode, first-run hints, and a double-confirm wipe-save button.
 
 Boss kills unlock the harder Obsidian Rift site, the Field Kit alternate start, and the Treasure Compass beacon mod. End-of-run results identify the cause, best tactical moment, run build, and next permanent unlock, with direct rerun and hub actions.
 
 ## Checks
 
 Run `python3 tools/balance_check.py` to validate upgrade, research, and unlock table references.
+
+To review art changes, render staged gameplay frames to PNG (needs a display, or `xvfb-run` on Linux):
+
+```bash
+xvfb-run -a godot --path . --rendering-driver opengl3 --script res://tools/capture_scene.gd -- /tmp/diggy-captures
+```
 
 Run `godot --headless --path . --script res://tests/run_regressions.gd` to check controls, encounter connectivity, movement and impact contracts, starter plans, useful healing, build-aware drafts, result summaries, and boulder-kill attribution.
 
